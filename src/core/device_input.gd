@@ -87,12 +87,12 @@ func _read_stick(axis_x: int, axis_y: int) -> Vector2:
 		Input.get_joy_axis(device, axis_x),
 		Input.get_joy_axis(device, axis_y)
 	)
-	var len := v.length()
-	if len < DEADZONE:
+	var magnitude := v.length()
+	if magnitude < DEADZONE:
 		return Vector2.ZERO
 	# Pehmeä radiaalinen deadzone: liike alkaa nollasta deadzonen reunalta.
-	var scaled: float = clampf((len - DEADZONE) / (1.0 - DEADZONE), 0.0, 1.0)
-	return v / len * scaled
+	var scaled: float = clampf((magnitude - DEADZONE) / (1.0 - DEADZONE), 0.0, 1.0)
+	return v / magnitude * scaled
 
 
 # --- Luettava rajapinta (sama kuin BotBrainilla) ---

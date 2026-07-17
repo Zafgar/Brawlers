@@ -308,30 +308,45 @@ func _toggle_pause() -> void:
 		_pause_layer = null
 		get_tree().paused = false
 		return
-
 	get_tree().paused = true
-	_pause_layer = CanvasLayer.new()
-	_pause_layer.layer = 90
-	_pause_layer.process_mode = Node.PROCESS_MODE_ALWAYS
-
-	var dim := ColorRect.new()
-	dim.color = Color(0.02, 0.03, 0.08, 0.72)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_pause_layer.add_child(dim)
-
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_pause_layer.add_child(center)
-
-	var panel := UiKit.panel()
-	center.add_child(panel)
-	var box := UiKit.vbox(18)
-	panel.add_child(box)
-	box.add_child(UiKit.title("TAUKO", 54))
-	var resume_btn := UiKit.button("Jatka peliä", func(): _toggle_pause())
-	box.add_child(resume_btn)
-	box.add_child(UiKit.button("Päävalikkoon", func():
-		get_tree().paused = false
-		Game.go_menu()))
+	_pause_layer = PauseMenuLayer.new(self)
 	add_child(_pause_layer)
-	resume_btn.grab_focus()
+
+
+## Taukovalikko omana kerroksenaan: pysyy aktiivisena pausen aikana,
+## jotta Esc/Start sulkee sen (pausattu Arena ei saa syötteitä).
+class PauseMenuLayer:
+	extends CanvasLayer
+
+	var arena = null
+
+	func _init(p_arena) -> void:
+		arena = p_arena
+		layer = 90
+		process_mode = Node.PROCESS_MODE_ALWAYS
+
+	func _ready() -> void:
+		var dim := ColorRect.new()
+		dim.color = Color(0.02, 0.03, 0.08, 0.72)
+		dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+		add_child(dim)
+
+		var center := CenterContainer.new()
+		center.set_anchors_preset(Control.PRESET_FULL_RECT)
+		add_child(center)
+
+		var panel := UiKit.panel()
+		center.add_child(panel)
+		var box := UiKit.vbox(18)
+		panel.add_child(box)
+		box.add_child(UiKit.title("TAUKO", 54))
+		var resume_btn := UiKit.button("Jatka peliä", func(): arena._toggle_pause())
+		box.add_child(resume_btn)
+		box.add_child(UiKit.button("Päävalikkoon", func():
+			get_tree().paused = false
+			Game.go_menu()))
+		resume_btn.grab_focus()
+
+	func _input(event: InputEvent) -> void:
+		if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
+			arena._toggle_pause()
