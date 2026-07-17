@@ -88,13 +88,27 @@ func _draw() -> void:
 # --- Yhteiset osat ---
 
 func _draw_ground_ring() -> void:
+	# Joukkue näkyy ensin: selkeä sinioranssi rengas ja hehku jokaisella.
+	# Oma pelaajaväri on numerolaatassa renkaan alla.
 	var is_human: bool = hero.profile.is_human()
-	var ring_color: Color = hero.profile.color() if is_human else Palette.with_alpha(Palette.team(hero.team), 0.4)
-	var width := 4.0 if is_human else 2.5
-	draw_arc(Vector2(0, 8), hero.radius + 7.0, 0.0, TAU, 40, Palette.with_alpha(Color.BLACK, 0.25), width + 3.0)
-	draw_arc(Vector2(0, 8), hero.radius + 7.0, 0.0, TAU, 40, ring_color, width)
+	var team_color := Palette.team(hero.team)
+
+	draw_circle(Vector2(0, 8), hero.radius + 16.0,
+		Palette.with_alpha(team_color, 0.16 if is_human else 0.10))
+	draw_arc(Vector2(0, 8), hero.radius + 7.0, 0.0, TAU, 40,
+		Palette.with_alpha(Color.BLACK, 0.3), 8.0 if is_human else 5.5)
+	draw_arc(Vector2(0, 8), hero.radius + 7.0, 0.0, TAU, 40,
+		Palette.with_alpha(team_color, 0.95 if is_human else 0.55),
+		5.0 if is_human else 3.0)
+
 	if is_human:
-		UiKit.draw_text(self, Vector2(0, 34), str(hero.profile.index + 1), 15, ring_color, true, 3)
+		# Pelaajan oma tunnusväri ja numero laattana renkaan alla.
+		var chip := Vector2(0, hero.radius + 16.0)
+		draw_circle(chip, 13.0, Palette.with_alpha(Color.BLACK, 0.4))
+		draw_circle(chip, 11.0, hero.profile.color())
+		UiKit.draw_text(self, chip + Vector2(0, 1), str(hero.profile.index + 1), 15,
+			Palette.TEXT_DARK, true)
+
 	if hero.ult_charge >= 100.0:
 		var pulse := 0.5 + 0.5 * sin(_time * 6.0)
 		draw_arc(Vector2(0, 8), hero.radius + 12.0, 0.0, TAU, 40,

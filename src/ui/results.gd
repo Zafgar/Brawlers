@@ -171,7 +171,7 @@ func _build_layout() -> void:
 			else Palette.with_alpha(Palette.team(profile.team), 0.6)
 		dot.custom_minimum_size = Vector2(18, 18)
 		name_row.add_child(dot)
-		var name_text := profile.display_name
+		var name_text: String = profile.display_name
 		if profile == _mvp:
 			name_text += "  ★MVP"
 		name_row.add_child(UiKit.label(name_text, 20,
@@ -198,7 +198,7 @@ func _build_layout() -> void:
 		# Rivien pehmeä sisääntulo
 		for node in row_nodes:
 			node.modulate = Color(1, 1, 1, 0)
-			var tween := node.create_tween()
+			var tween: Tween = node.create_tween()
 			tween.tween_interval(0.15 + delay)
 			tween.tween_property(node, "modulate:a", 1.0, 0.3)
 		delay += 0.08

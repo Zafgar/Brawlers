@@ -46,28 +46,27 @@ var _hold_pause := 0.0
 
 func _init(p_level: int) -> void:
 	level = p_level
-	match level:
-		Game.BotLevel.EASY:
-			reaction = 0.45
-			aim_error_deg = 16.0
-			decision_interval = 0.6
-			dodge_chance = 0.10
-			ability_chance = 0.35
-			prediction = 0.0
-		Game.BotLevel.NORMAL:
-			reaction = 0.28
-			aim_error_deg = 9.0
-			decision_interval = 0.4
-			dodge_chance = 0.35
-			ability_chance = 0.6
-			prediction = 0.5
-		Game.BotLevel.HARD:
-			reaction = 0.14
-			aim_error_deg = 4.0
-			decision_interval = 0.25
-			dodge_chance = 0.70
-			ability_chance = 0.85
-			prediction = 0.9
+	if level == Game.BotLevel.EASY:
+		reaction = 0.45
+		aim_error_deg = 16.0
+		decision_interval = 0.6
+		dodge_chance = 0.10
+		ability_chance = 0.35
+		prediction = 0.0
+	elif level == Game.BotLevel.HARD:
+		reaction = 0.14
+		aim_error_deg = 4.0
+		decision_interval = 0.25
+		dodge_chance = 0.70
+		ability_chance = 0.85
+		prediction = 0.9
+	else:
+		reaction = 0.28
+		aim_error_deg = 9.0
+		decision_interval = 0.4
+		dodge_chance = 0.35
+		ability_chance = 0.6
+		prediction = 0.5
 
 
 func update(hero: Hero, delta: float) -> void:
