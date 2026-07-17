@@ -51,6 +51,7 @@ var haste_timer := 0.0
 var haste_factor := 1.0
 var root_timer := 0.0
 var stun_timer := 0.0
+var mark_timer := 0.0               # merkitty kohde ottaa lisävahinkoa (Scout)
 var kb_resist := 0.0                # 0..1, tankeille
 
 # Suuntatorjunta (Bastionin kilpivalli, geneerinen mekaniikka)
@@ -185,6 +186,7 @@ func _tick_status(delta: float) -> void:
 		haste_factor = 1.0
 	root_timer = maxf(root_timer - delta, 0.0)
 	stun_timer = maxf(stun_timer - delta, 0.0)
+	mark_timer = maxf(mark_timer - delta, 0.0)
 	guard_timer = maxf(guard_timer - delta, 0.0)
 	shield_timer -= delta
 	if shield_timer <= 0.0:
@@ -259,6 +261,10 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO) -> float:
 	if not alive or iframes > 0.0:
 		return 0.0
+
+	# Merkitty kohde (Scoutin vaahtomerkki) ottaa lisävahinkoa kaikilta.
+	if mark_timer > 0.0:
+		amount *= 1.25
 
 	# Suuntatorjunta (kilpivalli): edestä tulevat osumat vaimenevat.
 	if guard_timer > 0.0 and kb_dir != Vector2.ZERO:
@@ -359,6 +365,11 @@ func apply_stun(duration: float) -> void:
 	stun_timer = maxf(stun_timer, duration)
 
 
+func apply_mark(duration: float) -> void:
+	mark_timer = maxf(mark_timer, duration)
+	arena.popup(global_position + Vector2(0, -60), "MERKITTY", Palette.GOLD, 14)
+
+
 func start_guard(duration: float, absorb := 0.7, arc_deg := 80.0) -> void:
 	guard_timer = duration
 	guard_absorb = absorb
@@ -379,6 +390,7 @@ func _knockout(source: Hero) -> void:
 	slow_timer = 0.0
 	root_timer = 0.0
 	stun_timer = 0.0
+	mark_timer = 0.0
 
 	var now := Time.get_ticks_msec() / 1000.0
 	if source != null and is_instance_valid(source) and source != self:
@@ -437,6 +449,7 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	haste_timer = 0.0
 	root_timer = 0.0
 	stun_timer = 0.0
+	mark_timer = 0.0
 	guard_timer = 0.0
 	ult_charge = ult_charge * keep_ult_fraction
 	_ult_ready_announced = ult_charge >= 100.0

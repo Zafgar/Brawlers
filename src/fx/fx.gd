@@ -83,12 +83,55 @@ static func heal_sparkle(parent: Node, pos: Vector2) -> void:
 	p.finished.connect(p.queue_free)
 
 
+## Salamakaari kahden pisteen välille (Voltin ketjusalamat).
+static func bolt(parent: Node, from: Vector2, to: Vector2, color: Color) -> void:
+	var node := BoltFx.new()
+	node.from_point = from
+	node.to_point = to
+	node.color = color
+	parent.add_child(node)
+
+
 ## Tyrmäys: pehmeä valopurkaus (ei verta, hahmo "poksahtaa" valoksi).
 static func knockout_burst(parent: Node, pos: Vector2, color: Color) -> void:
 	flash(parent, pos, Palette.glow(color, 1.6), 70.0, 0.35)
 	ring(parent, pos, Palette.glow(Color.WHITE, 1.4), 90.0, 0.45, 7.0)
 	burst(parent, pos, Palette.glow(color, 1.8), 22, 420.0, 0.7, 7.0)
 	burst(parent, pos, Color(1, 1, 1, 0.9), 10, 300.0, 0.5, 4.0)
+
+
+class BoltFx:
+	extends Node2D
+	var from_point := Vector2.ZERO
+	var to_point := Vector2.ZERO
+	var color := Color.WHITE
+	var _points := PackedVector2Array()
+	var _t := 0.0
+	const LIFE := 0.18
+
+	func _ready() -> void:
+		z_index = 31
+		var rng := RandomNumberGenerator.new()
+		rng.randomize()
+		var segments := 6
+		_points.append(from_point)
+		for i in range(1, segments):
+			var along: Vector2 = from_point.lerp(to_point, float(i) / segments)
+			var normal: Vector2 = (to_point - from_point).orthogonal().normalized()
+			_points.append(along + normal * rng.randf_range(-16.0, 16.0))
+		_points.append(to_point)
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if _t >= LIFE:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var fade: float = 1.0 - _t / LIFE
+		draw_polyline(_points, Palette.with_alpha(Palette.glow(color, 1.8), fade), 3.5 * fade)
+		draw_circle(to_point, 6.0 * fade, Palette.with_alpha(Color.WHITE, fade * 0.8))
 
 
 class RingFx:

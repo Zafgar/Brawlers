@@ -16,7 +16,7 @@ func setup(p_arena, p_profile: PlayerProfile) -> void:
 	arena = p_arena
 	profile = p_profile
 	compact = p_profile.is_bot
-	custom_minimum_size = Vector2(186, 74) if compact else Vector2(228, 94)
+	custom_minimum_size = Vector2(186, 74) if compact else Vector2(232, 118)
 	size = custom_minimum_size
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for candidate in arena.heroes:
@@ -97,25 +97,50 @@ func _draw() -> void:
 	draw_rect(Rect2(left, ult_y, bar_w * ult_frac, ult_h),
 		Palette.with_alpha(ult_color, dim))
 
-	# Cooldown-ruudut (kyky 1, kyky 2, väistö) — vain ihmisille
+	# Kykyruudut ikoneineen ja näppäinvihjeineen (kyky 1, kyky 2, väistö)
 	if not compact:
-		var slot_size := 20.0
-		var cd_y := ult_y + ult_h + 5.0
+		var slot_size := 28.0
+		var cd_y := ult_y + ult_h + 6.0
 		var slots := ["a1", "a2", "dodge"]
+		var keys := ["R1", "L1", "X"] if profile.device >= 0 else ["HO", "Q", "VÄLI"]
 		for i in range(slots.size()):
 			var slot: String = slots[i]
-			var x := left + i * (slot_size + 6.0)
+			var x := left + i * (slot_size + 12.0)
 			var rect := Rect2(x, cd_y, slot_size, slot_size)
-			draw_rect(rect, Color(0, 0, 0, 0.5))
 			var max_cd: float = maxf(hero.cd_max[slot], 0.001)
 			var ready: float = clampf(1.0 - hero.cd[slot] / max_cd, 0.0, 1.0)
-			var fill_h := slot_size * ready
-			var fill_color: Color = Palette.glow(c1, 1.2) if ready >= 1.0 \
-				else Palette.with_alpha(c1, 0.45)
-			draw_rect(Rect2(x, cd_y + slot_size - fill_h, slot_size, fill_h), fill_color)
-			if hero.cd[slot] > 0.0:
-				UiKit.draw_text(self, rect.get_center(), str(int(ceil(hero.cd[slot]))),
-					12, Palette.TEXT_MAIN, true, 2)
+			var is_ready: bool = ready >= 1.0
+
+			draw_rect(rect, Color(0, 0, 0, 0.55))
+			if is_ready:
+				draw_rect(rect, Palette.with_alpha(c1, 0.30))
+				draw_rect(rect, Palette.glow(c1, 1.3), false, 2.0)
+			else:
+				# Latauspalkki nousee alhaalta ylös
+				var fill_h := slot_size * ready
+				draw_rect(Rect2(x, cd_y + slot_size - fill_h, slot_size, fill_h),
+					Palette.with_alpha(c1, 0.22))
+				draw_rect(rect, Palette.with_alpha(c1, 0.35), false, 1.0)
+
+			var icon_color: Color = Palette.glow(c1, 1.4) if is_ready \
+				else Palette.with_alpha(Palette.TEXT_DIM, 0.7)
+			_draw_slot_icon(i, rect.get_center(), icon_color)
+
+			if hero.cd[slot] > 0.5:
+				UiKit.draw_text(self, rect.get_center() + Vector2(0, 1),
+					str(int(ceil(hero.cd[slot]))), 15, Palette.TEXT_MAIN, true, 3)
+			UiKit.draw_text(self, Vector2(rect.get_center().x, cd_y + slot_size + 8.0),
+				keys[i], 9, Palette.TEXT_DIM, true)
+
+	# Ulti-vihje palkin viereen kun valmis
+	if not compact and ult_frac >= 1.0:
+		var hint := Vector2(w - 24.0, ult_y + ult_h / 2.0)
+		if profile.device >= 0:
+			var tri := PackedVector2Array([
+				hint + Vector2(0, -6), hint + Vector2(5.5, 4), hint + Vector2(-5.5, 4)])
+			draw_colored_polygon(tri, Palette.glow(Palette.GOLD, 1.4))
+		else:
+			UiKit.draw_text(self, hint, "E", 13, Palette.glow(Palette.GOLD, 1.4), true, 2)
 
 	# Reliikki-ikoni
 	if hero.carrying:
@@ -136,3 +161,24 @@ func _draw() -> void:
 			str(int(ceil(hero.respawn_timer))), 30, Palette.TEXT_MAIN, true, 4)
 		UiKit.draw_text(self, Vector2(w / 2.0, h / 2.0 + 16.0), "PALAA PELIIN...",
 			11, Palette.TEXT_DIM, true)
+
+
+## Kykyikonit: 0 = kyky 1 (tähti), 1 = kyky 2 (timantti), 2 = väistö (nuolet).
+func _draw_slot_icon(slot_index: int, center: Vector2, color: Color) -> void:
+	match slot_index:
+		0:
+			var star := PackedVector2Array()
+			for i in range(8):
+				var r := 8.0 if i % 2 == 0 else 3.2
+				star.append(center + Vector2.RIGHT.rotated(-PI / 2.0 + TAU * i / 8.0) * r)
+			draw_colored_polygon(star, color)
+		1:
+			var gem := PackedVector2Array([
+				center + Vector2(0, -8), center + Vector2(7, 0),
+				center + Vector2(0, 8), center + Vector2(-7, 0)])
+			draw_colored_polygon(gem, color)
+		2:
+			for k in range(2):
+				var off := Vector2(-6.0 + k * 7.0, 0)
+				draw_line(center + off + Vector2(-2, -6), center + off + Vector2(4, 0), color, 2.5)
+				draw_line(center + off + Vector2(4, 0), center + off + Vector2(-2, 6), color, 2.5)

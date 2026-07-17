@@ -31,31 +31,37 @@ func _ready() -> void:
 	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(row)
 
-	# Vasen palsta: sankarinapit
+	# Vasen palsta: sankarinapit kahdessa sarakkeessa
 	var list := UiKit.vbox(10)
-	list.custom_minimum_size = Vector2(330, 0)
+	list.custom_minimum_size = Vector2(400, 0)
 	row.add_child(list)
+
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	list.add_child(grid)
 
 	var first_button: Button = null
 	for hero_id in HeroDef.ORDER:
 		var def := HeroDef.get_def(hero_id)
-		var btn := UiKit.button("%s" % def["name"], func(): pass, 28)
+		var btn := UiKit.button("%s" % def["name"], func(): pass, 22)
 		btn.add_theme_color_override("font_color", def["color"])
 		btn.add_theme_color_override("font_hover_color", Palette.glow(def["color"], 1.2))
 		btn.add_theme_color_override("font_focus_color", Palette.glow(def["color"], 1.2))
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.custom_minimum_size = Vector2(330, 0)
+		btn.custom_minimum_size = Vector2(195, 0)
 		var id: String = hero_id
 		btn.focus_entered.connect(func(): _select(id))
 		btn.mouse_entered.connect(func(): _select(id))
 		btn.pressed.connect(func(): _select(id))
-		list.add_child(btn)
+		grid.add_child(btn)
 		if first_button == null:
 			first_button = btn
 
 	list.add_child(UiKit.spacer(14))
 	var back_btn := UiKit.button("Takaisin", func(): Game.go_menu(), 24)
-	back_btn.custom_minimum_size = Vector2(330, 0)
+	back_btn.custom_minimum_size = Vector2(400, 0)
 	list.add_child(back_btn)
 
 	# Oikea palsta: tietopaneeli

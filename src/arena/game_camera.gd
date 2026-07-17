@@ -4,7 +4,7 @@ extends Camera2D
 ## zoomaa pehmeästi ja tärähtää osumista (jos asetuksissa sallittu).
 
 const MARGIN := 260.0
-const MIN_ZOOM := 0.62
+const MIN_ZOOM := 0.76
 const MAX_ZOOM := 1.05
 const FOLLOW_SPEED := 3.5
 const ZOOM_SPEED := 2.5

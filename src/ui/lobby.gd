@@ -6,9 +6,10 @@ extends Control
 
 enum Phase { JOIN, HEROES, STARTING }
 
-const TILE_W := 290.0
-const TILE_H := 240.0
-const TILE_GAP := 24.0
+const COLS := 4
+const TILE_W := 250.0
+const TILE_H := 200.0
+const TILE_GAP := 20.0
 
 var phase: int = Phase.JOIN
 
@@ -231,20 +232,24 @@ func _handle_heroes_input(device: int, edge: Dictionary) -> void:
 		return
 
 	if not entry.locked:
-		var col: int = entry.cursor % 3
-		var row: int = entry.cursor / 3
+		var rows := int(ceil(float(HeroDef.ORDER.size()) / COLS))
+		var col: int = entry.cursor % COLS
+		var row: int = entry.cursor / COLS
 		var moved := false
 		if edge.left:
-			col = (col + 2) % 3
+			col = (col + COLS - 1) % COLS
 			moved = true
 		elif edge.right:
-			col = (col + 1) % 3
+			col = (col + 1) % COLS
 			moved = true
-		elif edge.up or edge.down:
-			row = 1 - row
+		elif edge.up:
+			row = (row + rows - 1) % rows
+			moved = true
+		elif edge.down:
+			row = (row + 1) % rows
 			moved = true
 		if moved:
-			entry.cursor = row * 3 + col
+			entry.cursor = mini(row * COLS + col, HeroDef.ORDER.size() - 1)
 			AudioMgr.play("ui_move")
 
 	if edge.accept and not entry.locked:
@@ -427,11 +432,11 @@ func _draw_device_icon(pos: Vector2, device: int) -> void:
 func _draw_heroes() -> void:
 	UiKit.draw_text(self, Vector2(960, 80), "VALITSE SANKARI", 64, Palette.TEXT_MAIN, true, 8)
 
-	var x0 := (1920.0 - (3.0 * TILE_W + 2.0 * TILE_GAP)) / 2.0
-	var y0 := 180.0
+	var x0 := (1920.0 - (COLS * TILE_W + (COLS - 1) * TILE_GAP)) / 2.0
+	var y0 := 150.0
 	for i in range(HeroDef.ORDER.size()):
-		var col := i % 3
-		var row := i / 3
+		var col := i % COLS
+		var row := i / COLS
 		var rect := Rect2(x0 + col * (TILE_W + TILE_GAP), y0 + row * (TILE_H + TILE_GAP),
 			TILE_W, TILE_H)
 		_draw_hero_tile(rect, i)
@@ -446,13 +451,13 @@ func _draw_heroes() -> void:
 	var total_w: float = all_profiles.size() * (chip_w + 10.0) - 10.0
 	var chip_x := 960.0 - total_w / 2.0
 	for entry in all_profiles:
-		_draw_player_chip(Rect2(chip_x, 700, chip_w, 74), entry)
+		_draw_player_chip(Rect2(chip_x, 830, chip_w, 70), entry)
 		chip_x += chip_w + 10.0
 
-	UiKit.draw_text(self, Vector2(960, 850),
+	UiKit.draw_text(self, Vector2(960, 950),
 		"Ristiohjain/tatti tai WASD: liiku · X/Enter: lukitse · O/Esc: peru", 22,
 		Palette.TEXT_DIM, true)
-	UiKit.draw_text(self, Vector2(960, 890),
+	UiKit.draw_text(self, Vector2(960, 990),
 		"Saman joukkueen pelaajilla ei voi olla samaa sankaria", 18,
 		Palette.with_alpha(Palette.TEXT_DIM, 0.7), true)
 
@@ -462,21 +467,21 @@ func _draw_hero_tile(rect: Rect2, tile_index: int) -> void:
 	var def := HeroDef.get_def(hero_id)
 	_panel_style(Palette.with_alpha(def["color_b"], 0.7)).draw(get_canvas_item(), rect)
 
-	var med := rect.position + Vector2(rect.size.x / 2.0, 74.0)
-	draw_circle(med, 47.0, Palette.darker(def["color_b"], 0.55))
-	draw_circle(med, 43.0, def["color"])
-	draw_circle(med + Vector2(0, 15), 30.0, Palette.with_alpha(def["color_b"], 0.35))
-	UiKit.draw_text(self, med + Vector2(0, 2), def["name"].substr(0, 1), 42, Color.WHITE, true, 5)
+	var med := rect.position + Vector2(rect.size.x / 2.0, 62.0)
+	draw_circle(med, 38.0, Palette.darker(def["color_b"], 0.55))
+	draw_circle(med, 34.0, def["color"])
+	draw_circle(med + Vector2(0, 12), 24.0, Palette.with_alpha(def["color_b"], 0.35))
+	UiKit.draw_text(self, med + Vector2(0, 2), def["name"].substr(0, 1), 34, Color.WHITE, true, 4)
 
-	UiKit.draw_text(self, rect.position + Vector2(rect.size.x / 2.0, 150.0),
-		def["name"], 30, Palette.TEXT_MAIN, true, 4)
+	UiKit.draw_text(self, rect.position + Vector2(rect.size.x / 2.0, 126.0),
+		def["name"], 25, Palette.TEXT_MAIN, true, 4)
 	var stars := ""
 	for i in range(3):
 		stars += "★" if i < int(def["difficulty"]) else "☆"
-	UiKit.draw_text(self, rect.position + Vector2(rect.size.x / 2.0, 182.0),
-		"%s  %s" % [def["role"], stars], 20, def["color"], true)
-	UiKit.draw_text(self, rect.position + Vector2(rect.size.x / 2.0, 210.0),
-		def["weapon"], 15, Palette.TEXT_DIM, true)
+	UiKit.draw_text(self, rect.position + Vector2(rect.size.x / 2.0, 154.0),
+		"%s  %s" % [def["role"], stars], 17, def["color"], true)
+	UiKit.draw_text(self, rect.position + Vector2(rect.size.x / 2.0, 178.0),
+		def["weapon"], 13, Palette.TEXT_DIM, true)
 
 	# Kursorit: jokaisen pelaajan oma värikehys, sisennettynä pinottuna
 	var inset := 0.0

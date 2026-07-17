@@ -75,6 +75,18 @@ func _draw() -> void:
 			_paint_bramble(c1, c2)
 		"quill":
 			_paint_quill(c1, c2)
+		"boulder":
+			_paint_boulder(c1, c2)
+		"volt":
+			_paint_volt(c1, c2)
+		"shade":
+			_paint_shade(c1, c2)
+		"tide":
+			_paint_tide(c1, c2)
+		"scout":
+			_paint_scout(c1, c2)
+		"maestro":
+			_paint_maestro(c1, c2)
 		_:
 			_paint_generic(c1, c2)
 
@@ -108,6 +120,18 @@ func _draw_ground_ring() -> void:
 		draw_circle(chip, 11.0, hero.profile.color())
 		UiKit.draw_text(self, chip + Vector2(0, 1), str(hero.profile.index + 1), 15,
 			Palette.TEXT_DARK, true)
+		# Pienet cooldown-pallurat: kyky 1, kyky 2, väistö.
+		var slots := ["a1", "a2", "dodge"]
+		for i in range(slots.size()):
+			var pip := Vector2(-16.0 + i * 16.0, hero.radius + 34.0)
+			var max_cd: float = maxf(hero.cd_max[slots[i]], 0.001)
+			var progress: float = clampf(1.0 - hero.cd[slots[i]] / max_cd, 0.0, 1.0)
+			draw_circle(pip, 5.5, Color(0, 0, 0, 0.5))
+			if progress >= 1.0:
+				draw_circle(pip, 4.5, Palette.glow(hero.hero_color(), 1.2))
+			elif progress > 0.02:
+				draw_arc(pip, 4.0, -PI / 2.0, -PI / 2.0 + TAU * progress, 16,
+					Palette.with_alpha(hero.hero_color(), 0.8), 2.5)
 
 	if hero.ult_charge >= 100.0:
 		var pulse := 0.5 + 0.5 * sin(_time * 6.0)
@@ -143,6 +167,15 @@ func _draw_status(bob: float) -> void:
 		var half := deg_to_rad(hero.guard_arc_deg)
 		draw_arc(Vector2(0, -14), hero.radius + 13.0, a - half, a + half, 24,
 			Palette.glow(Palette.SHIELD, 1.4), 5.0)
+
+	if hero.mark_timer > 0.0:
+		# Scoutin merkki: pulssaava kultatimantti pään yläpuolella.
+		var mark_center := top + Vector2(0, -16.0)
+		var mark_pulse := 1.0 + 0.2 * sin(_time * 8.0)
+		var mark := PackedVector2Array([
+			mark_center + Vector2(0, -7) * mark_pulse, mark_center + Vector2(6, 0) * mark_pulse,
+			mark_center + Vector2(0, 7) * mark_pulse, mark_center + Vector2(-6, 0) * mark_pulse])
+		draw_colored_polygon(mark, Palette.glow(Palette.GOLD, 1.7))
 
 	if hero.root_timer > 0.0:
 		for i in range(3):
@@ -285,6 +318,127 @@ func _paint_bramble(c1: Color, c2: Color) -> void:
 		pts.append(hero.aim * (10.0 + reach * t) + wave)
 	draw_polyline(pts, Palette.darker(c1, 0.75), 4.0)
 	draw_circle(pts[pts.size() - 1], 4.0, c2)
+
+
+func _paint_boulder(c1: Color, c2: Color) -> void:
+	# Kivinyrkit heiluvat tähtäyksen mukana
+	for side in [-1.0, 1.0]:
+		var fist: Vector2 = hero.aim.rotated(0.85 * side) * 26.0
+		if side > 0.0:
+			fist = hero.aim.rotated(0.85 * side - _attack_anim * 1.4) * (26.0 + _attack_anim * 16.0)
+		draw_circle(fist, 13.0, Palette.darker(c2, 0.6))
+		draw_circle(fist, 10.5, c2)
+		draw_circle(fist + Vector2(-2, -3), 3.5, Palette.with_alpha(c1, 0.7))
+	_body_base(Vector2.ZERO, 26.0, c1, c2)
+	# Halkeamat
+	draw_line(Vector2(-8, -12), Vector2(-2, -4), Palette.darker(c2, 0.7), 2.5)
+	draw_line(Vector2(6, 4), Vector2(13, 10), Palette.darker(c2, 0.7), 2.5)
+	# Sammalta päälaella
+	draw_arc(Vector2(0, -20), 12.0, PI + 0.5, TAU - 0.5, 12, Color("6b8f4e"), 6.0)
+	_eyes(Vector2(0, -6), 8.0, 3.5)
+
+
+func _paint_volt(c1: Color, c2: Color) -> void:
+	# Salamaharja
+	var crest := PackedVector2Array([
+		Vector2(-4, -14), Vector2(4, -24), Vector2(-1, -24), Vector2(7, -36),
+		Vector2(2, -25), Vector2(9, -25)])
+	draw_polyline(crest, Palette.glow(c1, 1.9), 3.0)
+	_body_base(Vector2.ZERO, 17.0, c1, c2)
+	_eyes(Vector2(0, -4))
+	# Kelat selässä rätisevät
+	for side in [-1.0, 1.0]:
+		var coil := Vector2(15.0 * side, 2.0)
+		draw_circle(coil, 7.0, Palette.darker(c2, 0.8))
+		draw_arc(coil, 7.0, 0.0, TAU, 12, c1, 2.0)
+		draw_arc(coil, 4.0, _time * 8.0 * side, _time * 8.0 * side + PI, 8,
+			Palette.glow(Color.WHITE, 1.4), 1.5)
+	# Pieni kipinä satunnaisesti sivulla
+	if fmod(_time, 0.6) < 0.12:
+		var spark_dir := Vector2.RIGHT.rotated(_time * 31.0)
+		draw_line(spark_dir * 18.0, spark_dir * 26.0, Palette.glow(c1, 2.2), 2.0)
+
+
+func _paint_shade(c1: Color, c2: Color) -> void:
+	# Savuvana
+	for i in range(3):
+		var puff := Vector2(-hero.aim.x * (14.0 + i * 8.0), 6.0 + sin(_time * 3.0 + i) * 3.0)
+		draw_circle(puff, 6.0 - i * 1.5, Palette.with_alpha(c2, 0.25 - i * 0.06))
+	_body_base(Vector2.ZERO, 16.0, c1, c2)
+	# Huppu
+	draw_arc(Vector2(0, -8), 14.0, PI - 0.3, TAU + 0.3, 20, c2, 8.0)
+	# Kapeat hehkuvat silmät
+	var perp: Vector2 = hero.aim.orthogonal().normalized() * 6.0
+	for side in [-1.0, 1.0]:
+		var eye: Vector2 = Vector2(0, -8) + perp * side + hero.aim * 3.0
+		draw_line(eye - perp * 0.35, eye + perp * 0.35, Palette.glow(Color("d9c8ff"), 2.0), 2.5)
+	# Kiekko kädessä
+	var hand: Vector2 = hero.aim.rotated(-0.8 + _attack_anim * 1.2) * 18.0
+	draw_arc(hand, 8.0, _time * 6.0, _time * 6.0 + TAU * 0.8, 12, Palette.glow(c1, 1.4), 2.5)
+
+
+func _paint_tide(c1: Color, c2: Color) -> void:
+	# Aaltoharja
+	for i in range(3):
+		var wave_x := -10.0 + i * 10.0
+		draw_arc(Vector2(wave_x, -16), 6.0, PI, TAU, 10, Palette.glow(c1, 1.3), 3.0)
+	_body_base(Vector2.ZERO, 20.0, c1, c2)
+	_eyes(Vector2(0, -5), 7.0)
+	# Vesikeihäs: pitkä varsi + kolmiokärki
+	var reach := 30.0 + _attack_anim * 26.0
+	var tip: Vector2 = hero.aim * (16.0 + reach)
+	var tail: Vector2 = -hero.aim * 14.0 + hero.aim.orthogonal() * 6.0
+	draw_line(tail, tip, Color("bfeaf7"), 4.0)
+	var head_perp: Vector2 = hero.aim.orthogonal() * 6.0
+	var spear_head := PackedVector2Array([
+		tip + hero.aim * 12.0, tip + head_perp, tip - head_perp])
+	draw_colored_polygon(spear_head, Palette.glow(c1, 1.5))
+	# Pisara keihään kärjestä
+	if _attack_anim > 0.5:
+		draw_circle(tip + hero.aim * 14.0, 3.0, Palette.with_alpha(c1, 0.8))
+
+
+func _paint_scout(c1: Color, c2: Color) -> void:
+	_body_base(Vector2.ZERO, 17.0, c1, c2)
+	# Suojalasit
+	var perp: Vector2 = hero.aim.orthogonal().normalized() * 7.0
+	for side in [-1.0, 1.0]:
+		var lens: Vector2 = Vector2(0, -6) + perp * side + hero.aim * 3.0
+		draw_circle(lens, 5.5, Palette.darker(c2, 0.6))
+		draw_circle(lens, 4.0, Palette.glow(Color("ffd76d"), 1.3))
+	draw_line(Vector2(0, -6) - perp + hero.aim * 3.0, Vector2(0, -6) + perp + hero.aim * 3.0,
+		Palette.darker(c2, 0.6), 2.0)
+	# Vaahtopallokivääri
+	var barrel_start: Vector2 = hero.aim.rotated(0.5) * 12.0
+	var barrel_end: Vector2 = hero.aim * (26.0 + _attack_anim * 4.0)
+	draw_line(barrel_start, barrel_end, c2, 5.0)
+	draw_circle(barrel_end, 5.0, Palette.darker(c2, 0.7))
+	draw_circle(barrel_end, 3.0, Color("f2f5ff"))
+
+
+func _paint_maestro(c1: Color, c2: Color) -> void:
+	# Ääniaallot sivuilta musiikin tahtiin
+	for i in range(2):
+		var wave_r := 20.0 + fmod(_time * 30.0 + i * 14.0, 28.0)
+		var wave_alpha: float = 0.5 * (1.0 - (wave_r - 20.0) / 28.0)
+		draw_arc(hero.aim * 20.0, wave_r, hero.aim.angle() - 0.7, hero.aim.angle() + 0.7, 12,
+			Palette.with_alpha(c1, wave_alpha), 2.5)
+	_body_base(Vector2.ZERO, 18.0, c1, c2)
+	_eyes(Vector2(0, -4))
+	# Kuulokkeet
+	draw_arc(Vector2(0, -12), 14.0, PI + 0.3, TAU - 0.3, 16, c2, 4.0)
+	var head_perp: Vector2 = hero.aim.orthogonal().normalized() * 13.0
+	for side in [-1.0, 1.0]:
+		draw_circle(Vector2(0, -8) + head_perp * side, 5.0, c2)
+	# Ääniaaltoheitin: torvi tähtäyssuuntaan
+	var horn_base: Vector2 = hero.aim.rotated(0.7) * 14.0
+	var horn_tip: Vector2 = hero.aim * 24.0
+	draw_line(horn_base, horn_tip, Palette.darker(c2, 0.8), 5.0)
+	var horn_perp: Vector2 = hero.aim.orthogonal() * 7.0
+	var horn := PackedVector2Array([
+		horn_tip + hero.aim * 8.0 + horn_perp, horn_tip + hero.aim * 8.0 - horn_perp,
+		horn_tip - horn_perp * 0.4, horn_tip + horn_perp * 0.4])
+	draw_colored_polygon(horn, c1)
 
 
 func _paint_quill(c1: Color, c2: Color) -> void:

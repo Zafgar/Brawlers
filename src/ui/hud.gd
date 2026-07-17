@@ -3,7 +3,7 @@ extends CanvasLayer
 ## Ottelun HUD: pelaajakortit ylä- ja alareunassa, tulospaneeli keskellä
 ## ylhäällä, bannerit, laskurit ja tyrmäyssyöte.
 
-const CARD_SLOT := 236.0
+const CARD_SLOT := 240.0
 
 var arena = null
 
@@ -30,7 +30,7 @@ func setup(p_arena) -> void:
 		var slot: int = counts[profile.team]
 		counts[profile.team] += 1
 		var x := 16.0 + (slot % 3) * CARD_SLOT
-		var row_offset := (slot / 3) * 106.0
+		var row_offset := (slot / 3) * 130.0
 		if profile.team == 0:
 			card.position = Vector2(x, 14.0 + row_offset)
 		else:

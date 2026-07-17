@@ -45,9 +45,10 @@ lobbyssa painamalla X.
   erän. Kantaja hidastuu eikä voi käyttää kykyjään. Tasatilanteessa
   ratkaisuhetki: seuraava pito voittaa.
 - Ottelukoot **1v1–4v4**, paras kolmesta tai paras viidestä.
-- **6 sankaria**: Bastion (tankki), Ember (mage), Luma (tuki), Blink
-  (assassin), Bramble (fighter) ja Quill (ranger). Jokaisella
-  perushyökkäys, kaksi kykyä, väistö, ultimate ja passiivi.
+- **12 sankaria**: Bastion ja Boulder (tankit), Ember ja Volt (maget),
+  Luma ja Maestro (tuet), Blink ja Shade (assassinit), Bramble ja Tide
+  (fighterit) sekä Quill ja Scout (rangerit). Jokaisella perushyökkäys,
+  kaksi kykyä, väistö, ultimate ja passiivi.
 - **Geargarden**-kenttä: pyöriviä hammasrattaita, pelaajia työntäviä
   kuljetinhihnoja ja estepilareita.
 - **Botit** kolmella vaikeustasolla. Taso muuttaa vain reaktioita,
@@ -78,7 +79,7 @@ src/
 ├── heroes/
 │   ├── hero.gd              # Kantaluokka: liike, kesto, kyvyt, tyrmäys
 │   ├── hero_visual.gd       # Proseduraalinen hahmopiirto ja animaatiot
-│   └── bastion.gd ... quill.gd  # Kuusi sankarikittiä
+│   └── bastion.gd ... scout.gd  # Kaksitoista sankarikittiä
 ├── combat/
 │   ├── projectile.gd        # Yleisammus (osumat, läpäisy, jälki)
 │   └── zone.gd              # Aluevaikutukset (tuli, hoito, piikit, kupoli)
@@ -118,5 +119,5 @@ Speksi harkitsi 2D:tä ja 3D:tä. Valinta on tietoisesti **2D + 2.5D-vaikutelma*
 
 - Loput pelimuodot: Shard Rush, Zone Shift, Core Clash
 - Kentät: Moonstone Ruins, Splashport
-- Sankarimäärän kasvatus kuudesta kahteenkymmeneen
+- Sankarimäärän kasvatus kahdestatoista kahteenkymmeneen
 - Verkkopeli / Steam Remote Play -tuki

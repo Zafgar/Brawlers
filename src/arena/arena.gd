@@ -56,6 +56,11 @@ func _ready() -> void:
 
 	camera = GameCamera.new()
 	camera.arena = self
+	# Kamera ei koskaan näytä areenan ulkopuolista tyhjää.
+	camera.limit_left = int(-MapGear.SIZE.x / 2.0 - MapGear.WALL_THICKNESS)
+	camera.limit_right = int(MapGear.SIZE.x / 2.0 + MapGear.WALL_THICKNESS)
+	camera.limit_top = int(-MapGear.SIZE.y / 2.0 - MapGear.WALL_THICKNESS)
+	camera.limit_bottom = int(MapGear.SIZE.y / 2.0 + MapGear.WALL_THICKNESS)
 	add_child(camera)
 
 	hud = HudLayer.new()
@@ -79,6 +84,18 @@ func _make_hero(id: String) -> Hero:
 			return Bramble.new()
 		"quill":
 			return Quill.new()
+		"boulder":
+			return Boulder.new()
+		"volt":
+			return Volt.new()
+		"shade":
+			return Shade.new()
+		"tide":
+			return Tide.new()
+		"scout":
+			return Scout.new()
+		"maestro":
+			return Maestro.new()
 	return Hero.new()
 
 

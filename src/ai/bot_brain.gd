@@ -9,7 +9,7 @@ extends RefCounted
 
 enum Mode { GET_RELIC, ATTACK_CARRIER, ESCORT, CARRY, RETREAT, FIGHT, SUPPORT }
 
-const MELEE_HEROES := ["bastion", "blink", "bramble"]
+const MELEE_HEROES := ["bastion", "blink", "bramble", "boulder", "tide"]
 
 var level := 1
 
@@ -109,8 +109,8 @@ func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	if _mode == Mode.RETREAT and hero.hp < hero.max_hp * 0.55:
 		return  # jatka vetäytymistä kunnes palautunut
 
-	# Luma tukee, jos joku on pulassa.
-	if hero.hero_id == "luma" and bb.lowest_ally != null and bb.lowest_ally != hero:
+	# Tukisankarit pysyvät pulassa olevan liittolaisen lähellä.
+	if hero.hero_id in ["luma", "maestro"] and bb.lowest_ally != null and bb.lowest_ally != hero:
 		if bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.6:
 			_mode = Mode.SUPPORT
 			return
@@ -302,6 +302,20 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard) -> void:
 				use_ult = hurt >= 2 or (bb.own_carrier != null and bb.own_carrier.hp < bb.own_carrier.max_hp * 0.5)
 			"quill":
 				use_ult = dist < 700.0 and near_enemies >= 1
+			"boulder", "tide":
+				use_ult = near_enemies >= 2 or (hero.carrying and near_enemies >= 1)
+			"volt":
+				use_ult = near_enemies >= 2 or (dist < 400.0 and near_enemies >= 1)
+			"shade":
+				use_ult = dist < 350.0 and hero.hp > hero.max_hp * 0.35
+			"scout":
+				use_ult = arena.heroes_in_circle(pos, 640.0, 1 - hero.team).size() >= 2
+			"maestro":
+				var hurt_allies := 0
+				for ally in arena.heroes_in_circle(pos, 300.0, hero.team):
+					if ally.hp < ally.max_hp * 0.6:
+						hurt_allies += 1
+				use_ult = hurt_allies >= 2 or near_enemies >= 3
 			_:
 				use_ult = near_enemies >= 2
 		if use_ult:
@@ -325,6 +339,18 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard) -> void:
 				_flags.a1 = dist > 150.0 and dist < 600.0
 			"quill":
 				_flags.a1 = dist > 300.0 and dist < 900.0
+			"boulder":
+				_flags.a1 = dist > 200.0 and dist < 500.0 and (hero.carrying or _mode == Mode.ESCORT or randf() < 0.4)
+			"volt":
+				_flags.a1 = dist < 450.0
+			"shade":
+				_flags.a1 = hero.hp < hero.max_hp * 0.5 and dist < 320.0
+			"tide":
+				_flags.a1 = dist > 250.0 and dist < 600.0
+			"scout":
+				_flags.a1 = dist > 200.0 and dist < 700.0
+			"maestro":
+				_flags.a1 = dist < 500.0 and not arena.heroes_in_circle(pos, 240.0, hero.team).is_empty()
 
 	# Kyky 2
 	if hero.cd.a2 <= 0.0:
@@ -342,6 +368,18 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard) -> void:
 				_flags.a2 = dist < 150.0
 			"quill":
 				_flags.a2 = dist > 250.0 and dist < 500.0
+			"boulder":
+				_flags.a2 = arena.heroes_in_circle(pos, 190.0, 1 - hero.team).size() >= 1
+			"volt":
+				_flags.a2 = dist > 150.0 and dist < 450.0
+			"shade":
+				_flags.a2 = dist > 150.0 and dist < 450.0
+			"tide":
+				_flags.a2 = dist < 220.0
+			"scout":
+				_flags.a2 = dist < 500.0
+			"maestro":
+				_flags.a2 = dist < 200.0
 
 
 func _update_dodge(hero: Hero, arena, delta: float) -> void:
