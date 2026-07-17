@@ -1,0 +1,38 @@
+; Project Arena — värikäs paikallinen areenapeli 1–8 pelaajalle.
+; Godot 4.x (testattu rakenne 4.4+, toimii myös uudemmissa 4-sarjan versioissa).
+
+config_version=5
+
+[application]
+
+config/name="Project Arena"
+config/description="Värikäs paikallinen areenapeli 1-8 pelaajalle. Pelaa yksin botteja vastaan tai kavereiden kanssa samalla ruudulla."
+run/main_scene="res://src/main.tscn"
+config/features=PackedStringArray("4.4")
+config/icon="res://icon.svg"
+
+[autoload]
+
+Game="*res://src/autoload/game.gd"
+AudioMgr="*res://src/autoload/audio_mgr.gd"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/size/mode=2
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[input_devices]
+
+buffering/agile_event_flushing=true
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[rendering]
+
+viewport/hdr_2d=true
+anti_aliasing/quality/msaa_2d=2
