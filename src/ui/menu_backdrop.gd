@@ -12,6 +12,9 @@ var _dots: Array = []
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Tausta piirtyy aina vanhemman oman piirron taakse (esim. Lobby piirtää
+	# sisältönsä suoraan omaan _draw()-metodiinsa).
+	show_behind_parent = true
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 715517
 	for i in range(46):

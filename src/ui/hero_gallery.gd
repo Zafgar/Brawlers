@@ -1,6 +1,12 @@
 class_name HeroGallery
 extends Control
-## Sankarigalleria: kaikkien kuuden sankarin roolit, tilastot ja kyvyt.
+## Sankarigalleria: sankarilista vasemmalla, valitun sankarin täydet tiedot
+## isossa paneelissa oikealla. Toimii ohjaimella (fokus vaihtaa sankaria),
+## näppäimistöllä ja hiirellä. Kaikki mahtuu ruudulle ilman vieritystä.
+
+var _detail_holder: PanelContainer = null
+var _selected := ""
+
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -8,101 +14,139 @@ func _ready() -> void:
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 80)
-	margin.add_theme_constant_override("margin_right", 80)
+	margin.add_theme_constant_override("margin_left", 120)
+	margin.add_theme_constant_override("margin_right", 120)
 	margin.add_theme_constant_override("margin_top", 30)
 	margin.add_theme_constant_override("margin_bottom", 30)
 	add_child(margin)
 
-	var box := UiKit.vbox(16)
+	var box := UiKit.vbox(18)
 	margin.add_child(box)
 
 	var title := UiKit.title("SANKARIT", 64)
 	title.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	box.add_child(title)
 
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 24)
-	grid.add_theme_constant_override("v_separation", 24)
-	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(grid)
+	var row := UiKit.hbox(28)
+	row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(row)
 
+	# Vasen palsta: sankarinapit
+	var list := UiKit.vbox(10)
+	list.custom_minimum_size = Vector2(330, 0)
+	row.add_child(list)
+
+	var first_button: Button = null
 	for hero_id in HeroDef.ORDER:
-		grid.add_child(_hero_card(hero_id))
+		var def := HeroDef.get_def(hero_id)
+		var btn := UiKit.button("%s" % def["name"], func(): pass, 28)
+		btn.add_theme_color_override("font_color", def["color"])
+		btn.add_theme_color_override("font_hover_color", Palette.glow(def["color"], 1.2))
+		btn.add_theme_color_override("font_focus_color", Palette.glow(def["color"], 1.2))
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.custom_minimum_size = Vector2(330, 0)
+		var id: String = hero_id
+		btn.focus_entered.connect(func(): _select(id))
+		btn.mouse_entered.connect(func(): _select(id))
+		btn.pressed.connect(func(): _select(id))
+		list.add_child(btn)
+		if first_button == null:
+			first_button = btn
 
-	var back_btn := UiKit.button("Takaisin", func(): Game.go_menu())
-	back_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	back_btn.custom_minimum_size = Vector2(360, 0)
-	box.add_child(back_btn)
-	back_btn.call_deferred("grab_focus")
+	list.add_child(UiKit.spacer(14))
+	var back_btn := UiKit.button("Takaisin", func(): Game.go_menu(), 24)
+	back_btn.custom_minimum_size = Vector2(330, 0)
+	list.add_child(back_btn)
+
+	# Oikea palsta: tietopaneeli
+	_detail_holder = UiKit.panel(Vector2(1150, 640))
+	_detail_holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(_detail_holder)
+
+	_select(HeroDef.ORDER[0])
+	first_button.call_deferred("grab_focus")
 
 
-func _hero_card(hero_id: String) -> Control:
+func _select(hero_id: String) -> void:
+	if hero_id == _selected:
+		return
+	_selected = hero_id
+	AudioMgr.play("ui_move", 0.05, -6.0)
+	for child in _detail_holder.get_children():
+		_detail_holder.remove_child(child)
+		child.queue_free()
+
 	var def := HeroDef.get_def(hero_id)
-	var panel := UiKit.panel(Vector2(540, 250))
-	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var content := UiKit.hbox(34)
+	_detail_holder.add_child(content)
 
-	var row := UiKit.hbox(16)
-	panel.add_child(row)
-
-	# Vasen palsta: medaljonki + tilastopalkit
-	var left := UiKit.vbox(8)
-	left.custom_minimum_size = Vector2(150, 0)
-	row.add_child(left)
+	# Vasemmalla iso medaljonki ja tilastopalkit
+	var left := UiKit.vbox(12)
+	left.custom_minimum_size = Vector2(220, 0)
+	left.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	content.add_child(left)
 
 	var medallion := Medallion.new()
 	medallion.hero_id = hero_id
-	medallion.custom_minimum_size = Vector2(110, 110)
+	medallion.custom_minimum_size = Vector2(190, 190)
 	medallion.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	left.add_child(medallion)
 
 	var stars := ""
 	for i in range(3):
 		stars += "★" if i < int(def["difficulty"]) else "☆"
-	var role_label := UiKit.label("%s  %s" % [def["role"], stars], 18, def["color"])
+	var role_label := UiKit.label("%s  %s" % [def["role"], stars], 24, def["color"])
 	role_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	role_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_child(role_label)
+	left.add_child(UiKit.spacer(4))
 
 	for stat_name in ["kesto", "liike", "vahinko", "tuki"]:
-		var stat_row := UiKit.hbox(6)
-		var stat_label := UiKit.dim_label(stat_name.capitalize(), 13)
-		stat_label.custom_minimum_size = Vector2(62, 0)
+		var stat_row := UiKit.hbox(10)
+		var stat_label := UiKit.dim_label(stat_name.capitalize(), 18)
+		stat_label.custom_minimum_size = Vector2(90, 0)
 		stat_row.add_child(stat_label)
 		var bar := RatingBar.new()
 		bar.value = int(def["ratings"][stat_name])
 		bar.color = def["color"]
-		bar.custom_minimum_size = Vector2(76, 14)
+		bar.custom_minimum_size = Vector2(120, 20)
 		stat_row.add_child(bar)
 		left.add_child(stat_row)
 
-	# Oikea palsta: nimi, ase, kuvaus, kyvyt
-	var right := UiKit.vbox(3)
+	# Oikealla nimi, kuvaus ja kyvyt
+	var right := UiKit.vbox(6)
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(right)
+	content.add_child(right)
 
-	right.add_child(UiKit.label(def["name"], 30, def["color"]))
-	right.add_child(UiKit.dim_label("%s — %s" % [def["weapon"], def["desc"]], 14))
-	right.add_child(UiKit.spacer(4))
+	right.add_child(UiKit.label(def["name"], 46, def["color"]))
+	var desc := UiKit.dim_label("%s — %s" % [def["weapon"], def["desc"]], 21)
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.custom_minimum_size = Vector2(800, 0)
+	right.add_child(desc)
+	right.add_child(UiKit.spacer(10))
 
 	var slot_keys := [
-		["basic", "R2 / hiiri vasen"],
-		["a1", "R1 / hiiri oikea"],
+		["basic", "R2 / hiiren vasen"],
+		["a1", "R1 / hiiren oikea"],
 		["a2", "L1 / Q"],
 		["dodge", "X / välilyönti"],
 		["ult", "△ / E"],
 	]
 	for entry in slot_keys:
 		var ability: Dictionary = def["abilities"][entry[0]]
-		var line := UiKit.label("%s  —  %s" % [ability["name"], ability["desc"]], 13,
-			Palette.TEXT_MAIN)
-		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		right.add_child(line)
-		var key_hint := UiKit.dim_label("      %s" % entry[1], 11)
-		right.add_child(key_hint)
-
-	return panel
+		var ability_row := UiKit.hbox(14)
+		var name_label := UiKit.label(ability["name"], 22, Palette.TEXT_MAIN)
+		name_label.custom_minimum_size = Vector2(250, 0)
+		ability_row.add_child(name_label)
+		var key_label := UiKit.dim_label(str(entry[1]), 15)
+		key_label.custom_minimum_size = Vector2(170, 0)
+		ability_row.add_child(key_label)
+		right.add_child(ability_row)
+		var ability_desc := UiKit.dim_label(ability["desc"], 17)
+		ability_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		ability_desc.custom_minimum_size = Vector2(800, 0)
+		right.add_child(ability_desc)
+		right.add_child(UiKit.spacer(2))
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -111,7 +155,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		Game.go_menu()
 
 
-## Pyöreä sankarikuvake gallerian kortteihin.
+## Pyöreä sankarikuvake.
 class Medallion:
 	extends Control
 
@@ -120,13 +164,13 @@ class Medallion:
 	func _draw() -> void:
 		var def := HeroDef.get_def(hero_id)
 		var center := size / 2.0
-		var r: float = minf(size.x, size.y) / 2.0 - 4.0
-		draw_circle(center, r + 4.0, Palette.darker(def["color_b"], 0.55))
+		var r: float = minf(size.x, size.y) / 2.0 - 6.0
+		draw_circle(center, r + 6.0, Palette.darker(def["color_b"], 0.55))
 		draw_circle(center, r, def["color"])
 		draw_circle(center + Vector2(0, r * 0.35), r * 0.7,
 			Palette.with_alpha(def["color_b"], 0.35))
-		UiKit.draw_text(self, center + Vector2(0, 2), def["name"].substr(0, 1),
-			int(r * 1.1), Color.WHITE, true, 4)
+		UiKit.draw_text(self, center + Vector2(0, 3), def["name"].substr(0, 1),
+			int(r * 1.1), Color.WHITE, true, 5)
 
 
 ## Viisiportainen tilastopalkki.
