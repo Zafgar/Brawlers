@@ -56,6 +56,8 @@ func _default_color() -> Color:
 			return Palette.GOLD
 		"dome":
 			return Palette.SHIELD
+		"shock":
+			return Color("ffe14a")
 	return Color.WHITE
 
 
@@ -101,6 +103,12 @@ func _physics_process(delta: float) -> void:
 			"slow":
 				if not is_ally:
 					hero.apply_slow(slow_f, 0.3)
+			"shock":
+				if not is_ally:
+					hero.apply_slow(slow_f, 0.3)
+					if do_tick:
+						source.deal_damage_to(hero, dps * tick_interval, 0.0,
+							(hero.global_position - global_position).normalized())
 			"heal":
 				if is_ally and do_tick:
 					hero.heal_hp(heal_ps * tick_interval, source)
@@ -163,3 +171,18 @@ func _draw() -> void:
 			draw_circle(Vector2.ZERO, radius, Palette.with_alpha(color, 0.15 * fade))
 			draw_arc(Vector2.ZERO, radius * pulse, 0.0, TAU, 6,
 				Palette.with_alpha(Palette.glow(color, 1.3), 0.6 * fade), 3.0)
+		"shock":
+			draw_circle(Vector2.ZERO, radius, Palette.with_alpha(color, 0.14 * fade))
+			draw_arc(Vector2.ZERO, radius * pulse, 0.0, TAU, 40,
+				Palette.with_alpha(Palette.glow(color, 1.4), 0.5 * fade), 2.5)
+			# Rätisevät sähkökaaret keskeltä reunalle
+			for i in range(5):
+				var base_ang: float = _seed + _age * 4.0 + TAU * i / 5.0
+				var pts := PackedVector2Array([Vector2.ZERO])
+				for seg in range(1, 5):
+					var t := seg / 4.0
+					var jitter: float = sin(_age * 30.0 + i * 7.0 + seg * 2.0) * radius * 0.08
+					var along := Vector2(cos(base_ang), sin(base_ang)) * radius * t
+					pts.append(along + Vector2(cos(base_ang + PI / 2.0),
+						sin(base_ang + PI / 2.0)) * jitter)
+				draw_polyline(pts, Palette.with_alpha(Palette.glow(color, 1.6), 0.7 * fade), 2.0)

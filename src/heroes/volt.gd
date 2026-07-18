@@ -9,7 +9,7 @@ func _init() -> void:
 
 ## Perushyökkäys: kipinä, joka hyppää lähimpään toiseen viholliseen.
 func _basic(dir: Vector2) -> void:
-	AudioMgr.play("bow", 0.15, -5.0)
+	AudioMgr.play("zap", 0.15, -3.0)
 	visual.attack_swing()
 	Projectile.launch(self, global_position + dir * 28.0, dir, {
 		"speed": 900.0,
@@ -29,7 +29,7 @@ func _spark_jump(hit_hero: Hero, proj: Projectile) -> void:
 	var next := _nearest_enemy(hit_hero.global_position, 260.0, [hit_hero])
 	if next != null:
 		Fx.bolt(arena, hit_hero.global_position, next.global_position, hero_color())
-		AudioMgr.play("bow", 0.2, -8.0)
+		AudioMgr.play("zap", 0.2, -6.0)
 		deal_damage_to(next, proj.dmg * 0.6, 60.0,
 			(next.global_position - hit_hero.global_position).normalized())
 
@@ -60,16 +60,17 @@ func _ability1(dir: Vector2) -> void:
 	if first == null:
 		# Ei kohdetta: pieni kipinä eteen, kyky ei mene hukkaan kokonaan.
 		Fx.bolt(arena, global_position, global_position + dir * 220.0, hero_color())
-		AudioMgr.play("bow", 0.1, -6.0)
+		AudioMgr.play("zap", 0.1, -4.0)
 		cd.a1 = 1.5
 		return
-	AudioMgr.play("ult_ready", 0.1, -6.0)
+	AudioMgr.play("zap", 0.1, -2.0)
 	var from := global_position
 	var chain: Array = []
 	var target := first
 	var dmg := 20.0
 	while target != null and chain.size() < 3:
 		Fx.bolt(arena, from, target.global_position, hero_color())
+		Fx.flash(arena, target.global_position, Palette.glow(hero_color(), 1.5), 38.0, 0.25)
 		deal_damage_to(target, dmg, 120.0, (target.global_position - from).normalized())
 		target.apply_slow(0.8, 0.8)
 		chain.append(target)
@@ -80,10 +81,10 @@ func _ability1(dir: Vector2) -> void:
 
 ## Kyky 2: Sähkökenttä — rätisevä hidastava alue.
 func _ability2(dir: Vector2) -> void:
-	AudioMgr.play("fire", 0.15, -3.0)
+	AudioMgr.play("zap", 0.15, -5.0)
 	var pos: Vector2 = arena.map.clamp_to_field(global_position + dir * 260.0, 80.0)
 	Zone.spawn(self, pos, {
-		"type": "thorn",
+		"type": "shock",
 		"radius": 130.0,
 		"dur": 3.5,
 		"dps": 9.0,
@@ -96,12 +97,13 @@ func _ability2(dir: Vector2) -> void:
 func _dodge_action(dir: Vector2) -> void:
 	Fx.bolt(arena, global_position, global_position + dir * 140.0, hero_color())
 	dash(dir, 1100.0, 0.13, true)
-	AudioMgr.play("blink", 0.15, -4.0)
+	AudioMgr.play("zap", 0.15, 2.0)
 
 
 ## Ultimate: Ukkosmyrsky — viisi salamaa lähivihollisiin.
 func _ultimate(_dir: Vector2) -> void:
-	arena.popup(global_position + Vector2(0, -80), "UKKOSMYRSKY!", Palette.glow(hero_color(), 1.6), 24)
+	arena.popup(global_position + Vector2(0, -84), "UKKOSMYRSKY!", Palette.glow(hero_color(), 1.6), 26)
+	AudioMgr.play("thunder")
 	_thunderstorm()
 
 
@@ -115,9 +117,9 @@ func _thunderstorm() -> void:
 		if not enemies.is_empty():
 			var target: Hero = enemies[randi() % enemies.size()]
 			Fx.bolt(arena, global_position + Vector2(0, -60), target.global_position, hero_color())
-			Fx.flash(arena, target.global_position, Palette.glow(hero_color(), 1.6), 50.0, 0.25)
-			AudioMgr.play("bow", 0.2, -2.0)
-			arena.shake(0.15)
+			Fx.flash(arena, target.global_position, Palette.glow(hero_color(), 1.7), 54.0, 0.28)
+			AudioMgr.play("zap", 0.2, -2.0)
+			arena.shake(0.18)
 			deal_damage_to(target, 22.0, 180.0)
 			target.apply_stun(0.25)
 		await get_tree().create_timer(0.35).timeout

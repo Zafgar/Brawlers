@@ -172,6 +172,14 @@ func _synth_all() -> void:
 	sounds["blade"] = _mix2(
 		_tone(0.1, 1700.0, 500.0, "saw", 0.002, 0.06, 0.32),
 		_noise(0.05, 0.16, 0.85), 0.0)
+	# Sähkö: rätisevä kipinä
+	sounds["zap"] = _mix2(
+		_noise(0.09, 0.32, 0.95),
+		_tone(0.1, 2000.0, 700.0, "square", 0.001, 0.06, 0.2), 0.0)
+	# Ukkonen: syvä jyrähdys + rätinä (ulti)
+	sounds["thunder"] = _mix2(
+		_noise(0.55, 0.5, 0.22),
+		_tone(0.55, 95.0, 48.0, "saw", 0.005, 0.4, 0.32), 0.0)
 	sounds["root"] = _tone(0.2, 130.0, 110.0, "saw", 0.01, 0.12, 0.4)
 	# Köynnös: napsahtava orgaaninen ruoskanisku
 	sounds["vine"] = _mix2(

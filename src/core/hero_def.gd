@@ -155,10 +155,10 @@ const HEROES := {
 		"color_b": Color("8f7600"),
 		"abilities": {
 			"basic": {"name": "Kipinä", "desc": "Sähköammus, joka hyppää lähimpään toiseen viholliseen.", "cd": 0.55},
-			"a1": {"name": "Ketjusalama", "desc": "Salama, joka ketjuttaa jopa kolmeen viholliseen.", "cd": 7.0},
-			"a2": {"name": "Sähkökenttä", "desc": "Alue, joka hidastaa ja rätisee vahinkoa.", "cd": 8.0},
+			"a1": {"name": "Ketjusalama", "desc": "Salama, joka ketjuttaa jopa kolmeen viholliseen ja hidastaa.", "cd": 7.0},
+			"a2": {"name": "Sähkökenttä", "desc": "Rätisevä alue, joka hidastaa ja tekee vahinkoa.", "cd": 8.0},
 			"dodge": {"name": "Kipinähyppy", "desc": "Salamannopea siirtymä.", "cd": 4.0},
-			"ult": {"name": "Ukkosmyrsky", "desc": "Salamat iskevät lähivihollisiin sarjana.", "cd": 0.0},
+			"ult": {"name": "Ukkosmyrsky", "desc": "Salamat iskevät lähivihollisiin sarjana ja tainnuttavat.", "cd": 0.0},
 		},
 	},
 	"maestro": {

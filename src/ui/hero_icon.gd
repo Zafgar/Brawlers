@@ -25,6 +25,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_quill(ci, center, r)
 		"boulder":
 			_boulder(ci, center, r)
+		"volt":
+			_volt(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -186,6 +188,24 @@ static func _boulder(ci: CanvasItem, center: Vector2, r: float) -> void:
 	ci.draw_line(center + Vector2(0.1, 0.0) * r, center + Vector2(0.68, 0.72) * r, SHADE, r * 0.08)
 	ci.draw_line(center + Vector2(0.1, 0.0) * r, center + Vector2(-0.4, 0.86) * r, SHADE, r * 0.08)
 	ci.draw_line(center + Vector2(0.1, 0.0) * r, center + Vector2(0.9, -0.15) * r, SHADE, r * 0.06)
+
+
+static func _volt(ci: CanvasItem, center: Vector2, r: float) -> void:
+	# Salamanuoli (zigzag).
+	var bolt := PackedVector2Array([
+		center + Vector2(0.15, -0.95) * r,
+		center + Vector2(-0.45, -0.05) * r,
+		center + Vector2(0.05, -0.05) * r,
+		center + Vector2(-0.2, 0.95) * r,
+		center + Vector2(0.5, -0.2) * r,
+		center + Vector2(0.02, -0.2) * r,
+		center + Vector2(0.4, -0.95) * r,
+	])
+	var shadow := PackedVector2Array()
+	for p in bolt:
+		shadow.append(p + Vector2(0, r * 0.05))
+	ci.draw_colored_polygon(shadow, SHADE)
+	ci.draw_colored_polygon(bolt, INK)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.

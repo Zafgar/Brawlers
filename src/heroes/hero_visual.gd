@@ -512,24 +512,48 @@ func _paint_boulder(c1: Color, c2: Color) -> void:
 
 
 func _paint_volt(c1: Color, c2: Color) -> void:
+	# Kipinöivä sähköaura
+	for i in range(3):
+		var sa := _time * 6.0 + TAU * i / 3.0
+		var sr := 22.0 + sin(_time * 12.0 + i * 2.0) * 4.0
+		draw_arc(Vector2.ZERO, sr, sa, sa + 0.6, 4,
+			Palette.with_alpha(Palette.glow(c1, 1.6), 0.5), 1.5)
+
 	# Salamaharja
 	var crest := PackedVector2Array([
-		Vector2(-4, -14), Vector2(4, -24), Vector2(-1, -24), Vector2(7, -36),
+		Vector2(-4, -14), Vector2(4, -24), Vector2(-1, -24), Vector2(7, -38),
 		Vector2(2, -25), Vector2(9, -25)])
-	draw_polyline(crest, Palette.glow(c1, 1.9), 3.0)
+	draw_polyline(crest, Palette.glow(c1, 2.0), 3.0)
+
 	_body_base(Vector2.ZERO, 17.0, c1, c2)
 	_eyes(Vector2(0, -4))
-	# Kelat selässä rätisevät
+
+	# Kelat selässä, joiden välillä hyppii kaari
+	var coils := []
 	for side in [-1.0, 1.0]:
-		var coil := Vector2(15.0 * side, 2.0)
-		draw_circle(coil, 7.0, Palette.darker(c2, 0.8))
-		draw_arc(coil, 7.0, 0.0, TAU, 12, c1, 2.0)
+		var coil := Vector2(16.0 * side, 2.0)
+		coils.append(coil)
+		draw_circle(coil, 7.5, Palette.darker(c2, 0.8))
+		draw_arc(coil, 7.5, 0.0, TAU, 12, c1, 2.0)
 		draw_arc(coil, 4.0, _time * 8.0 * side, _time * 8.0 * side + PI, 8,
 			Palette.glow(Color.WHITE, 1.4), 1.5)
-	# Pieni kipinä satunnaisesti sivulla
-	if fmod(_time, 0.6) < 0.12:
-		var spark_dir := Vector2.RIGHT.rotated(_time * 31.0)
-		draw_line(spark_dir * 18.0, spark_dir * 26.0, Palette.glow(c1, 2.2), 2.0)
+		draw_circle(coil, 2.5, Palette.glow(Color.WHITE, 1.5))
+	# Kelojen välinen rätisevä kaari
+	var arc_pts := PackedVector2Array()
+	for seg in range(5):
+		var t := seg / 4.0
+		var mid: Vector2 = coils[0].lerp(coils[1], t)
+		mid.y += sin(_time * 40.0 + seg * 3.0) * 4.0 - 6.0
+		arc_pts.append(mid)
+	draw_polyline(arc_pts, Palette.with_alpha(Palette.glow(Color.WHITE, 1.8), 0.7), 1.5)
+
+	# Kädestä lähtevä kipinä tähtäyssuuntaan
+	var spark_pts := PackedVector2Array([hero.aim * 12.0])
+	for seg in range(1, 4):
+		var t := seg / 3.0
+		var jit: Vector2 = hero.aim.orthogonal() * sin(_time * 35.0 + seg * 4.0) * 4.0
+		spark_pts.append(hero.aim * (12.0 + t * 16.0) + jit)
+	draw_polyline(spark_pts, Palette.glow(c1, 2.0), 2.0)
 
 
 func _paint_shade(c1: Color, c2: Color) -> void:
