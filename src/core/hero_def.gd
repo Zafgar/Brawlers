@@ -40,11 +40,11 @@ const HEROES := {
 		"color": Color("ff8a4a"),
 		"color_b": Color("b33b17"),
 		"abilities": {
-			"basic": {"name": "Tulipallo", "desc": "Suora räiskyvä ammus.", "cd": 0.55},
+			"basic": {"name": "Tulipallo", "desc": "Suora ammus, joka sytyttää jälkipolton.", "cd": 0.55},
 			"a1": {"name": "Liekkilammikko", "desc": "Heittää palavan alueen, joka polttaa vihollisia.", "cd": 8.0},
-			"a2": {"name": "Lämpöaalto", "desc": "Purkaus eteen: vahinkoa ja työntö.", "cd": 7.0},
+			"a2": {"name": "Lämpöaalto", "desc": "Viuhkapurkaus eteen: vahinko, työntö ja jälkipoltto.", "cd": 7.0},
 			"dodge": {"name": "Kipinäliuku", "desc": "Nopea liuku, joka jättää kipinäjäljen.", "cd": 4.0},
-			"ult": {"name": "Tulimyrsky", "desc": "Laajeneva liekkirengas Emberin ympärille.", "cd": 0.0},
+			"ult": {"name": "Tulimyrsky", "desc": "Laajeneva liekkirengas, joka jättää lammikoita.", "cd": 0.0},
 		},
 	},
 	"luma": {

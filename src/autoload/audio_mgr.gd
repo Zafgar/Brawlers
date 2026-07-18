@@ -126,6 +126,14 @@ func _synth_all() -> void:
 	sounds["fire"] = _mix2(
 		_tone(0.15, 330.0, 190.0, "saw", 0.01, 0.1, 0.3),
 		_noise(0.15, 0.2, 0.5), 0.0)
+	# Lämpöaalto: pyyhkäisevä kuuma tuulahdus
+	sounds["fire_whoosh"] = _mix2(
+		_noise(0.32, 0.42, 0.55),
+		_tone(0.3, 220.0, 520.0, "saw", 0.02, 0.2, 0.16), 0.0)
+	# Tulimyrsky: syvä jyisevä roihu
+	sounds["inferno"] = _mix2(
+		_noise(0.9, 0.5, 0.18),
+		_tone(0.9, 80.0, 140.0, "saw", 0.05, 0.6, 0.32), 0.0)
 	sounds["bow"] = _mix2(
 		_tone(0.09, 1200.0, 300.0, "tri", 0.002, 0.06, 0.4),
 		_noise(0.03, 0.2, 0.8), 0.0)

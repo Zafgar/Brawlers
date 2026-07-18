@@ -313,23 +313,52 @@ func _paint_bastion(c1: Color, c2: Color) -> void:
 
 
 func _paint_ember(c1: Color, c2: Color) -> void:
-	# Liekkihiukset
-	for i in range(3):
-		var fx := -8.0 + 8.0 * i
-		var h := 14.0 + sin(_time * 7.0 + i * 1.7) * 4.0
+	# Lämmin hehkuaura
+	var aura := 0.9 + 0.1 * sin(_time * 6.0)
+	draw_circle(Vector2.ZERO, 30.0 * aura, Palette.with_alpha(Color("ff8a4a"), 0.10))
+
+	# Kohoavat kipinät (passiivi näkyväksi)
+	for i in range(4):
+		var t := fmod(_time * 0.7 + i * 0.27, 1.0)
+		var ex := sin((_time + i) * 3.0) * 6.0 + (i - 1.5) * 6.0
+		var ey := -12.0 - t * 34.0
+		draw_circle(Vector2(ex, ey), (1.0 - t) * 3.2,
+			Palette.with_alpha(Palette.glow(Color("ffb347"), 1.4), (1.0 - t) * 0.7))
+
+	# Liekkitukka: viisi kielekettä, jotka lepattavat
+	for i in range(5):
+		var fx := -10.0 + 5.0 * i
+		var h := 13.0 + sin(_time * 8.0 + i * 1.3) * 5.0
+		var lean := sin(_time * 3.0 + i) * 3.0
 		var flame := PackedVector2Array([
-			Vector2(fx - 5, -14), Vector2(fx, -14 - h), Vector2(fx + 5, -14)])
-		draw_colored_polygon(flame, Palette.glow(Color("ffb347"), 1.6) if i == 1 else c1)
+			Vector2(fx - 4, -13), Vector2(fx + lean, -14 - h), Vector2(fx + 4, -13)])
+		draw_colored_polygon(flame, Palette.glow(Color("ffcf6b"), 1.6) if i % 2 == 0 else c1)
+
 	_body_base(Vector2.ZERO, 18.0, c1, c2)
 	_eyes(Vector2(0, -4))
-	# Tulilyhty-sauva
+
+	# Käsivarsi ja tulilyhty
 	var side: Vector2 = hero.aim.rotated(-0.9)
-	var tip: Vector2 = side * 26.0 + hero.aim * 6.0
-	_hold(side * 13.0, c1, 18.0)
-	draw_line(side * 8.0, tip, Palette.darker(c2, 0.6), 4.0)
-	var pulse := 0.8 + 0.2 * sin(_time * 9.0)
-	draw_circle(tip, 8.0 * pulse, Palette.with_alpha(Color("ffd76d"), 0.5))
-	draw_circle(tip, 5.0 * pulse, Palette.glow(Color("ffb347"), 2.2))
+	var grip: Vector2 = side * 16.0
+	_hold(grip, c1, 18.0)
+	# Lyhdyn varsi + koukku
+	var lantern: Vector2 = grip + Vector2(0, 6.0)
+	draw_line(grip, lantern, Palette.darker(c2, 0.6), 3.0)
+	# Lyhdyn häkki
+	draw_rect(Rect2(lantern + Vector2(-8, -2), Vector2(16, 18)), Palette.darker(c2, 0.6))
+	draw_rect(Rect2(lantern + Vector2(-6, 0), Vector2(12, 14)), Color("1a0f08"))
+	# Lyhdyn liekki
+	var pulse := 0.8 + 0.2 * sin(_time * 11.0)
+	var flame_center := lantern + Vector2(0, 8)
+	draw_circle(flame_center, 9.0 * pulse, Palette.with_alpha(Color("ffd76d"), 0.4))
+	var lantern_flame := PackedVector2Array([
+		flame_center + Vector2(-4, 5), flame_center + Vector2(0, -8 * pulse),
+		flame_center + Vector2(4, 5)])
+	draw_colored_polygon(lantern_flame, Palette.glow(Color("ffb347"), 2.2))
+	draw_circle(flame_center + Vector2(0, 2), 3.0 * pulse, Palette.glow(Color("fff0c0"), 1.8))
+	# Häkin ristikot ja kahva
+	draw_line(lantern + Vector2(-8, 6), lantern + Vector2(8, 6), Palette.darker(c2, 0.7), 1.5)
+	draw_arc(lantern + Vector2(0, -2), 5.0, PI, TAU, 8, Palette.darker(c2, 0.6), 2.0)
 
 
 func _paint_luma(c1: Color, c2: Color) -> void:
