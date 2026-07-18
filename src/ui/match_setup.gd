@@ -31,34 +31,45 @@ func _ready() -> void:
 	add_child(MenuBackdrop.new())
 
 	var center := UiKit.fullscreen_center(self)
-	var box := UiKit.vbox(14)
+	var box := UiKit.vbox(8)
 	center.add_child(box)
 
 	box.add_child(UiKit.title("OTTELUN ASETUKSET", 64))
-	box.add_child(UiKit.spacer(20))
+	var underline := Underline.new()
+	underline.custom_minimum_size = Vector2(460, 12)
+	underline.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(underline)
+	box.add_child(UiKit.spacer(22))
+
+	# Asetukset pyöristetyssä kortissa
+	var panel := UiKit.panel()
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(panel)
+	var inner := UiKit.vbox(12)
+	panel.add_child(inner)
 
 	var size_row := OptionRow.new("Joukkuekoko", ["1v1", "2v2", "3v3", "4v4"],
 		Game.team_size - 1,
 		func(i): Game.team_size = i + 1)
 	size_row.desc_key = "size"
-	_add_row(box, size_row)
+	_add_row(inner, size_row)
 
 	var rounds_row := OptionRow.new("Ottelun pituus", ["Paras 3:sta", "Paras 5:stä"],
 		0 if Game.rounds_to_win <= 2 else 1,
 		func(i): Game.rounds_to_win = 2 + i)
 	rounds_row.desc_key = "rounds"
-	_add_row(box, rounds_row)
+	_add_row(inner, rounds_row)
 
 	var bots_row := OptionRow.new("Bottien taso", Game.BOT_LEVEL_NAMES,
 		Game.bot_level,
 		func(i): Game.bot_level = i)
 	bots_row.desc_key = "bots"
-	_add_row(box, bots_row)
+	_add_row(inner, bots_row)
 
 	var mode_row := OptionRow.new("Pelimuoto", ["Relic Hold  (lisää tulossa)"], 0, Callable())
 	mode_row.locked = true
 	mode_row.desc_key = "mode"
-	_add_row(box, mode_row)
+	_add_row(inner, mode_row)
 
 	var map_start: int = maxi(MAP_IDS.find(Game.map_id), 0)
 	var map_row := OptionRow.new("Kenttä", MAP_NAMES, map_start,
@@ -71,22 +82,30 @@ func _ready() -> void:
 	map_row.focus_entered.connect(func():
 		if _desc_label != null:
 			_desc_label.text = MAP_DESC[Game.map_id])
-	_add_row(box, map_row)
+	_add_row(inner, map_row)
 
-	box.add_child(UiKit.spacer(6))
+	inner.add_child(UiKit.spacer(4))
 	_desc_label = UiKit.dim_label(DESCRIPTIONS["size"], 20)
 	_desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_desc_label.custom_minimum_size = Vector2(760, 56)
+	_desc_label.custom_minimum_size = Vector2(760, 52)
 	_desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_desc_label)
-	box.add_child(UiKit.spacer(6))
+	inner.add_child(_desc_label)
 
+	box.add_child(UiKit.spacer(18))
 	var continue_btn := UiKit.button("Jatka pelaajien valintaan", func(): Game.go_lobby())
-	continue_btn.custom_minimum_size = Vector2(520, 0)
+	continue_btn.custom_minimum_size = Vector2(520, 56)
+	continue_btn.add_theme_color_override("font_color", Palette.GOLD)
+	continue_btn.add_theme_color_override("font_hover_color", Palette.glow(Palette.GOLD, 1.3))
+	continue_btn.add_theme_color_override("font_focus_color", Palette.glow(Palette.GOLD, 1.3))
 	box.add_child(continue_btn)
 	var back_btn := UiKit.button("Takaisin", func(): Game.go_menu(), 24)
 	back_btn.custom_minimum_size = Vector2(520, 0)
 	box.add_child(back_btn)
+	box.add_child(UiKit.spacer(4))
+	var hint := UiKit.dim_label("‹ › tai A/D säätää arvoa · X/Enter valitsee · O/Esc takaisin", 16)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(hint)
 
 	size_row.call_deferred("grab_focus")
 
@@ -179,3 +198,24 @@ class OptionRow:
 			text = "%s      %s" % [row_label, value]
 		else:
 			text = "%s      ‹ %s ›" % [row_label, value]
+
+
+## Hehkuva joukkuevärialaviiva otsikon alle.
+class Underline:
+	extends Control
+
+	var _t := 0.0
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var w := size.x
+		var pulse := 0.5 + 0.5 * sin(_t * 1.5)
+		draw_rect(Rect2(0, 3, w / 2.0, 6.0), Palette.glow(Palette.TEAM_BLUE, 1.3))
+		draw_rect(Rect2(w / 2.0, 3, w / 2.0, 6.0), Palette.glow(Palette.TEAM_ORANGE, 1.3))
+		draw_circle(Vector2(w / 2.0, 6.0), 8.0 + pulse * 2.0, Palette.glow(Palette.GOLD, 1.5))
