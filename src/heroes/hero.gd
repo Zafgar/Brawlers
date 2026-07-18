@@ -53,7 +53,14 @@ var haste_factor := 1.0
 var root_timer := 0.0
 var stun_timer := 0.0
 var mark_timer := 0.0               # merkitty kohde ottaa lisävahinkoa (Scout)
+var mark_amp := 1.25                # merkin vahinkokerroin (asetetaan apply_markissa)
 var kb_resist := 0.0                # 0..1, tankeille
+
+# Lipasjärjestelmä (valinnainen, esim. Scoutin konekivääri). ammo < 0 = ei
+# lipasta -> ei piirretä. hero_visual näyttää patruunat ja lataustilan.
+var ammo := -1
+var ammo_max := 0
+var reloading := false
 
 # Suuntatorjunta (Bastionin kilpivalli, geneerinen mekaniikka)
 var guard_timer := 0.0
@@ -427,6 +434,10 @@ func _reset_resource() -> void:
 		res = 0.0
 	elif res_type != "":
 		res = res_max
+	# Lipas täyteen ja lataus poikki (jos sankarilla on lipasjärjestelmä).
+	if ammo_max > 0:
+		ammo = ammo_max
+		reloading = false
 
 
 func _can_afford(slot: String) -> bool:
@@ -603,7 +614,7 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 
 	# Merkitty kohde (Scoutin vaahtomerkki) ottaa lisävahinkoa kaikilta.
 	if mark_timer > 0.0:
-		amount *= 1.25
+		amount *= mark_amp
 
 	# Suuntatorjunta (kilpivalli): edestä tulevat osumat vaimenevat.
 	if guard_timer > 0.0 and kb_dir != Vector2.ZERO:
@@ -709,8 +720,9 @@ func apply_stun(duration: float) -> void:
 	stun_timer = maxf(stun_timer, duration)
 
 
-func apply_mark(duration: float) -> void:
+func apply_mark(duration: float, amp := 1.25) -> void:
 	mark_timer = maxf(mark_timer, duration)
+	mark_amp = amp
 	arena.popup(global_position + Vector2(0, -60), "MERKITTY", Palette.GOLD, 14)
 
 

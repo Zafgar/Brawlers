@@ -7,11 +7,12 @@ extends Hero
 
 const BEAM_RANGE := 430.0
 const BEAM_WIDTH := 26.0
-const BEAM_DPS := 55.0
+const BEAM_DPS := 30.0             # matalampi vahinko (oli 55, aika OP)
 const BEAM_HPS := 46.0
-const BEAM_SLOW := 0.68
+const BEAM_SLOW := 0.5             # voimakkaampi hidastus (0.5 = puolinopeus)
 const BEAM_TICK := 0.15            # vaikutus tikeittäin (ei popup-spämmiä)
-const MANA_PER_SEC := 20.0
+const MANA_DMG_PER_SEC := 30.0     # polttosäde kuluttaa enemmän manaa
+const MANA_HEAL_PER_SEC := 18.0    # hoitosäde kuluttaa vähemmän
 
 const ULT_RADIUS := 220.0
 const ULT_DUR := 6.0
@@ -29,7 +30,7 @@ func _setup_resource() -> void:
 	res_max = 100.0
 	res = 100.0
 	res_regen = 14.0
-	res_cost = {"basic": 0.0, "a1": 22.0, "a2": 20.0, "dodge": 0.0}
+	res_cost = {"basic": 0.0, "a1": 28.0, "a2": 16.0, "dodge": 0.0}
 	cd_max.a1 = 0.4
 	cd_max.a2 = 0.4
 
@@ -54,7 +55,8 @@ func _channeled_slots() -> Array:
 
 ## Kanavointi (ihmispelaaja): jatkuva säde + manan kulutus + vaikutus tikeittäin.
 func _channel_tick(slot: String, delta: float) -> void:
-	res = maxf(res - MANA_PER_SEC * delta, 0.0)
+	var mana_cost: float = MANA_DMG_PER_SEC if slot == "a1" else MANA_HEAL_PER_SEC
+	res = maxf(res - mana_cost * delta, 0.0)
 	_beam_active = true
 	_beam_len = BEAM_RANGE
 	_beam_heal = slot == "a2"
@@ -85,7 +87,7 @@ func _ability1(dir: Vector2) -> void:
 	Fx.beam(arena, global_position + dir * 20.0, global_position + dir * BEAM_RANGE,
 		Palette.glow(hero_color(), 1.4), 8.0)
 	for enemy in _beam_targets(1, dir):
-		deal_damage_to(enemy, 22.0, 0.0)
+		deal_damage_to(enemy, 13.0, 0.0)
 		enemy.apply_slow(BEAM_SLOW, 1.0)
 
 

@@ -190,6 +190,23 @@ func _draw_status(bob: float) -> void:
 		var rfrac: float = clampf(hero.res / hero.res_max, 0.0, 1.0)
 		draw_rect(Rect2(top + Vector2(-w / 2.0 - 1.0, 6.0), Vector2(w + 2.0, 5.0)), Color(0, 0, 0, 0.45))
 		draw_rect(Rect2(top + Vector2(-w / 2.0, 7.0), Vector2(w * rfrac, 3.0)), _res_color(hero.res_type))
+
+	# Lipas (patruunat) resurssipalkin alla, jos sankarilla on lipasjärjestelmä.
+	if hero.ammo >= 0 and hero.ammo_max > 0:
+		var ay := 12.0
+		draw_rect(Rect2(top + Vector2(-w / 2.0 - 1.0, ay - 1.0), Vector2(w + 2.0, 4.0)), Color(0, 0, 0, 0.45))
+		if hero.reloading:
+			# Latautuu: pulssaava amber-palkki telegraafina.
+			var rp: float = 0.35 + 0.65 * absf(sin(_time * 6.0))
+			draw_rect(Rect2(top + Vector2(-w / 2.0, ay), Vector2(w * rp, 2.0)),
+				Palette.glow(Color("ffb24a"), 1.3))
+		else:
+			var afrac: float = clampf(float(hero.ammo) / float(hero.ammo_max), 0.0, 1.0)
+			draw_rect(Rect2(top + Vector2(-w / 2.0, ay), Vector2(w * afrac, 2.0)), Color("d9cbb0"))
+			# Lippaan segmenttiviivat
+			for s in range(1, 5):
+				var sx: float = -w / 2.0 + w * s / 5.0
+				draw_line(top + Vector2(sx, ay - 1.0), top + Vector2(sx, ay + 3.0), Color(0, 0, 0, 0.35), 1.0)
 	if hero.shield_hp > 0.0:
 		var sfrac: float = clampf(hero.shield_hp / hero.max_hp, 0.0, 1.0)
 		draw_rect(Rect2(top + Vector2(-w / 2.0, -4.0), Vector2(w * sfrac, 3.0)), Palette.SHIELD)
