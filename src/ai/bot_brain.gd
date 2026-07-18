@@ -611,7 +611,7 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"volt":
 			return dist < 450.0
 		"shade":
-			return hero.hp < hero.max_hp * 0.5 and dist < 320.0
+			return dist > 150.0 and dist < 420.0
 		"tide":
 			return dist > 250.0 and dist < 600.0
 		"scout":
