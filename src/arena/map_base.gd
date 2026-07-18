@@ -10,9 +10,11 @@ extends Node2D
 const WALL_THICKNESS := 80.0
 
 var map_size := Vector2(2400, 1350)
-var pillars: Array = []      # [{pos: Vector2, radius: float}]
-var belts: Array = []        # [{rect: Rect2, dir: Vector2}]
+var pillars: Array = []      # [{pos: Vector2, radius: float}] pyöreät esteet
+var rect_walls: Array = []   # [Rect2] suorakaide-esteet (kartan sisäseinät)
+var belts: Array = []        # [{rect: Rect2, dir: Vector2}] kuljetinhihnat
 var belt_push := 120.0
+var spawn_slots: Array = []  # [team0: [Vector2...], team1: [Vector2...]] valinnainen
 
 var _time := 0.0
 
@@ -64,6 +66,17 @@ func _build_walls() -> void:
 		shape.shape = circle
 		body.add_child(shape)
 		add_child(body)
+	for wall_rect in rect_walls:
+		var body := StaticBody2D.new()
+		body.collision_layer = 1
+		body.collision_mask = 0
+		var shape := CollisionShape2D.new()
+		var rect_shape := RectangleShape2D.new()
+		rect_shape.size = wall_rect.size
+		shape.shape = rect_shape
+		shape.position = wall_rect.position + wall_rect.size / 2.0
+		body.add_child(shape)
+		add_child(body)
 
 
 # --- Pelilogiikan rajapinta (yhteinen kaikille areenoille) ---
@@ -73,6 +86,10 @@ func size() -> Vector2:
 
 
 func spawn_point(team: int, index: int) -> Vector2:
+	# Kartta voi määrittää omat spawn-pisteensä; muuten oletus (reunat).
+	if spawn_slots.size() == 2 and not spawn_slots[team].is_empty():
+		var arr: Array = spawn_slots[team]
+		return arr[index % arr.size()]
 	var x := -map_size.x / 2.0 + 170.0 if team == 0 else map_size.x / 2.0 - 170.0
 	var slot := index % 4
 	var y := -240.0 + slot * 160.0
@@ -99,6 +116,23 @@ func clamp_to_field(pos: Vector2, margin := 40.0) -> Vector2:
 		var diff: Vector2 = p - pillar.pos
 		if diff.length() < pillar.radius + margin:
 			p = pillar.pos + diff.normalized() * (pillar.radius + margin)
+	for wall_rect in rect_walls:
+		var grown: Rect2 = wall_rect.grow(margin)
+		if grown.has_point(p):
+			# Työnnä lähimmän reunan yli.
+			var left := p.x - grown.position.x
+			var right := grown.end.x - p.x
+			var top := p.y - grown.position.y
+			var bottom := grown.end.y - p.y
+			var m: float = min(min(left, right), min(top, bottom))
+			if m == left:
+				p.x = grown.position.x
+			elif m == right:
+				p.x = grown.end.x
+			elif m == top:
+				p.y = grown.position.y
+			else:
+				p.y = grown.end.y
 	return p
 
 

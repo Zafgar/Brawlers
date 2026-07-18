@@ -9,7 +9,7 @@ var _desc_label: Label = null
 const MAP_IDS := ["geargarden", "moonstone"]
 const MAP_NAMES := ["Geargarden", "Moonstone Ruins"]
 const MAP_DESC := {
-	"geargarden": "Geargarden: mekaaninen puutarha, jossa on kuljetinhihnoja ja pyöriviä rattaita.",
+	"geargarden": "Geargarden: tasapainoinen perusareena — symmetrinen, keskusrattaat suojana, pensasaidat ja kuljetinhihnat.",
 	"moonstone": "Moonstone Ruins: taianomaiset rauniot, hohtavat kristallit ja ajoittain avautuvat portit.",
 }
 

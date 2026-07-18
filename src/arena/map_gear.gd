@@ -1,7 +1,14 @@
 class_name MapGear
 extends MapBase
-## Geargarden — värikäs mekaaninen puutarha: messinkirattaat, pensasaidat,
-## kuljetinhihnat ja valaistu keskikenttä. Lämmin ja eloisa, ei synkkä.
+## Geargarden — värikäs mekaaninen puutarha ja pelin TASAPAINOINEN PERUSAREENA.
+## Symmetrinen rakenne opettaa perusteet:
+##  - Reliikki keskellä, tasan yhtä kaukana molemmista spawneista
+##  - Neljä keskusratasta kehystävät tavoitteen (juoksusuoja kantajalle,
+##    neljä lähestymissuuntaa)
+##  - Pensasaidat ovat oikeaa suojaa: spawn-suojaa ja ylä/ala-kaistojen
+##    kiertoreittejä ilman umpikujia
+##  - Kuljetinhihnat luovat kiertoliikettä muttei pakota kantajaa pois
+## Lämmin ja eloisa, ei synkkä.
 
 const FLOOR_BASE := Color("233a55")
 const FLOOR_LIGHT := Color("35597d")
@@ -18,16 +25,18 @@ var _hedges: Array = []
 
 func _setup() -> void:
 	map_size = Vector2(2400, 1350)
-	belt_push = 120.0
+	# Kuljetinhihnat luovat kiertoliikettä mutta eivät riistä hallintaa (100 < liikenopeus 285-360).
+	belt_push = 100.0
 	belts = [
 		{"rect": Rect2(Vector2(-520, -620), Vector2(1040, 120)), "dir": Vector2.RIGHT},
 		{"rect": Rect2(Vector2(-520, 500), Vector2(1040, 120)), "dir": Vector2.LEFT},
 	]
+	# Neljä keskusratasta kehystävät reliikkiä (hieman avoimempi keskus: r80).
 	pillars = [
-		{"pos": Vector2(-620, -260), "radius": 86.0},
-		{"pos": Vector2(620, -260), "radius": 86.0},
-		{"pos": Vector2(-620, 260), "radius": 86.0},
-		{"pos": Vector2(620, 260), "radius": 86.0},
+		{"pos": Vector2(-620, -260), "radius": 80.0},
+		{"pos": Vector2(620, -260), "radius": 80.0},
+		{"pos": Vector2(-620, 260), "radius": 80.0},
+		{"pos": Vector2(620, 260), "radius": 80.0},
 	]
 
 	var rng := RandomNumberGenerator.new()
@@ -48,15 +57,17 @@ func _setup() -> void:
 		{"pos": Vector2(-860, 500), "r": 120.0, "speed": -0.25, "teeth": 9},
 		{"pos": Vector2(0, 0), "r": 260.0, "speed": 0.06, "teeth": 16},
 	]
-	# Pensasaidat kehystävät reunoja (puutarhan identiteetti)
+	# Pensasaidat ovat oikeaa suojaa (törmäys + piirto): ylä/ala-kaistojen
+	# kiertoreitit ja spawn-suoja, symmetrisesti ja spawnien ulkopuolella.
 	_hedges = [
 		Rect2(Vector2(-980, -660), Vector2(360, 70)),
 		Rect2(Vector2(620, -660), Vector2(360, 70)),
 		Rect2(Vector2(-980, 590), Vector2(360, 70)),
 		Rect2(Vector2(620, 590), Vector2(360, 70)),
-		Rect2(Vector2(-1140, -180), Vector2(70, 360)),
-		Rect2(Vector2(1070, -180), Vector2(70, 360)),
+		Rect2(Vector2(-1150, -180), Vector2(70, 360)),
+		Rect2(Vector2(1080, -180), Vector2(70, 360)),
 	]
+	rect_walls = _hedges
 
 
 # --- Piirto ---
