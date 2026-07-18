@@ -65,8 +65,8 @@ func _fire_arrow(dir: Vector2) -> void:
 		AudioMgr.play("bow", 0.1, -4.0 + _charge * 4.0)
 	Projectile.launch(self, global_position + dir * 28.0, dir, {
 		"speed": 950.0 + 450.0 * _charge,
-		"dmg": 13.0 + 26.0 * _charge,
-		"radius": 8.0,
+		"dmg": 14.0 + 42.0 * _charge,
+		"radius": 10.0,
 		"life": 0.9,
 		"kb": 120.0 + 160.0 * _charge,
 		"pierce": 1 if full else 0,
@@ -84,8 +84,8 @@ func _ability1(dir: Vector2) -> void:
 		Palette.glow(hero_color(), 1.3), 4.0)
 	Projectile.launch(self, global_position + dir * 30.0, dir, {
 		"speed": 1400.0,
-		"dmg": 30.0,
-		"radius": 7.0,
+		"dmg": 46.0,
+		"radius": 9.0,
 		"life": 1.1,
 		"kb": 220.0,
 		"pierce": 2,

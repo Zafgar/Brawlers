@@ -7,6 +7,15 @@ func _init() -> void:
 	radius = 23.0
 
 
+## Merkkipanos tähdätään: pidä R1 pohjassa (tähtäysviiva) ja vapauta.
+func _aimed_slots() -> Array:
+	return ["a1"]
+
+
+func _aim_range(_slot: String) -> float:
+	return 520.0
+
+
 ## Perushyökkäys: kolmen vaahtopallon purske.
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()
@@ -36,7 +45,7 @@ func _ability1(dir: Vector2) -> void:
 	Projectile.launch(self, global_position + dir * 30.0, dir, {
 		"speed": 1200.0,
 		"dmg": 10.0,
-		"radius": 8.0,
+		"radius": 10.0,
 		"life": 0.9,
 		"kb": 100.0,
 		"color": Palette.glow(Palette.GOLD, 1.3),

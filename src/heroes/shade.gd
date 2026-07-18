@@ -14,13 +14,13 @@ func _init() -> void:
 func _basic(dir: Vector2) -> void:
 	AudioMgr.play("disc", 0.15, -2.0)
 	visual.attack_swing()
-	var dmg := 17.0
+	var dmg := 21.0
 	if _empower_timer > 0.0:
 		dmg *= 1.6
 	Projectile.launch(self, global_position + dir * 26.0, dir, {
 		"speed": 1000.0,
 		"dmg": dmg,
-		"radius": 8.0,
+		"radius": 10.0,
 		"life": 0.55,
 		"kb": 90.0,
 		"spin": true,

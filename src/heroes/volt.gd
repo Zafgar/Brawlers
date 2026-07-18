@@ -14,7 +14,7 @@ func _basic(dir: Vector2) -> void:
 	Projectile.launch(self, global_position + dir * 28.0, dir, {
 		"speed": 900.0,
 		"dmg": 18.0,
-		"radius": 9.0,
+		"radius": 10.0,
 		"life": 0.75,
 		"kb": 90.0,
 		"color": Color("ffe14a"),
@@ -67,7 +67,7 @@ func _ability1(dir: Vector2) -> void:
 	var from := global_position
 	var chain: Array = []
 	var target := first
-	var dmg := 20.0
+	var dmg := 24.0
 	while target != null and chain.size() < 3:
 		Fx.bolt(arena, from, target.global_position, hero_color())
 		Fx.flash(arena, target.global_position, Palette.glow(hero_color(), 1.5), 38.0, 0.25)

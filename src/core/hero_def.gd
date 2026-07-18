@@ -98,7 +98,7 @@ const HEROES := {
 		"color_b": Color("2f7a33"),
 		"abilities": {
 			"basic": {"name": "Ruoskanisku", "desc": "Kaareva pyyhkäisy, joka imee elinvoimaa osumista.", "cd": 0.55},
-			"a1": {"name": "Juurisidonta", "desc": "Köynnös, joka juurruttaa ensimmäisen osuman paikoilleen.", "cd": 8.0},
+			"a1": {"name": "Juurisidonta", "desc": "Köynnös, joka juurruttaa ensimmäisen osuman paikoilleen. Tähtää pitämällä nappia pohjassa.", "cd": 8.0},
 			"a2": {"name": "Piikkipyörre", "desc": "Piikit sinkoutuvat ympärille ja jättävät hidastavan piikkialueen.", "cd": 7.5},
 			"dodge": {"name": "Köynnösheitto", "desc": "Vetäisee itsensä ruoskalla eteenpäin.", "cd": 4.0},
 			"ult": {"name": "Piikkipuutarha", "desc": "Suuri alue, joka juurruttaa, hidastaa ja pistelee vihollisia.", "cd": 0.0},
@@ -231,7 +231,7 @@ const HEROES := {
 		"color_b": Color("6b7a2f"),
 		"abilities": {
 			"basic": {"name": "Vaahtopurske", "desc": "Kolmen pallon nopea sarja.", "cd": 0.65},
-			"a1": {"name": "Merkkipanos", "desc": "Osuma merkitsee kohteen: se ottaa 25 % lisävahinkoa kaikilta.", "cd": 7.0},
+			"a1": {"name": "Merkkipanos", "desc": "Osuma merkitsee kohteen: se ottaa 25 % lisävahinkoa kaikilta. Tähtää pitämällä nappia pohjassa.", "cd": 7.0},
 			"a2": {"name": "Tainnutuspallo", "desc": "Tahmea pallo, joka tainnuttaa hetkeksi.", "cd": 9.0},
 			"dodge": {"name": "Kierähdys", "desc": "Nopea rullaus, joka lataa kiväärin heti.", "cd": 3.5},
 			"ult": {"name": "Merkkisade", "desc": "Merkitsee kaikki lähiviholliset ja kiihdyttää joukkueen.", "cd": 0.0},

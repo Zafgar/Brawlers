@@ -14,6 +14,15 @@ func _init() -> void:
 	kb_resist = 0.25
 
 
+## Juurisidonta tähdätään: pidä R1 pohjassa (tähtäysviiva) ja vapauta.
+func _aimed_slots() -> Array:
+	return ["a1"]
+
+
+func _aim_range(_slot: String) -> float:
+	return 480.0
+
+
 ## Perushyökkäys: ruoskan pyyhkäisy kaaressa (imee elinvoimaa).
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()
