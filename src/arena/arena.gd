@@ -31,6 +31,7 @@ var _pause_layer: CanvasLayer = null
 
 
 func _ready() -> void:
+	AudioMgr.play_music("battle" if randf() < 0.5 else "battle2")
 	map = _make_map()
 	add_child(map)
 

@@ -10,6 +10,7 @@ var _orbs: Array = []
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	AudioMgr.play_music("menu")
 	add_child(MenuBackdrop.new())
 
 	# Ajelehtivat sankariväri-orbit taustalle

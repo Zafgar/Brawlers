@@ -27,6 +27,7 @@ var _bot_counter := 0
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	AudioMgr.play_music("lobby")
 	var backdrop := MenuBackdrop.new()
 	backdrop.team_glow = true
 	add_child(backdrop)

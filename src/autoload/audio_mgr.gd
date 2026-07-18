@@ -5,12 +5,16 @@ extends Node
 
 const RATE := 22050
 const POOL_SIZE := 12
+const MUSIC_VOL := -13.0
 
 var _streams := {}
 var _players: Array = []
-var _music_player: AudioStreamPlayer = null
+var _music_players: Array = []      # kaksi soitinta ristihäivytystä varten
+var _music_tracks := {}             # nimi -> AudioStreamWAV
+var _active_idx := 0
+var _current_track := ""
+var _music_tween: Tween = null
 var _music_enabled := true
-var _music_stream: AudioStreamWAV = null
 var _thread: Thread = null
 var _warned := {}
 
@@ -23,10 +27,12 @@ func _ready() -> void:
 		player.bus = "SFX"
 		add_child(player)
 		_players.append(player)
-	_music_player = AudioStreamPlayer.new()
-	_music_player.bus = "Music"
-	_music_player.volume_db = -14.0
-	add_child(_music_player)
+	for i in range(2):
+		var mp := AudioStreamPlayer.new()
+		mp.bus = "Music"
+		mp.volume_db = -40.0
+		add_child(mp)
+		_music_players.append(mp)
 
 	_thread = Thread.new()
 	_thread.start(_synth_all)
@@ -71,14 +77,38 @@ func set_master_volume(v: float) -> void:
 	AudioServer.set_bus_volume_db(0, linear_to_db(clampf(v, 0.001, 1.0)))
 
 
+## Vaihtaa taustamusiikin (pehmeä ristihäivytys). Sama nimi = ei uudelleenaloitusta.
+func play_music(track: String) -> void:
+	if track == _current_track and not _music_tracks.is_empty() \
+			and _music_players[_active_idx].playing:
+		return
+	_current_track = track
+	if _music_enabled and _music_tracks.has(track):
+		_crossfade_to(track)
+
+
+func _crossfade_to(track: String) -> void:
+	var cur: AudioStreamPlayer = _music_players[_active_idx]
+	var nxt: AudioStreamPlayer = _music_players[1 - _active_idx]
+	nxt.stream = _music_tracks[track]
+	nxt.volume_db = -40.0
+	nxt.play()
+	if _music_tween != null and _music_tween.is_valid():
+		_music_tween.kill()
+	_music_tween = create_tween()
+	_music_tween.tween_property(nxt, "volume_db", MUSIC_VOL, 0.9)
+	_music_tween.parallel().tween_property(cur, "volume_db", -40.0, 0.9)
+	_music_tween.chain().tween_callback(cur.stop)
+	_active_idx = 1 - _active_idx
+
+
 func set_music_enabled(enabled: bool) -> void:
 	_music_enabled = enabled
-	if _music_player == null:
-		return
-	if enabled and _music_stream != null and not _music_player.playing:
-		_music_player.play()
-	elif not enabled and _music_player.playing:
-		_music_player.stop()
+	if not enabled:
+		for mp in _music_players:
+			mp.stop()
+	elif _current_track != "" and _music_tracks.has(_current_track):
+		_crossfade_to(_current_track)
 
 
 # --- Synteesi ---
@@ -247,23 +277,37 @@ func _synth_all() -> void:
 	var result := {}
 	for key in sounds:
 		result[key] = _to_wav(sounds[key], false)
-	var music := _to_wav(_synth_music(), true)
+
+	# Useita erilaisia taustabiisejä eri näkymiin.
+	var music := {}
+	# Menu: rauhallinen, lämmin (Am-F-C-G).
+	music["menu"] = _to_wav(_make_track(
+		[110.0, 87.31, 130.81, 98.0], [true, false, false, false], 2.6, "tri", 0.0, 0.9), true)
+	# Lobby: reipas ja odottava (C-G-Am-F, kevyt rytmi).
+	music["lobby"] = _to_wav(_make_track(
+		[130.81, 98.0, 110.0, 87.31], [false, false, true, false], 2.0, "square", 0.45, 0.95), true)
+	# Taistelu 1: ajava ja jännittävä (Em-C-G-D).
+	music["battle"] = _to_wav(_make_track(
+		[82.41, 130.81, 98.0, 146.83], [true, false, false, false], 1.6, "saw", 1.0, 1.0), true)
+	# Taistelu 2: vaihtelua (Am-F-G-Em).
+	music["battle2"] = _to_wav(_make_track(
+		[110.0, 87.31, 98.0, 82.41], [true, false, false, true], 1.6, "saw", 1.0, 1.0), true)
 	call_deferred("_synth_done", result, music)
 
 
-func _synth_done(streams: Dictionary, music: AudioStreamWAV) -> void:
+func _synth_done(streams: Dictionary, music: Dictionary) -> void:
 	_streams = streams
-	_music_stream = music
-	_music_player.stream = _music_stream
+	_music_tracks = music
 	if _music_enabled:
-		_music_player.play()
+		if _current_track == "":
+			_current_track = "menu"
+		if _music_tracks.has(_current_track):
+			_crossfade_to(_current_track)
 
 
-## Kevyt taustaluuppi: bassolinja + arpeggio neljällä soinnulla.
-func _synth_music() -> PackedFloat32Array:
-	var bar := 2.4
-	var roots := [110.0, 87.31, 65.41, 98.0]  # A2, F2, C2, G2
-	var minor := [true, false, false, false]
+## Rakentaa luupattavan biisin: bassolinja + arpeggio + valinnainen rytmi.
+func _make_track(roots: Array, minor: Array, bar: float, lead_wave: String,
+		kick_strength: float, gain: float) -> PackedFloat32Array:
 	var total := bar * roots.size()
 	var out := PackedFloat32Array()
 	out.resize(int(total * RATE))
@@ -271,15 +315,26 @@ func _synth_music() -> PackedFloat32Array:
 		out[i] = 0.0
 	for bar_i in range(roots.size()):
 		var root: float = roots[bar_i]
-		var bass := _tone(bar, root, root, "sine", 0.05, 0.4, 0.16)
+		var bass := _tone(bar, root, root, "sine", 0.05, bar * 0.15, 0.16 * gain)
 		out = _mix_at(out, bass, bar_i * bar)
 		var third := 2.4 if minor[bar_i] else 2.5
 		var steps := [2.0, third, 3.0, 4.0, 3.0, third]
+		var note_len := bar / steps.size()
 		for step_i in range(steps.size()):
-			var note := _tone(0.32, root * steps[step_i], root * steps[step_i],
-				"tri", 0.02, 0.24, 0.07)
-			out = _mix_at(out, note, bar_i * bar + step_i * 0.4)
+			var freq: float = root * steps[step_i]
+			var note := _tone(note_len * 0.85, freq, freq, lead_wave, 0.01, note_len * 0.4, 0.06 * gain)
+			out = _mix_at(out, note, bar_i * bar + step_i * note_len)
+		if kick_strength > 0.0:
+			for beat in range(4):
+				out = _mix_at(out, _kick(kick_strength * gain), bar_i * bar + beat * (bar / 4.0))
 	return out
+
+
+## Lyhyt rumpupotku (basso + naks).
+func _kick(strength: float) -> PackedFloat32Array:
+	return _mix2(
+		_tone(0.12, 135.0, 45.0, "sine", 0.002, 0.09, 0.42 * strength),
+		_noise(0.035, 0.22 * strength, 0.5), 0.0)
 
 
 # --- Aallonmuodostus ---

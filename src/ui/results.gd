@@ -11,6 +11,7 @@ var _mvp_reason := ""
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(MenuBackdrop.new())
+	AudioMgr.play_music("menu")
 	AudioMgr.play("match_win")
 
 	_compute_mvp()
