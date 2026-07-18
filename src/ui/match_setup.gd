@@ -6,11 +6,12 @@ extends Control
 
 var _desc_label: Label = null
 
-const MAP_IDS := ["geargarden", "moonstone"]
-const MAP_NAMES := ["Geargarden", "Moonstone Ruins"]
+const MAP_IDS := ["geargarden", "moonstone", "splashport"]
+const MAP_NAMES := ["Geargarden", "Moonstone Ruins", "Splashport"]
 const MAP_DESC := {
 	"geargarden": "Geargarden: tasapainoinen perusareena — symmetrinen, keskusrattaat suojana, pensasaidat ja kuljetinhihnat.",
 	"moonstone": "Moonstone Ruins: portit aukeavat vuorotellen sivuilla — ajoita oikoreittisi. Avoin keskusta, hohtavat kristallit.",
+	"splashport": "Splashport: keskilaituri ja kaksi vesikaistaa. Vesi hidastaa, lautat kuljettavat ja hyppyalustat sinkoavat laiturille.",
 }
 
 const DESCRIPTIONS := {

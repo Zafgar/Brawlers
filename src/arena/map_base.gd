@@ -107,6 +107,11 @@ func conveyor_push(pos: Vector2) -> Vector2:
 	return Vector2.ZERO
 
 
+## Maaston nopeuskerroin sijainnissa (esim. vesi hidastaa). Oletus 1.0.
+func terrain_mult(_pos: Vector2) -> float:
+	return 1.0
+
+
 func clamp_to_field(pos: Vector2, margin := 40.0) -> Vector2:
 	var half := map_size / 2.0
 	var p := Vector2(

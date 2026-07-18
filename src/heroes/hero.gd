@@ -123,6 +123,8 @@ func _physics_process(delta: float) -> void:
 	var speed := base_speed * slow_factor * haste_factor
 	if carrying:
 		speed *= CARRY_SPEED_MULT
+	if arena.map != null:
+		speed *= arena.map.terrain_mult(global_position)  # esim. vesi hidastaa
 
 	if dash_timer > 0.0:
 		dash_timer -= delta

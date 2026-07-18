@@ -75,6 +75,8 @@ func _make_map() -> MapBase:
 	match Game.map_id:
 		"moonstone":
 			return MapMoon.new()
+		"splashport":
+			return MapSplash.new()
 		_:
 			return MapGear.new()
 
