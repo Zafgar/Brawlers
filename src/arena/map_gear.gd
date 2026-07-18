@@ -1,44 +1,45 @@
 class_name MapGear
-extends Node2D
-## Geargarden — värikäs mekaaninen puutarha. Koko kenttä piirretään koodilla:
-## tausta, pyörivät hammasrattaat, kuljetinhihnat, esteet ja reunat.
-## Tarjoaa myös spawn-pisteet, reliikin paikan ja liikuteltavuusapurit.
+extends MapBase
+## Geargarden — värikäs mekaaninen puutarha: messinkirattaat, pensasaidat,
+## kuljetinhihnat ja valaistu keskikenttä. Lämmin ja eloisa, ei synkkä.
 
-const SIZE := Vector2(2400, 1350)
-const WALL_THICKNESS := 80.0
-const BELT_PUSH := 120.0
+const FLOOR_BASE := Color("233a55")
+const FLOOR_LIGHT := Color("35597d")
+const FLOOR_SEAM := Color("5784b0")
+const BRASS := Color("caa15a")
+const BRASS_DARK := Color("7a5b28")
+const HEDGE := Color("3f7a45")
+const HEDGE_DARK := Color("245029")
 
-# Kuljetinhihnat: {rect, dir}
-var belts := [
-	{"rect": Rect2(Vector2(-520, -620), Vector2(1040, 120)), "dir": Vector2.RIGHT},
-	{"rect": Rect2(Vector2(-520, 500), Vector2(1040, 120)), "dir": Vector2.LEFT},
-]
-
-# Pyöreät este-pilarit (hammasrattaita): {pos, radius}
-var pillars := [
-	{"pos": Vector2(-620, -260), "radius": 86.0},
-	{"pos": Vector2(620, -260), "radius": 86.0},
-	{"pos": Vector2(-620, 260), "radius": 86.0},
-	{"pos": Vector2(620, 260), "radius": 86.0},
-]
-
-var _time := 0.0
 var _flowers: Array = []
 var _bg_gears: Array = []
+var _hedges: Array = []
 
 
-func _ready() -> void:
-	z_index = -10
-	_build_walls()
+func _setup() -> void:
+	map_size = Vector2(2400, 1350)
+	belt_push = 120.0
+	belts = [
+		{"rect": Rect2(Vector2(-520, -620), Vector2(1040, 120)), "dir": Vector2.RIGHT},
+		{"rect": Rect2(Vector2(-520, 500), Vector2(1040, 120)), "dir": Vector2.LEFT},
+	]
+	pillars = [
+		{"pos": Vector2(-620, -260), "radius": 86.0},
+		{"pos": Vector2(620, -260), "radius": 86.0},
+		{"pos": Vector2(-620, 260), "radius": 86.0},
+		{"pos": Vector2(620, 260), "radius": 86.0},
+	]
+
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20260717
-	for i in range(26):
+	for i in range(30):
 		_flowers.append({
 			"pos": Vector2(
-				rng.randf_range(-SIZE.x / 2.0 + 120.0, SIZE.x / 2.0 - 120.0),
-				rng.randf_range(-SIZE.y / 2.0 + 120.0, SIZE.y / 2.0 - 120.0)),
-			"size": rng.randf_range(4.0, 9.0),
+				rng.randf_range(-map_size.x / 2.0 + 120.0, map_size.x / 2.0 - 120.0),
+				rng.randf_range(-map_size.y / 2.0 + 120.0, map_size.y / 2.0 - 120.0)),
+			"size": rng.randf_range(5.0, 10.0),
 			"hue": rng.randf(),
+			"petals": rng.randi_range(5, 7),
 		})
 	_bg_gears = [
 		{"pos": Vector2(-880, -480), "r": 150.0, "speed": 0.2, "teeth": 10},
@@ -47,167 +48,188 @@ func _ready() -> void:
 		{"pos": Vector2(-860, 500), "r": 120.0, "speed": -0.25, "teeth": 9},
 		{"pos": Vector2(0, 0), "r": 260.0, "speed": 0.06, "teeth": 16},
 	]
-
-
-func _build_walls() -> void:
-	var half := SIZE / 2.0
-	var t := WALL_THICKNESS
-	var wall_rects := [
-		Rect2(Vector2(-half.x - t, -half.y - t), Vector2(SIZE.x + t * 2.0, t)),
-		Rect2(Vector2(-half.x - t, half.y), Vector2(SIZE.x + t * 2.0, t)),
-		Rect2(Vector2(-half.x - t, -half.y), Vector2(t, SIZE.y)),
-		Rect2(Vector2(half.x, -half.y), Vector2(t, SIZE.y)),
+	# Pensasaidat kehystävät reunoja (puutarhan identiteetti)
+	_hedges = [
+		Rect2(Vector2(-980, -660), Vector2(360, 70)),
+		Rect2(Vector2(620, -660), Vector2(360, 70)),
+		Rect2(Vector2(-980, 590), Vector2(360, 70)),
+		Rect2(Vector2(620, 590), Vector2(360, 70)),
+		Rect2(Vector2(-1140, -180), Vector2(70, 360)),
+		Rect2(Vector2(1070, -180), Vector2(70, 360)),
 	]
-	for r in wall_rects:
-		var body := StaticBody2D.new()
-		body.collision_layer = 1
-		body.collision_mask = 0
-		var shape := CollisionShape2D.new()
-		var rect_shape := RectangleShape2D.new()
-		rect_shape.size = r.size
-		shape.shape = rect_shape
-		shape.position = r.position + r.size / 2.0
-		body.add_child(shape)
-		add_child(body)
-	for pillar in pillars:
-		var body := StaticBody2D.new()
-		body.collision_layer = 1
-		body.collision_mask = 0
-		body.position = pillar.pos
-		var shape := CollisionShape2D.new()
-		var circle := CircleShape2D.new()
-		circle.radius = pillar.radius
-		shape.shape = circle
-		body.add_child(shape)
-		add_child(body)
-
-
-func _process(delta: float) -> void:
-	_time += delta
-	queue_redraw()
-
-
-# --- Pelilogiikan rajapinta ---
-
-func spawn_point(team: int, index: int) -> Vector2:
-	var x := -SIZE.x / 2.0 + 170.0 if team == 0 else SIZE.x / 2.0 - 170.0
-	var slot := index % 4
-	var y := -240.0 + slot * 160.0
-	return Vector2(x, y)
-
-
-func relic_home() -> Vector2:
-	return Vector2.ZERO
-
-
-func conveyor_push(pos: Vector2) -> Vector2:
-	for belt in belts:
-		if belt.rect.has_point(pos):
-			return belt.dir * BELT_PUSH
-	return Vector2.ZERO
-
-
-func clamp_to_field(pos: Vector2, margin := 40.0) -> Vector2:
-	var half := SIZE / 2.0
-	var p := Vector2(
-		clampf(pos.x, -half.x + margin, half.x - margin),
-		clampf(pos.y, -half.y + margin, half.y - margin))
-	# Ei pilarien sisään
-	for pillar in pillars:
-		var diff: Vector2 = p - pillar.pos
-		if diff.length() < pillar.radius + margin:
-			p = pillar.pos + diff.normalized() * (pillar.radius + margin)
-	return p
-
-
-func random_point(margin := 140.0) -> Vector2:
-	return clamp_to_field(Vector2(
-		randf_range(-SIZE.x / 2.0, SIZE.x / 2.0),
-		randf_range(-SIZE.y / 2.0, SIZE.y / 2.0)), margin)
 
 
 # --- Piirto ---
 
 func _draw() -> void:
-	var half := SIZE / 2.0
+	var half := map_size / 2.0
 
-	# Pohja: tumma gradientti keskeltä vaaleampi
-	draw_rect(Rect2(-half - Vector2(400, 400), SIZE + Vector2(800, 800)), Palette.BG_DARK)
-	draw_rect(Rect2(-half, SIZE), Palette.BG_MID)
-	draw_circle(Vector2.ZERO, 560.0, Palette.with_alpha(Palette.BG_LIGHT, 0.5))
-	draw_circle(Vector2.ZERO, 360.0, Palette.with_alpha(Palette.BG_LIGHT, 0.55))
+	# Pohja reunan yli (ettei laidoille jää tyhjää)
+	draw_rect(Rect2(-half - Vector2(500, 500), map_size + Vector2(1000, 1000)), Palette.BG_DARK)
 
-	# Hienovarainen pisteruudukko
-	for gx in range(-5, 6):
-		for gy in range(-3, 4):
-			draw_circle(Vector2(gx * 220.0, gy * 220.0), 3.0, Color(1, 1, 1, 0.05))
+	_draw_floor(half)
 
-	# Taustarattaat (isot, himmeät, pyörivät)
+	# Taustarattaat (himmeät, syvyyttä)
 	for gear in _bg_gears:
 		_draw_gear(gear.pos, gear.r, _time * gear.speed, gear.teeth,
-			Palette.with_alpha(Palette.BG_LIGHT, 0.35),
-			Palette.with_alpha(Palette.BG_DARK, 0.4))
+			Palette.with_alpha(FLOOR_LIGHT, 0.5),
+			Palette.with_alpha(Palette.BG_DARK, 0.5),
+			Palette.with_alpha(BRASS, 0.2))
 
-	# Puutarhaläikät ja kukat
+	_draw_team_bases(half)
+	_draw_hedges()
+	_draw_flowers()
+	_draw_belts()
+	_draw_pillars()
+	_draw_center_pad()
+
+	_draw_motes(34, Color("ffe9a8"), 18.0, 4242)
+	_draw_vignette()
+	_draw_walls_frame(Color("6f9ad6"))
+
+
+func _draw_floor(half: Vector2) -> void:
+	draw_rect(Rect2(-half, map_size), FLOOR_BASE)
+	# Suuri lämmin valokeila keskelle -> ei synkkä
+	for i in range(6):
+		var r := 720.0 - i * 110.0
+		var a := 0.06 + i * 0.03
+		draw_circle(Vector2.ZERO, r, Palette.with_alpha(FLOOR_LIGHT, a))
+	# Lattialaatat saumoineen
+	var tile := 200.0
+	var cols := int(map_size.x / tile)
+	var rows := int(map_size.y / tile)
+	for gx in range(cols + 1):
+		for gy in range(rows + 1):
+			var p := Vector2(-half.x + gx * tile, -half.y + gy * tile)
+			if (gx + gy) % 2 == 0:
+				draw_rect(Rect2(p, Vector2(tile, tile)), Palette.with_alpha(FLOOR_LIGHT, 0.10))
+	for gx in range(cols + 1):
+		var x := -half.x + gx * tile
+		draw_line(Vector2(x, -half.y), Vector2(x, half.y), Palette.with_alpha(FLOOR_SEAM, 0.10), 1.5)
+	for gy in range(rows + 1):
+		var y := -half.y + gy * tile
+		draw_line(Vector2(-half.x, y), Vector2(half.x, y), Palette.with_alpha(FLOOR_SEAM, 0.10), 1.5)
+
+
+func _draw_team_bases(half: Vector2) -> void:
+	for team in [0, 1]:
+		var cx := -half.x + 210.0 if team == 0 else half.x - 210.0
+		var color := Palette.team(team)
+		var center := Vector2(cx, 0)
+		# Valaistu tukikohtalattia
+		draw_circle(center, 250.0, Palette.with_alpha(color, 0.10))
+		draw_circle(center, 200.0, Palette.with_alpha(color, 0.08))
+		draw_arc(center, 240.0, 0.0, TAU, 48, Palette.with_alpha(color, 0.4), 4.0)
+		# Nuolikuvio joukkueen väristä osoittaa keskelle
+		var dir := 1.0 if team == 0 else -1.0
+		for i in range(3):
+			var ax := cx + dir * (90.0 + i * 40.0)
+			draw_colored_polygon(PackedVector2Array([
+				Vector2(ax, -26), Vector2(ax + dir * 26.0, 0), Vector2(ax, 26)]),
+				Palette.with_alpha(color, 0.22))
+
+
+func _draw_hedges() -> void:
+	for rect in _hedges:
+		# Varjo
+		draw_rect(Rect2(rect.position + Vector2(4, 6), rect.size), Palette.with_alpha(Color.BLACK, 0.25))
+		# Pensas
+		_rounded_rect(rect, HEDGE_DARK, 14.0)
+		_rounded_rect(Rect2(rect.position + Vector2(3, 3), rect.size - Vector2(6, 10)), HEDGE, 12.0)
+		# Nukkapinta pikkupalloilla
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(rect.position.x * 13.0 + rect.position.y)
+		var hrect: Rect2 = rect
+		var count := int(hrect.size.x * hrect.size.y / 1400.0)
+		for i in range(count):
+			var p: Vector2 = hrect.position + Vector2(
+				rng.randf_range(6, hrect.size.x - 6), rng.randf_range(4, hrect.size.y - 8))
+			draw_circle(p, rng.randf_range(4, 7), Palette.with_alpha(Color("54924f"), 0.6))
+
+
+func _draw_flowers() -> void:
 	for flower in _flowers:
-		var c := Color.from_hsv(0.25 + flower.hue * 0.15, 0.5, 0.75, 0.5)
-		draw_circle(flower.pos, flower.size * 2.6, Palette.with_alpha(c, 0.10))
-		draw_circle(flower.pos, flower.size, c)
-		draw_circle(flower.pos, flower.size * 0.4, Color(1.0, 0.95, 0.7, 0.9))
+		var base := Color.from_hsv(fmod(0.05 + flower.hue * 0.9, 1.0), 0.65, 0.95)
+		var sway := sin(_time * 1.5 + flower.hue * TAU) * 2.0
+		var pos: Vector2 = flower.pos + Vector2(sway, 0)
+		draw_circle(pos, flower.size * 2.4, Palette.with_alpha(base, 0.08))
+		var petals: int = int(flower.petals)
+		var fsize: float = flower.size
+		for p in range(petals):
+			var ang: float = TAU * p / float(petals) + _time * 0.2
+			var petal: Vector2 = pos + Vector2(cos(ang), sin(ang)) * fsize * 0.9
+			draw_circle(petal, fsize * 0.6, base)
+		draw_circle(pos, flower.size * 0.55, Color("ffe08a"))
 
-	# Kuljetinhihnat animoiduilla nuoliraidoilla
+
+func _draw_belts() -> void:
 	for belt in belts:
 		var rect: Rect2 = belt.rect
-		draw_rect(rect, Color(0.09, 0.11, 0.2, 0.9))
-		draw_rect(rect, Color(0.35, 0.42, 0.6, 0.5), false, 3.0)
+		# Metallinen alusta
+		_rounded_rect(rect, Color("2a3346"), 10.0)
+		_rounded_rect(Rect2(rect.position + Vector2(0, 4), Vector2(rect.size.x, rect.size.y - 12)),
+			Color("39435c"), 8.0)
+		draw_rect(rect, Palette.with_alpha(BRASS, 0.45), false, 3.0)
+		# Liikkuvat chevron-nuolet
 		var dir: Vector2 = belt.dir
 		var scroll := fmod(_time * 90.0, 90.0)
 		var count := int(rect.size.x / 90.0)
+		var cy := rect.position.y + rect.size.y / 2.0
 		for i in range(count + 1):
 			var base_x: float = rect.position.x + fmod(scroll + i * 90.0, rect.size.x + 90.0) - 45.0
-			if base_x < rect.position.x or base_x > rect.end.x - 30.0:
+			if base_x < rect.position.x + 10.0 or base_x > rect.end.x - 30.0:
 				continue
-			var cy := rect.position.y + rect.size.y / 2.0
-			var tip := Vector2(base_x + (24.0 if dir.x > 0.0 else 6.0), cy)
-			var tail := Vector2(base_x + (6.0 if dir.x > 0.0 else 24.0), cy)
-			draw_line(Vector2(tail.x, cy - 18.0), tip, Color(0.5, 0.62, 0.9, 0.5), 4.0)
-			draw_line(Vector2(tail.x, cy + 18.0), tip, Color(0.5, 0.62, 0.9, 0.5), 4.0)
+			var tip := Vector2(base_x + (26.0 if dir.x > 0.0 else 6.0), cy)
+			var tail := Vector2(base_x + (6.0 if dir.x > 0.0 else 26.0), cy)
+			draw_line(Vector2(tail.x, cy - 20.0), tip, Palette.with_alpha(BRASS, 0.85), 5.0)
+			draw_line(Vector2(tail.x, cy + 20.0), tip, Palette.with_alpha(BRASS, 0.85), 5.0)
+		# Reunatelojen niitit
+		for rivet_x in range(int(rect.position.x) + 20, int(rect.end.x), 60):
+			draw_circle(Vector2(rivet_x, rect.position.y + 8.0), 3.0, Palette.with_alpha(BRASS, 0.5))
+			draw_circle(Vector2(rivet_x, rect.end.y - 8.0), 3.0, Palette.with_alpha(BRASS, 0.5))
 
-	# Estepilarit kirkkaina hammasrattaina
+
+func _draw_pillars() -> void:
 	for i in range(pillars.size()):
 		var pillar = pillars[i]
 		var spin: float = _time * (0.4 if i % 2 == 0 else -0.4)
-		_draw_gear(pillar.pos, pillar.radius, spin, 9,
-			Color("3d5a80"), Color("2b3f5c"))
-		draw_circle(pillar.pos, pillar.radius * 0.35, Color("22334f"))
-		draw_circle(pillar.pos, pillar.radius * 0.18, Color("4a6da0"))
-
-	# Keskusaukio reliikille
-	draw_arc(Vector2.ZERO, 130.0, 0.0, TAU, 64, Palette.with_alpha(Palette.GOLD, 0.30), 4.0)
-	draw_arc(Vector2.ZERO, 118.0, 0.0, TAU, 64, Palette.with_alpha(Palette.GOLD, 0.15), 2.0)
-
-	# Reunaseinät: paksu tumma reunus ja hehkuva sisäreuna
-	var t := WALL_THICKNESS
-	draw_rect(Rect2(Vector2(-half.x - t, -half.y - t), Vector2(SIZE.x + t * 2.0, t)), Color("0b1122"))
-	draw_rect(Rect2(Vector2(-half.x - t, half.y), Vector2(SIZE.x + t * 2.0, t)), Color("0b1122"))
-	draw_rect(Rect2(Vector2(-half.x - t, -half.y), Vector2(t, SIZE.y)), Color("0b1122"))
-	draw_rect(Rect2(Vector2(half.x, -half.y), Vector2(t, SIZE.y)), Color("0b1122"))
-	draw_rect(Rect2(-half, SIZE), Palette.with_alpha(Color("5a7ec9"), 0.55), false, 4.0)
-
-	# Joukkueiden kotipesien hehkut
-	draw_circle(Vector2(-half.x + 150.0, 0), 190.0, Palette.with_alpha(Palette.TEAM_BLUE, 0.07))
-	draw_circle(Vector2(half.x - 150.0, 0), 190.0, Palette.with_alpha(Palette.TEAM_ORANGE, 0.07))
+		# Varjo
+		draw_circle(pillar.pos + Vector2(0, 10), pillar.radius, Palette.with_alpha(Color.BLACK, 0.25))
+		# Messinkiratas kiillolla
+		_draw_gear(pillar.pos, pillar.radius, spin, 9, BRASS, BRASS_DARK,
+			Palette.glow(Color("ffe6b0"), 1.2))
+		draw_circle(pillar.pos, pillar.radius * 0.35, Color("5b4420"))
+		draw_circle(pillar.pos, pillar.radius * 0.16, BRASS)
+		# Kolme pulttia napaan
+		for b in range(3):
+			var ang := spin * 0.5 + TAU * b / 3.0
+			draw_circle(pillar.pos + Vector2(cos(ang), sin(ang)) * pillar.radius * 0.24, 4.0,
+				Color("3a2c12"))
 
 
-func _draw_gear(pos: Vector2, r: float, angle: float, teeth: int,
-		main: Color, dark: Color) -> void:
-	var pts := PackedVector2Array()
-	var steps := teeth * 4
-	for i in range(steps):
-		var a: float = angle + TAU * i / steps
-		var phase := i % 4
-		var rr: float = r if phase < 2 else r * 0.82
-		pts.append(pos + Vector2(cos(a), sin(a)) * rr)
-	draw_colored_polygon(pts, main)
-	draw_circle(pos, r * 0.55, dark)
-	draw_circle(pos, r * 0.2, main)
+func _draw_center_pad() -> void:
+	var pulse := 0.5 + 0.5 * sin(_time * 2.0)
+	# Kuusikulmainen kohdealusta
+	var hex := PackedVector2Array()
+	for i in range(6):
+		hex.append(Vector2.RIGHT.rotated(TAU * i / 6.0 + PI / 6.0) * 140.0)
+	draw_colored_polygon(hex, Palette.with_alpha(Palette.GOLD, 0.08))
+	draw_polyline(hex + PackedVector2Array([hex[0]]),
+		Palette.with_alpha(Palette.GOLD, 0.35 + pulse * 0.2), 3.0)
+	draw_arc(Vector2.ZERO, 120.0, 0.0, TAU, 64, Palette.with_alpha(Palette.GOLD, 0.30), 3.0)
+	# Kiertävät merkit
+	for i in range(6):
+		var ang := _time * 0.4 + TAU * i / 6.0
+		draw_circle(Vector2(cos(ang), sin(ang)) * 110.0, 4.0,
+			Palette.with_alpha(Palette.GOLD, 0.4))
+
+
+func _rounded_rect(rect: Rect2, color: Color, radius: float) -> void:
+	var r: float = minf(radius, minf(rect.size.x, rect.size.y) / 2.0)
+	draw_rect(Rect2(rect.position + Vector2(r, 0), rect.size - Vector2(r * 2.0, 0)), color)
+	draw_rect(Rect2(rect.position + Vector2(0, r), rect.size - Vector2(0, r * 2.0)), color)
+	draw_circle(rect.position + Vector2(r, r), r, color)
+	draw_circle(rect.position + Vector2(rect.size.x - r, r), r, color)
+	draw_circle(rect.position + Vector2(r, rect.size.y - r), r, color)
+	draw_circle(rect.position + Vector2(rect.size.x - r, rect.size.y - r), r, color)

@@ -16,7 +16,7 @@ var time_left := ROUND_TIME
 var relic_points := [0.0, 0.0]
 var sudden_death := false
 
-var map: MapGear = null
+var map: MapBase = null
 var relic: Relic = null
 var camera: GameCamera = null
 var hud = null                    # HudLayer
@@ -31,7 +31,7 @@ var _pause_layer: CanvasLayer = null
 
 
 func _ready() -> void:
-	map = MapGear.new()
+	map = _make_map()
 	add_child(map)
 
 	relic = Relic.new()
@@ -57,10 +57,11 @@ func _ready() -> void:
 	camera = GameCamera.new()
 	camera.arena = self
 	# Kamera ei koskaan näytä areenan ulkopuolista tyhjää.
-	camera.limit_left = int(-MapGear.SIZE.x / 2.0 - MapGear.WALL_THICKNESS)
-	camera.limit_right = int(MapGear.SIZE.x / 2.0 + MapGear.WALL_THICKNESS)
-	camera.limit_top = int(-MapGear.SIZE.y / 2.0 - MapGear.WALL_THICKNESS)
-	camera.limit_bottom = int(MapGear.SIZE.y / 2.0 + MapGear.WALL_THICKNESS)
+	var map_half: Vector2 = map.size() / 2.0
+	camera.limit_left = int(-map_half.x - MapBase.WALL_THICKNESS)
+	camera.limit_right = int(map_half.x + MapBase.WALL_THICKNESS)
+	camera.limit_top = int(-map_half.y - MapBase.WALL_THICKNESS)
+	camera.limit_bottom = int(map_half.y + MapBase.WALL_THICKNESS)
 	add_child(camera)
 
 	hud = HudLayer.new()
@@ -68,6 +69,14 @@ func _ready() -> void:
 	add_child(hud)
 
 	_start_round_intro()
+
+
+func _make_map() -> MapBase:
+	match Game.map_id:
+		"moonstone":
+			return MapMoon.new()
+		_:
+			return MapGear.new()
 
 
 func _make_hero(id: String) -> Hero:

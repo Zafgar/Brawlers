@@ -49,8 +49,10 @@ lobbyssa painamalla X.
   Luma ja Maestro (tuet), Blink ja Shade (assassinit), Bramble ja Tide
   (fighterit) sekä Quill ja Scout (rangerit). Jokaisella perushyökkäys,
   kaksi kykyä, väistö, ultimate ja passiivi.
-- **Geargarden**-kenttä: pyöriviä hammasrattaita, pelaajia työntäviä
-  kuljetinhihnoja ja estepilareita.
+- **Kaksi kenttää**: *Geargarden* (mekaaninen puutarha: messinkirattaita,
+  pensasaitoja ja pelaajia työntäviä kuljetinhihnoja) ja *Moonstone Ruins*
+  (taianomaiset rauniot: hohtavat kristallit jotka reagoivat lähelläoloon,
+  riimuympyrät ja ajoittain avautuvat portit sivukäytävillä).
 - **Botit** kolmella vaikeustasolla. Taso muuttaa vain reaktioita,
   tarkkuutta, ennakointia ja väistämistä — ei voimaa. Botit jakavat
   joukkueen tilannekuvan: ne hakevat reliikkiä, saattavat kantajaa,
@@ -85,7 +87,9 @@ src/
 │   └── zone.gd              # Aluevaikutukset (tuli, hoito, piikit, kupoli)
 ├── arena/
 │   ├── arena.gd             # Ottelun kapellimestari: erät, pisteet, pause
-│   ├── map_gear.gd          # Geargarden: geometria, piirto, hihnat
+│   ├── map_base.gd          # Karttojen yhteinen pohja: seinät, spawnit, apurit
+│   ├── map_gear.gd          # Geargarden: mekaaninen puutarha
+│   ├── map_moon.gd          # Moonstone Ruins: kristallirauniot ja portit
 │   ├── relic.gd             # Reliikki ja kantologiikka
 │   └── game_camera.gd       # Kaikki pelaajat rajaava kamera + tärinä
 ├── ai/
@@ -118,6 +122,6 @@ Speksi harkitsi 2D:tä ja 3D:tä. Valinta on tietoisesti **2D + 2.5D-vaikutelma*
 ## Jatkosuunnitelma (speksin mukaan)
 
 - Loput pelimuodot: Shard Rush, Zone Shift, Core Clash
-- Kentät: Moonstone Ruins, Splashport
+- Kolmas kenttä: Splashport
 - Sankarimäärän kasvatus kahdestatoista kahteenkymmeneen
 - Verkkopeli / Steam Remote Play -tuki

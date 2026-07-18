@@ -6,6 +6,13 @@ extends Control
 
 var _desc_label: Label = null
 
+const MAP_IDS := ["geargarden", "moonstone"]
+const MAP_NAMES := ["Geargarden", "Moonstone Ruins"]
+const MAP_DESC := {
+	"geargarden": "Geargarden: mekaaninen puutarha, jossa on kuljetinhihnoja ja pyöriviä rattaita.",
+	"moonstone": "Moonstone Ruins: taianomaiset rauniot, hohtavat kristallit ja ajoittain avautuvat portit.",
+}
+
 const DESCRIPTIONS := {
 	"size": "Montako pelaajaa kummassakin joukkueessa. Tyhjät paikat täytetään boteilla.",
 	"rounds": "Paras kolmesta = kaksi erävoittoa, paras viidestä = kolme.",
@@ -49,9 +56,17 @@ func _ready() -> void:
 	mode_row.desc_key = "mode"
 	_add_row(box, mode_row)
 
-	var map_row := OptionRow.new("Kenttä", ["Geargarden  (lisää tulossa)"], 0, Callable())
-	map_row.locked = true
-	map_row.desc_key = "map"
+	var map_start: int = maxi(MAP_IDS.find(Game.map_id), 0)
+	var map_row := OptionRow.new("Kenttä", MAP_NAMES, map_start,
+		func(i):
+			Game.map_id = MAP_IDS[i]
+			if _desc_label != null:
+				_desc_label.text = MAP_DESC[Game.map_id])
+	# desc_key jätetään tyhjäksi -> _add_row ei liitä yleiskäsittelijää;
+	# kenttärivi näyttää valitun kartan oman kuvauksen.
+	map_row.focus_entered.connect(func():
+		if _desc_label != null:
+			_desc_label.text = MAP_DESC[Game.map_id])
 	_add_row(box, map_row)
 
 	box.add_child(UiKit.spacer(6))
@@ -75,9 +90,10 @@ func _ready() -> void:
 func _add_row(parent: Control, row: OptionRow) -> void:
 	row.custom_minimum_size = Vector2(760, 0)
 	parent.add_child(row)
-	row.focus_entered.connect(func():
-		if _desc_label != null:
-			_desc_label.text = DESCRIPTIONS.get(row.desc_key, ""))
+	if row.desc_key != "":
+		row.focus_entered.connect(func():
+			if _desc_label != null:
+				_desc_label.text = DESCRIPTIONS.get(row.desc_key, ""))
 
 
 func _unhandled_input(event: InputEvent) -> void:
