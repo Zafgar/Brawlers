@@ -134,6 +134,8 @@ func _make_hero(id: String) -> Hero:
 			return Maestro.new()
 		"prism":
 			return Prism.new()
+		"rift":
+			return Rift.new()
 	return Hero.new()
 
 

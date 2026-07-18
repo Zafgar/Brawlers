@@ -107,6 +107,13 @@ var _beam_active := false
 var _beam_len := 0.0
 var _beam_heal := false
 
+# Void-assassin (Rift): pinot tähän sankariin ja ajanpysäytys. void_stacker on
+# assassiini joka pinoja asetti (räjäytyksen palkinnot menevät sille).
+var void_stacks := 0
+var void_stack_timer := 0.0
+var void_stacker: Hero = null
+var frozen := 0.0                  # ajanpysäytys: > 0 = ei voi liikkua/toimia
+
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	arena = p_arena
@@ -170,6 +177,18 @@ func _physics_process(delta: float) -> void:
 		respawn_timer -= delta
 		if respawn_timer <= 0.0:
 			_respawn()
+		return
+
+	# Ajanpysäytys (Riftin ulti): jäätynyt sankari ei liiku eikä toimi, eivätkä
+	# sen ajastimet kulu (aika pysähtynyt). Vain jäätymisajastin vähenee.
+	if frozen > 0.0:
+		frozen -= delta
+		velocity = Vector2.ZERO
+		_aim_active = false
+		_aiming_slot = ""
+		_channel_slot = ""
+		_beam_active = false
+		_ult_holding = false
 		return
 
 	controller.update(self, delta)
@@ -276,6 +295,10 @@ func _tick_status(delta: float) -> void:
 		shield_hp = 0.0
 	blue_buff = maxf(blue_buff - delta, 0.0)
 	red_buff = maxf(red_buff - delta, 0.0)
+	void_stack_timer = maxf(void_stack_timer - delta, 0.0)
+	if void_stack_timer <= 0.0 and void_stacks > 0:
+		void_stacks = 0
+		void_stacker = null
 
 
 ## Lukee ohjaimen kykypainallukset puskuriin ja vanhentaa vanhat painallukset.
@@ -425,6 +448,26 @@ func apply_field_buff(t: String, dur: float) -> void:
 		if arena != null:
 			arena.popup(global_position + Vector2(0, -82), "PUNAINEN BUFFI!", Color("ff7a6a"), 20)
 	AudioMgr.play("blessing", 0.05)
+
+
+## Void-pino (Riftin perushyökkäys) — enintään 5 kohdetta kohti.
+func add_void_stack(source: Hero) -> void:
+	void_stacks = mini(void_stacks + 1, 5)
+	void_stack_timer = 6.0
+	void_stacker = source
+
+
+## Nollaa ja palauttaa pinojen määrän (Riftin räjäytys kuluttaa ne).
+func consume_void_stacks() -> int:
+	var n := void_stacks
+	void_stacks = 0
+	void_stack_timer = 0.0
+	void_stacker = null
+	return n
+
+
+func apply_freeze(dur: float) -> void:
+	frozen = maxf(frozen, dur)
 
 
 ## Kanavoitavat kykypaikat (pito ylläpitää). Oletuksena ei mitään.
@@ -672,6 +715,10 @@ func _knockout(source: Hero) -> void:
 	_beam_active = false
 	blue_buff = 0.0           # tyrmäys rikkoo kantajan buffit (vihollisen "murskaus")
 	red_buff = 0.0
+	void_stacks = 0
+	void_stack_timer = 0.0
+	void_stacker = null
+	frozen = 0.0
 	respawn_timer = RESPAWN_TIME
 	profile.stats.deaths += 1
 	velocity = Vector2.ZERO
@@ -736,6 +783,10 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	_reset_resource()
 	blue_buff = 0.0
 	red_buff = 0.0
+	void_stacks = 0
+	void_stack_timer = 0.0
+	void_stacker = null
+	frozen = 0.0
 	hp = max_hp
 	shield_hp = 0.0
 	carrying = false

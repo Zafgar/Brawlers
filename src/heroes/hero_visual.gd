@@ -94,6 +94,8 @@ func _draw() -> void:
 			_paint_maestro(c1, c2)
 		"prism":
 			_paint_prism(c1, c2)
+		"rift":
+			_paint_rift(c1, c2)
 		_:
 			_paint_generic(c1, c2)
 
@@ -208,6 +210,23 @@ func _draw_status(bob: float) -> void:
 			mark_center + Vector2(0, -7) * mark_pulse, mark_center + Vector2(6, 0) * mark_pulse,
 			mark_center + Vector2(0, 7) * mark_pulse, mark_center + Vector2(-6, 0) * mark_pulse])
 		draw_colored_polygon(mark, Palette.glow(Palette.GOLD, 1.7))
+
+	# Void-pinot (Riftin) pieninä timantteina HP-palkin yllä
+	if hero.void_stacks > 0:
+		var vcol := Color("b48aff")
+		var n: int = hero.void_stacks
+		for i in range(n):
+			var px: float = -((n - 1) * 7.0) / 2.0 + i * 7.0
+			var pc: Vector2 = top + Vector2(px, -13.0)
+			draw_colored_polygon(PackedVector2Array([
+				pc + Vector2(0, -3.5), pc + Vector2(3, 0), pc + Vector2(0, 3.5), pc + Vector2(-3, 0)]),
+				Palette.glow(vcol, 1.6))
+
+	# Ajanpysäytys: void-jäätymisverho sankarin päälle
+	if hero.frozen > 0.0:
+		draw_circle(Vector2(0, -8), hero.radius + 5.0, Palette.with_alpha(Color("6a4a9c"), 0.35))
+		draw_arc(Vector2(0, -8), hero.radius + 9.0, 0.0, TAU, 26,
+			Palette.with_alpha(Palette.glow(Color("b48aff"), 1.4), 0.55), 2.5)
 
 	if hero.root_timer > 0.0:
 		for i in range(3):
@@ -452,6 +471,36 @@ func _paint_prism(c1: Color, c2: Color) -> void:
 	draw_polyline(tri + PackedVector2Array([tri[0]]), Palette.glow(Color.WHITE, 1.4), 2.0)
 	draw_circle(crystal, 3.0, Palette.glow(Color.WHITE, 1.6))
 	draw_circle(crystal + hero.aim * 8.0, 4.0, Palette.with_alpha(Palette.glow(c1, 1.6), 0.7))
+
+
+func _paint_rift(c1: Color, c2: Color) -> void:
+	# Jälkikuvavana
+	if _trail.size() > 3:
+		var pts := PackedVector2Array()
+		for i in range(mini(_trail.size(), 7)):
+			pts.append(to_local(_trail[i]) + Vector2(0, -16))
+		draw_polyline(pts, Palette.with_alpha(Palette.glow(c1, 1.2), 0.25), 5.0)
+
+	# Tyhjyyshiukkaset kiertävät
+	for i in range(4):
+		var ang := _time * 2.2 + TAU * i / 4.0
+		var wisp := Vector2(cos(ang), sin(ang) * 0.6) * 24.0 + Vector2(0, -6)
+		draw_circle(wisp, 2.6, Palette.glow(c1, 1.5))
+
+	_body_base(Vector2.ZERO, 16.0, c1, c2)
+	# Huppu (tumma kolmio pään päällä)
+	var hood := PackedVector2Array([Vector2(-11, -8), Vector2(0, -24), Vector2(11, -8)])
+	draw_colored_polygon(hood, Palette.darker(c2, 0.6))
+	_eyes(Vector2(0, -6), 6.0)
+
+	# Tyhjyyden tikari tähtäyssuuntaan
+	var a: float = hero.aim.angle() - _attack_anim * 0.8
+	var hilt: Vector2 = Vector2.RIGHT.rotated(a) * 16.0
+	var tip: Vector2 = Vector2.RIGHT.rotated(a) * 34.0
+	_hold(hilt, c1, 16.0)
+	draw_line(hilt, tip, Palette.glow(c1, 1.5), 4.0)
+	draw_line(hilt, tip, Palette.glow(Color.WHITE, 1.3), 1.5)
+	draw_circle(tip, 3.0, Palette.glow(c1, 1.7))
 
 
 func _paint_blink(c1: Color, c2: Color) -> void:

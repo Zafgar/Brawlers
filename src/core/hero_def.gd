@@ -6,7 +6,7 @@ class_name HeroDef
 const ORDER := [
 	"bastion", "ember", "luma", "blink", "bramble", "quill",
 	"boulder", "volt", "maestro", "shade", "tide", "scout",
-	"prism",
+	"prism", "rift",
 ]
 
 const HEROES := {
@@ -255,6 +255,25 @@ const HEROES := {
 			"a2": {"name": "Hoitosäde", "desc": "Pidä pohjassa: jatkuva säde joka parantaa liittolaisia. Kuluttaa manaa.", "cd": 0.0},
 			"dodge": {"name": "Valonpyrähdys", "desc": "Nopea väistöliuku.", "cd": 3.5},
 			"ult": {"name": "Loistokehä", "desc": "Pidä pohjassa nähdäksesi alue, vapauta: sisällä olevat liittolaiset saavat lisää vahinkoa ja vauhtia.", "cd": 0.0},
+		},
+	},
+	"rift": {
+		"name": "Rift",
+		"role": "Assassin",
+		"difficulty": 3,
+		"hp": 155.0,
+		"speed": 355.0,
+		"ratings": {"kesto": 1, "liike": 5, "vahinko": 5, "tuki": 1},
+		"weapon": "Tyhjyyden tikari",
+		"desc": "Tyhjyyden salamurhaaja. Perusiskut kasaavat pinoja, jotka räjäytetään; merkitse ja varppaa kohteelle; ultti pysäyttää ajan ympäriltä.",
+		"color": Color("9d4edd"),
+		"color_b": Color("3a0e5c"),
+		"abilities": {
+			"basic": {"name": "Tyhjyysviilto", "desc": "Melee-viilto joka kasaa pinon kohteeseen (enintään 5).", "cd": 0.32},
+			"a1": {"name": "Merkkiheitto", "desc": "Heittää merkin; jos se osuu (oma tai vihollinen), paina uudelleen varpataksesi kohteelle.", "cd": 8.0},
+			"a2": {"name": "Räjäytys", "desc": "Melee-isku joka räjäyttää kohteen pinot: enemmän pinoja = enemmän vahinkoa. Täydet 5 pinoa nollaa jäähdytyksen.", "cd": 6.0},
+			"dodge": {"name": "Varjoloikka", "desc": "Nopea tyhjyysloikka.", "cd": 3.0},
+			"ult": {"name": "Ajanpysäytys", "desc": "Pysäyttää ajan ympärillä: kaikki muut (myös omat) jäätyvät hetkeksi, sinä liikut ja toimit vapaasti.", "cd": 0.0},
 		},
 	},
 }
