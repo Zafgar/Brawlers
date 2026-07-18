@@ -95,6 +95,11 @@ var res_cost := {"basic": 0.0, "a1": 0.0, "a2": 0.0, "dodge": 0.0}
 var _channel_slot := ""            # kanavoitava kyky pohjassa (esim. kilpi)
 var _rage_idle := 0.0              # aika viime taistelutoiminnasta (rage-vaimeneminen)
 
+# Kenttäbuffit (blue/red). blue = resurssin nopea palautuminen, red = +vahinko
+# ja elämän palautuminen. Aika jäljellä sekunneissa.
+var blue_buff := 0.0
+var red_buff := 0.0
+
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	arena = p_arena
@@ -226,6 +231,8 @@ func _physics_process(delta: float) -> void:
 	since_damage += delta
 	if since_damage > REGEN_DELAY and hp < max_hp:
 		hp = minf(hp + REGEN_PER_SEC * delta, max_hp)
+	if red_buff > 0.0 and hp < max_hp:
+		hp = minf(hp + 11.0 * delta, max_hp)   # punainen buffi: elämän palautuminen
 
 	# Latautumiset
 	for slot in cd:
@@ -251,6 +258,8 @@ func _tick_status(delta: float) -> void:
 	shield_timer -= delta
 	if shield_timer <= 0.0:
 		shield_hp = 0.0
+	blue_buff = maxf(blue_buff - delta, 0.0)
+	red_buff = maxf(red_buff - delta, 0.0)
 
 
 ## Lukee ohjaimen kykypainallukset puskuriin ja vanhentaa vanhat painallukset.
@@ -343,12 +352,13 @@ func _setup_resource() -> void:
 
 
 func _tick_resource(delta: float) -> void:
+	var boost := 3.0 if blue_buff > 0.0 else 1.0   # sininen buffi: nopea palautuminen
 	if res_type == "mana":
-		res = minf(res + res_regen * delta, res_max)
+		res = minf(res + res_regen * boost * delta, res_max)
 	elif res_type == "energy":
 		# Energia ei palaudu kanavoinnin aikana (kilpi kuluttaa sitä).
 		if _channel_slot == "":
-			res = minf(res + res_regen * delta, res_max)
+			res = minf(res + res_regen * boost * delta, res_max)
 	elif res_type == "rage":
 		_rage_idle += delta
 		if _rage_idle > 3.5:
@@ -381,9 +391,24 @@ func _spend(slot: String) -> void:
 func gain_res(amount: float) -> void:
 	if res_type == "":
 		return
+	if res_type == "rage" and blue_buff > 0.0:
+		amount *= 1.5          # sininen buffi: raivo kertyy kovempaa
 	res = clampf(res + amount, 0.0, res_max)
 	if res_type == "rage":
 		_rage_idle = 0.0
+
+
+## Kenttäbuffin antaminen (FieldBuff kutsuu murskattaessa).
+func apply_field_buff(t: String, dur: float) -> void:
+	if t == "blue":
+		blue_buff = maxf(blue_buff, dur)
+		if arena != null:
+			arena.popup(global_position + Vector2(0, -82), "SININEN BUFFI!", Color("6aa0ff"), 20)
+	else:
+		red_buff = maxf(red_buff, dur)
+		if arena != null:
+			arena.popup(global_position + Vector2(0, -82), "PUNAINEN BUFFI!", Color("ff7a6a"), 20)
+	AudioMgr.play("blessing", 0.05)
 
 
 ## Kanavoitavat kykypaikat (pito ylläpitää). Oletuksena ei mitään.
@@ -475,6 +500,8 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 	# hyökkääjän aiheuttama vahinko ja kohteen ottama vahinko.
 	if source != null and is_instance_valid(source):
 		amount *= source.dmg_out_mult
+		if source.red_buff > 0.0:
+			amount *= 1.25         # punainen buffi: hyökkääjä tekee enemmän vahinkoa
 	amount *= dmg_in_mult
 
 	# Merkitty kohde (Scoutin vaahtomerkki) ottaa lisävahinkoa kaikilta.
@@ -602,6 +629,9 @@ func _knockout(source: Hero) -> void:
 	alive = false
 	_aiming_slot = ""
 	_aim_active = false
+	_channel_slot = ""
+	blue_buff = 0.0           # tyrmäys rikkoo kantajan buffit (vihollisen "murskaus")
+	red_buff = 0.0
 	respawn_timer = RESPAWN_TIME
 	profile.stats.deaths += 1
 	velocity = Vector2.ZERO
@@ -662,6 +692,8 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	_aiming_slot = ""
 	_aim_active = false
 	_reset_resource()
+	blue_buff = 0.0
+	red_buff = 0.0
 	hp = max_hp
 	shield_hp = 0.0
 	carrying = false

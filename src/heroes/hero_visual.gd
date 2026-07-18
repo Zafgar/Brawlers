@@ -164,6 +164,15 @@ func _res_color(t: String) -> Color:
 
 func _draw_status(bob: float) -> void:
 	var top := Vector2(0, -52.0 - bob)
+	# Kenttäbuffin aura sankarin ympärillä
+	if hero.blue_buff > 0.0 or hero.red_buff > 0.0:
+		var bcol: Color = Color("6aa0ff")
+		if hero.blue_buff > 0.0 and hero.red_buff > 0.0:
+			bcol = Color("c58aff")
+		elif hero.red_buff > 0.0:
+			bcol = Color("ff7a6a")
+		var ap: float = 0.35 + 0.25 * sin(_time * 5.0)
+		draw_arc(Vector2(0, -8), hero.radius + 15.0, 0.0, TAU, 40, Palette.with_alpha(bcol, ap), 3.0)
 	# Pieni kestopalkki pään yläpuolella
 	var w := 46.0
 	var frac: float = clampf(hero.hp / hero.max_hp, 0.0, 1.0)

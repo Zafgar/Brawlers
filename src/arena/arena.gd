@@ -27,6 +27,11 @@ var sudden_death := false
 var _koth_relocate_timer := 0.0
 var _koth_spots: Array = []
 
+# Kenttäbuffit (blue/red) ilmestyvät tasaisin väliajoin molemmille tiimeille.
+const BUFF_INTERVAL := 35.0
+const BUFF_FIRST := 18.0
+var _buff_timer := BUFF_FIRST
+
 var map: MapBase = null
 var relic: Relic = null
 var camera: GameCamera = null
@@ -136,6 +141,12 @@ func _physics_process(delta: float) -> void:
 
 	if state != State.PLAY:
 		return
+
+	# Kenttäbuffit ilmestyvät molemmissa pelimuodoissa.
+	_buff_timer -= delta
+	if _buff_timer <= 0.0:
+		_buff_timer = BUFF_INTERVAL
+		_spawn_buff_wave()
 
 	if mode == "koth":
 		_koth_physics(delta)
@@ -294,6 +305,28 @@ func holder_team() -> int:
 	return -1
 
 
+# --- Kenttäbuffit ---
+
+func _spawn_buff_wave() -> void:
+	var half: Vector2 = map.size() / 2.0
+	var bx := half.x * 0.42
+	var by := half.y * 0.5
+	# Kummallekin tiimille oma blue ja red, peilatusti -> tasapuolinen.
+	_spawn_buff("blue", 0, map.clamp_to_field(Vector2(-bx, -by), 80.0))
+	_spawn_buff("red", 0, map.clamp_to_field(Vector2(-bx, by), 80.0))
+	_spawn_buff("blue", 1, map.clamp_to_field(Vector2(bx, -by), 80.0))
+	_spawn_buff("red", 1, map.clamp_to_field(Vector2(bx, by), 80.0))
+	if hud != null:
+		hud.show_banner("BUFFIT ILMESTYIVÄT", "Murskaa oman tiimisi buffi napataksesi sen", 1.8)
+	AudioMgr.play("ult_ready", 0.05, -5.0)
+
+
+func _spawn_buff(type: String, team: int, pos: Vector2) -> void:
+	var buff := FieldBuff.new()
+	buff.setup(self, type, team, pos)
+	add_child(buff)
+
+
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause") and state == State.PLAY:
 		_toggle_pause()
@@ -308,6 +341,10 @@ func _start_round_intro() -> void:
 	sudden_death = false
 	_sd_hold = 0.0
 	_sd_elapsed = 0.0
+	_buff_timer = BUFF_FIRST
+	for child in get_children():
+		if child is FieldBuff:
+			child.queue_free()
 	relic.reset_to_home()
 	if mode == "koth":
 		relic.control_team = -1
