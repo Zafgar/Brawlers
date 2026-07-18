@@ -96,6 +96,8 @@ func _draw() -> void:
 			_paint_prism(c1, c2)
 		"rift":
 			_paint_rift(c1, c2)
+		"titan":
+			_paint_titan(c1, c2)
 		_:
 			_paint_generic(c1, c2)
 
@@ -614,6 +616,49 @@ func _paint_boulder(c1: Color, c2: Color) -> void:
 	for side in [-1.0, 1.0]:
 		draw_circle(Vector2(18.0 * side, -12), 5.0, Palette.with_alpha(Color("6b8f4e"), 0.8))
 	_eyes(Vector2(0, -6), 8.0, 3.5)
+
+
+func _paint_titan(c1: Color, c2: Color) -> void:
+	# Berserkissä hehkuva raivo-aura (punainen buffi ultin ajaksi).
+	if hero.red_buff > 0.0:
+		for i in range(3):
+			var ra := _time * 9.0 + TAU * i / 3.0
+			draw_arc(Vector2.ZERO, 30.0 + sin(_time * 14.0 + i) * 3.0, ra, ra + 0.7, 5,
+				Palette.with_alpha(Palette.glow(Color("ff7a3a"), 1.6), 0.55), 2.5)
+
+	# Isot rautakourat (tarttuvat kädet) heiluvat tähtäyksen mukana.
+	for side in [-1.0, 1.0]:
+		var grip: Vector2 = hero.aim.rotated(0.9 * side) * 30.0
+		if side > 0.0:
+			grip = hero.aim.rotated(0.9 * side - _attack_anim * 1.6) * (30.0 + _attack_anim * 22.0)
+		_limb(grip * 0.5, grip, c1, 7.0)
+		# Kourarauta: tumma kämmen + sormet
+		draw_circle(grip, 14.0, Palette.darker(c2, 0.6))
+		draw_circle(grip, 11.0, Palette.darker(c1, 0.2))
+		var kperp: Vector2 = hero.aim.orthogonal().normalized()
+		for f in [-1.0, 0.0, 1.0]:
+			var tip: Vector2 = grip + hero.aim * 9.0 + kperp * (f * 6.0)
+			draw_line(grip, tip, Palette.darker(c2, 0.7), 3.0)
+		draw_circle(grip + Vector2(-3, -4), 3.0, Palette.with_alpha(Color.WHITE, 0.5))
+
+	# Massiivinen panssariruho, leveät hartiat.
+	for side in [-1.0, 1.0]:
+		draw_circle(Vector2(20.0 * side, -14.0), 10.0, Palette.darker(c2, 0.55))
+		draw_circle(Vector2(20.0 * side, -14.0), 7.5, c2)
+	_body_base(Vector2.ZERO, 27.0, c1, c2)
+	# Panssarilevyt ja niitit
+	draw_line(Vector2(-20, -4), Vector2(20, -4), Palette.darker(c2, 0.6), 3.0)
+	draw_line(Vector2(-16, 8), Vector2(16, 8), Palette.darker(c2, 0.6), 2.5)
+	for nx in [-14.0, 0.0, 14.0]:
+		draw_circle(Vector2(nx, -12.0), 2.2, Palette.with_alpha(Color("d9cbb0"), 0.7))
+	# Rautainen leukasuojus
+	draw_rect(Rect2(Vector2(-9, 2), Vector2(18, 7)), Palette.darker(c2, 0.7))
+	_eyes(Vector2(0, -8), 8.5, 3.8)
+	# Vihaiset kulmakarvat
+	for side in [-1.0, 1.0]:
+		var bx := 5.0 * side
+		draw_line(Vector2(bx - 3.5 * side, -14.0), Vector2(bx + 3.5 * side, -11.5),
+			Palette.darker(c2, 0.75), 2.5)
 
 
 func _paint_volt(c1: Color, c2: Color) -> void:

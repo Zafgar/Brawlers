@@ -6,7 +6,7 @@ extends Control
 
 enum Phase { JOIN, HEROES, STARTING }
 
-# Ruudukko mitoitettu 14 sankarille: 5 saraketta = 3 riviä, mahtuu pelaaja-
+# Ruudukko mitoitettu 15 sankarille: 5 saraketta = 3 riviä, mahtuu pelaaja-
 # chippien (y=830) ja kykypaneelin (x=1160) väliin ilman päällekkäisyyttä.
 const COLS := 5
 const TILE_W := 202.0

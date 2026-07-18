@@ -6,7 +6,7 @@ class_name HeroDef
 const ORDER := [
 	"bastion", "ember", "luma", "blink", "bramble", "quill",
 	"boulder", "volt", "maestro", "shade", "tide", "scout",
-	"prism", "rift",
+	"prism", "rift", "titan",
 ]
 
 const HEROES := {
@@ -274,6 +274,25 @@ const HEROES := {
 			"a2": {"name": "Räjäytys", "desc": "Melee-isku joka räjäyttää kohteen pinot: enemmän pinoja = enemmän vahinkoa. Täydet 5 pinoa nollaa jäähdytyksen.", "cd": 6.0},
 			"dodge": {"name": "Varjoloikka", "desc": "Nopea tyhjyysloikka.", "cd": 3.0},
 			"ult": {"name": "Ajanpysäytys", "desc": "Pysäyttää ajan ympärillä: kaikki muut (myös omat) jäätyvät hetkeksi, sinä liikut ja toimit vapaasti.", "cd": 0.0},
+		},
+	},
+	"titan": {
+		"name": "Titaani",
+		"role": "Tankki",
+		"difficulty": 2,
+		"hp": 380.0,
+		"speed": 300.0,
+		"ratings": {"kesto": 5, "liike": 2, "vahinko": 2, "tuki": 3},
+		"weapon": "Rautakourat",
+		"desc": "Murskaava jättiläinen. Tekee vähän vahinkoa mutta kestää valtavasti: nappaa vihollisen kiinni ja heittää pois, ja kuluttaa raivoa suojautuakseen ja parantuakseen.",
+		"color": Color("c05a3a"),
+		"color_b": Color("4a1b12"),
+		"abilities": {
+			"basic": {"name": "Murskaava isku", "desc": "Raskas lähi-isku. Jokainen osuma lyhentää Tartu ja heitä -kyvyn jäähdytystä.", "cd": 0.6},
+			"a1": {"name": "Tartu ja heitä", "desc": "Nappaa edessä olevan vihollisen ja heittää sen tähtäyssuuntaan, jättäen lyhyen tainnutuksen. Raivotilan aikana nostaa kaikki lähiviholliset ilmaan.", "cd": 7.0},
+			"a2": {"name": "Raivosuoja", "desc": "Pidä pohjassa: kuluttaa raivoa, vähentää otettua vahinkoa joka suunnasta ja palauttaa elämää.", "cd": 6.0},
+			"dodge": {"name": "Syöksyrynnäkkö", "desc": "Raskas syöksy, joka tönäisee ja hidastaa osuessaan.", "cd": 4.5},
+			"ult": {"name": "Raivotila", "desc": "Muuttuu hetkeksi berserkiksi: nopeampi liike, iskunopeus ja vahinko nousevat, ja Tartu ja heitä muuttuu alueen ilmaanheitoksi.", "cd": 0.0},
 		},
 	},
 }

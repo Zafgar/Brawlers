@@ -39,6 +39,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_prism(ci, center, r)
 		"rift":
 			_rift(ci, center, r)
+		"titan":
+			_titan(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -78,6 +80,31 @@ static func _rift(ci: CanvasItem, center: Vector2, r: float) -> void:
 		center + Vector2(-0.72, 0.82) * s, center + Vector2(0.72, 0.82) * s, center]), INK)
 	ci.draw_line(center + Vector2(-0.8, -0.82) * s, center + Vector2(0.8, -0.82) * s, INK, lw)
 	ci.draw_line(center + Vector2(-0.8, 0.82) * s, center + Vector2(0.8, 0.82) * s, INK, lw)
+
+
+## Titaani: puristettu rautanyrkki (tartu ja heitä).
+static func _titan(ci: CanvasItem, center: Vector2, r: float) -> void:
+	var s := r * 0.78
+	var lw: float = maxf(2.0, r * 0.08)
+	# Nyrkin runko (rystyset)
+	var fist := PackedVector2Array([
+		center + Vector2(-0.85, -0.2) * s,
+		center + Vector2(-0.7, -0.75) * s,
+		center + Vector2(0.7, -0.75) * s,
+		center + Vector2(0.9, -0.15) * s,
+		center + Vector2(0.9, 0.6) * s,
+		center + Vector2(-0.85, 0.6) * s,
+	])
+	ci.draw_colored_polygon(fist, INK)
+	ci.draw_polyline(fist + PackedVector2Array([fist[0]]), SHADE, lw)
+	# Sormien jaot rystysten päällä
+	for i in range(3):
+		var fx := center.x + (i - 1) * 0.5 * s
+		ci.draw_line(Vector2(fx, center.y - 0.72 * s), Vector2(fx, center.y - 0.18 * s), SHADE, lw)
+	# Rystyslinja
+	ci.draw_line(center + Vector2(-0.8, -0.15) * s, center + Vector2(0.85, -0.15) * s, SHADE, lw)
+	# Peukalo sivussa
+	ci.draw_circle(center + Vector2(-0.9, 0.18) * s, 0.22 * s, INK)
 
 
 # --- Yksittäiset tunnukset ---
