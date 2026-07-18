@@ -123,6 +123,10 @@ func _synth_all() -> void:
 	sounds["dome_up"] = _mix2(
 		_tone(0.6, 110.0, 220.0, "sine", 0.03, 0.4, 0.4),
 		_tone(0.6, 165.0, 330.0, "tri", 0.05, 0.4, 0.2), 0.05)
+	# Kivet: murenevat kivet (muuri, vyöry)
+	sounds["rock"] = _mix2(
+		_noise(0.35, 0.4, 0.35),
+		_tone(0.3, 150.0, 70.0, "tri", 0.005, 0.2, 0.28), 0.0)
 	sounds["fire"] = _mix2(
 		_tone(0.15, 330.0, 190.0, "saw", 0.01, 0.1, 0.3),
 		_noise(0.15, 0.2, 0.5), 0.0)

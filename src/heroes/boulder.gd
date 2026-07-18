@@ -19,6 +19,7 @@ func _init() -> void:
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()
 	AudioMgr.play("slam", 0.1, -4.0)
+	var hits := 0
 	for enemy in arena.alive_enemies(team):
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		if to_enemy.length() > PUNCH_RANGE + enemy.radius:
@@ -26,25 +27,37 @@ func _basic(dir: Vector2) -> void:
 		if absf(rad_to_deg(dir.angle_to(to_enemy))) > PUNCH_ARC_DEG:
 			continue
 		deal_damage_to(enemy, PUNCH_DMG, 320.0, to_enemy.normalized())
+		hits += 1
+	if hits > 0:
+		arena.shake(0.15)
+		Fx.spark(arena, global_position + dir * PUNCH_RANGE * 0.7, Color("9aa3ad"))
 
 
 ## Kyky 1: Kivimuuri — väliaikainen muuri tähtäyssuuntaan.
 func _ability1(dir: Vector2) -> void:
-	AudioMgr.play("slam", 0.1, -2.0)
+	AudioMgr.play("rock")
 	arena.shake(0.2)
 	var wall := RockWall.new()
-	wall.global_position = arena.map.clamp_to_field(global_position + dir * 130.0, 60.0)
+	var pos := arena.map.clamp_to_field(global_position + dir * 130.0, 60.0)
+	wall.global_position = pos
 	wall.rotation = dir.angle() + PI / 2.0
 	arena.add_child(wall)
-	Fx.dust(arena, wall.global_position)
+	# Kivet nousevat pölyten
+	Fx.dust(arena, pos)
+	Fx.ring(arena, pos, Palette.with_alpha(Color("9aa3ad"), 0.7), 90.0, 0.4, 4.0)
 
 
 ## Kyky 2: Tömistys — työntää kaikki lähellä olevat kauas.
 func _ability2(_dir: Vector2) -> void:
 	visual.squash(1.35, 0.65)
-	arena.shake(0.35)
-	AudioMgr.play("slam")
+	arena.shake(0.4)
+	AudioMgr.play("quake")
 	Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.4), 190.0, 0.5, 9.0)
+	Fx.dust(arena, global_position)
+	# Säteittäiset halkeamat maassa
+	for i in range(8):
+		var ang := TAU * i / 8.0
+		Fx.spark(arena, global_position + Vector2(cos(ang), sin(ang)) * 100.0, Color("6b6f78"))
 	for enemy in arena.heroes_in_circle(global_position, 190.0):
 		if enemy.team == team:
 			continue
@@ -60,9 +73,9 @@ func _dodge_action(dir: Vector2) -> void:
 
 ## Ultimate: Vyöry — vyöryy eteenpäin kaataen viholliset tieltään.
 func _ultimate(dir: Vector2) -> void:
-	arena.popup(global_position + Vector2(0, -84), "VYÖRY!", Palette.glow(hero_color(), 1.5), 24)
+	arena.popup(global_position + Vector2(0, -84), "VYÖRY!", Palette.glow(hero_color(), 1.5), 26)
 	arena.shake(0.5)
-	AudioMgr.play("slam", 0.05, 3.0)
+	AudioMgr.play("quake", 0.05, -2.0)
 	_rolling = 0.45
 	_roll_hit.clear()
 	dash(dir, 1250.0, 0.45, false)
@@ -74,6 +87,9 @@ func _passive_update(delta: float) -> void:
 		return
 	_rolling -= delta
 	Fx.dust(arena, global_position)
+	# Sinkoavat kivet vyöryn tieltä
+	Fx.spark(arena, global_position + Vector2(randf_range(-20, 20), randf_range(-20, 20)),
+		Color("9aa3ad"))
 	for enemy in arena.heroes_in_circle(global_position, radius + 30.0):
 		if enemy.team == team or enemy in _roll_hit:
 			continue
@@ -118,5 +134,8 @@ class RockWall:
 			var r := (26.0 - absf(i - 1.5) * 3.0) * rise
 			draw_circle(Vector2(x, 4), r + 3.0, Palette.with_alpha(Color("39424d"), fade))
 			draw_circle(Vector2(x, 0), r, Palette.with_alpha(Color("9aa3ad"), fade))
+			# Halkeamat ja kiilto
+			draw_line(Vector2(x - r * 0.4, -r * 0.2), Vector2(x + r * 0.2, r * 0.4),
+				Palette.with_alpha(Color("5b6470"), fade), 1.5)
 			draw_circle(Vector2(x - r * 0.3, -r * 0.3), r * 0.4,
 				Palette.with_alpha(Color("c4ccd4"), fade * 0.6))

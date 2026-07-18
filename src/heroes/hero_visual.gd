@@ -483,16 +483,31 @@ func _paint_boulder(c1: Color, c2: Color) -> void:
 	for side in [-1.0, 1.0]:
 		var fist: Vector2 = hero.aim.rotated(0.85 * side) * 26.0
 		if side > 0.0:
-			fist = hero.aim.rotated(0.85 * side - _attack_anim * 1.4) * (26.0 + _attack_anim * 16.0)
+			fist = hero.aim.rotated(0.85 * side - _attack_anim * 1.5) * (26.0 + _attack_anim * 18.0)
+		_limb(fist * 0.55, fist, c1, 6.0)
 		draw_circle(fist, 13.0, Palette.darker(c2, 0.6))
 		draw_circle(fist, 10.5, c2)
+		draw_line(fist + Vector2(-6, -4), fist + Vector2(2, 3), Palette.darker(c2, 0.75), 1.5)
 		draw_circle(fist + Vector2(-2, -3), 3.5, Palette.with_alpha(c1, 0.7))
+
+	# Kivinen runko
 	_body_base(Vector2.ZERO, 26.0, c1, c2)
+	# Kivisärmät
+	var facets := PackedVector2Array([
+		Vector2(-18, -6), Vector2(-4, -20), Vector2(13, -13),
+		Vector2(20, 5), Vector2(6, 18), Vector2(-15, 13)])
+	draw_polyline(facets + PackedVector2Array([facets[0]]), Palette.darker(c2, 0.65), 2.0)
 	# Halkeamat
-	draw_line(Vector2(-8, -12), Vector2(-2, -4), Palette.darker(c2, 0.7), 2.5)
-	draw_line(Vector2(6, 4), Vector2(13, 10), Palette.darker(c2, 0.7), 2.5)
-	# Sammalta päälaella
+	draw_line(Vector2(-9, -13), Vector2(-2, -2), Palette.darker(c2, 0.75), 2.5)
+	draw_line(Vector2(-2, -2), Vector2(7, 7), Palette.darker(c2, 0.75), 2.0)
+	draw_line(Vector2(7, 7), Vector2(14, 11), Palette.darker(c2, 0.75), 2.0)
+	# Kiiltävät mineraalit
+	draw_circle(Vector2(9, -9), 3.0, Palette.with_alpha(Color("6fa8c0"), 0.8))
+	draw_circle(Vector2(-11, 6), 2.5, Palette.with_alpha(Color("8fd0e0"), 0.7))
+	# Sammal päällä ja hartioilla
 	draw_arc(Vector2(0, -20), 12.0, PI + 0.5, TAU - 0.5, 12, Color("6b8f4e"), 6.0)
+	for side in [-1.0, 1.0]:
+		draw_circle(Vector2(18.0 * side, -12), 5.0, Palette.with_alpha(Color("6b8f4e"), 0.8))
 	_eyes(Vector2(0, -6), 8.0, 3.5)
 
 

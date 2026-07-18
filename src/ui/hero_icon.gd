@@ -23,6 +23,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_bramble(ci, center, r)
 		"quill":
 			_quill(ci, center, r)
+		"boulder":
+			_boulder(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -165,6 +167,25 @@ static func _quill(ci: CanvasItem, center: Vector2, r: float) -> void:
 	# Sulat
 	ci.draw_line(tail, tail + Vector2(-r * 0.2, -r * 0.15), INK, r * 0.05)
 	ci.draw_line(tail, tail + Vector2(-r * 0.2, r * 0.15), INK, r * 0.05)
+
+
+static func _boulder(ci: CanvasItem, center: Vector2, r: float) -> void:
+	# Särmikäs kallio halkeamin.
+	var rock := PackedVector2Array([
+		center + Vector2(-0.9, -0.15) * r, center + Vector2(-0.45, -0.82) * r,
+		center + Vector2(0.35, -0.9) * r, center + Vector2(0.9, -0.15) * r,
+		center + Vector2(0.68, 0.72) * r, center + Vector2(-0.4, 0.86) * r,
+		center + Vector2(-0.85, 0.45) * r])
+	var shadow := PackedVector2Array()
+	for p in rock:
+		shadow.append(p + Vector2(0, r * 0.06))
+	ci.draw_colored_polygon(shadow, SHADE)
+	ci.draw_colored_polygon(rock, INK)
+	# Särmälinjat
+	ci.draw_line(center + Vector2(-0.45, -0.82) * r, center + Vector2(0.1, 0.0) * r, SHADE, r * 0.08)
+	ci.draw_line(center + Vector2(0.1, 0.0) * r, center + Vector2(0.68, 0.72) * r, SHADE, r * 0.08)
+	ci.draw_line(center + Vector2(0.1, 0.0) * r, center + Vector2(-0.4, 0.86) * r, SHADE, r * 0.08)
+	ci.draw_line(center + Vector2(0.1, 0.0) * r, center + Vector2(0.9, -0.15) * r, SHADE, r * 0.06)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.

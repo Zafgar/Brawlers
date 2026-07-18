@@ -136,7 +136,7 @@ const HEROES := {
 		"color_b": Color("4f5a66"),
 		"abilities": {
 			"basic": {"name": "Murskaava isku", "desc": "Raskas lyönti, joka tönäisee kunnolla.", "cd": 0.7},
-			"a1": {"name": "Kivimuuri", "desc": "Nostaa väliaikaisen muurin eteen.", "cd": 10.0},
+			"a1": {"name": "Kivimuuri", "desc": "Nostaa väliaikaisen muurin, joka estää liikkeen ja ammukset.", "cd": 10.0},
 			"a2": {"name": "Tömistys", "desc": "Isku maahan: työntää kaikki lähellä olevat kauas.", "cd": 8.0},
 			"dodge": {"name": "Jyräys", "desc": "Raskas loikka eteenpäin.", "cd": 5.0},
 			"ult": {"name": "Vyöry", "desc": "Vyöryy eteenpäin kaataen kaikki tieltään.", "cd": 0.0},
