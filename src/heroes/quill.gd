@@ -51,7 +51,7 @@ func _fire_arrow(dir: Vector2) -> void:
 		AudioMgr.play("bow", 0.1, -4.0 + _charge * 4.0)
 	Projectile.launch(self, global_position + dir * 28.0, dir, {
 		"speed": 950.0 + 450.0 * _charge,
-		"dmg": 10.0 + 22.0 * _charge,
+		"dmg": 13.0 + 26.0 * _charge,
 		"radius": 8.0,
 		"life": 0.9,
 		"kb": 120.0 + 160.0 * _charge,

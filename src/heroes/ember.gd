@@ -18,7 +18,7 @@ func _basic(dir: Vector2) -> void:
 	Fx.spark(arena, global_position + dir * 24.0, Palette.glow(Color("ffb347"), 1.6))
 	Projectile.launch(self, global_position + dir * 30.0, dir, {
 		"speed": 880.0,
-		"dmg": 16.0,
+		"dmg": 21.0,
 		"radius": 12.0,
 		"life": 0.95,
 		"kb": 120.0,

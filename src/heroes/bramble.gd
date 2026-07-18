@@ -6,7 +6,7 @@ extends Hero
 
 const WHIP_RANGE := 128.0
 const WHIP_ARC_DEG := 55.0
-const WHIP_DMG := 16.0
+const WHIP_DMG := 18.0
 const LIFESTEAL := 0.2
 
 func _init() -> void:

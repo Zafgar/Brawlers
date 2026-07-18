@@ -21,7 +21,7 @@ func _burst_fire(dir: Vector2) -> void:
 		var spread := randf_range(-0.06, 0.06)
 		Projectile.launch(self, global_position + dir * 28.0, dir.rotated(spread), {
 			"speed": 980.0,
-			"dmg": 6.0,
+			"dmg": 8.0,
 			"radius": 7.0,
 			"life": 0.7,
 			"kb": 70.0,

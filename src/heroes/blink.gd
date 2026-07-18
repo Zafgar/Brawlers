@@ -6,7 +6,7 @@ extends Hero
 
 const SLASH_RANGE := 75.0
 const SLASH_ARC_DEG := 65.0
-const SLASH_DMG := 13.0
+const SLASH_DMG := 20.0
 
 func _init() -> void:
 	radius = 22.0
@@ -26,7 +26,7 @@ func _basic(dir: Vector2) -> void:
 		var dmg := SLASH_DMG
 		# Selkäänisku: kohde katsoo poispäin Blinkistä -> 50 % lisää.
 		if enemy.aim.dot(to_enemy.normalized()) > 0.3:
-			dmg *= 1.5
+			dmg *= 1.65
 			Fx.spark(arena, enemy.global_position, Palette.glow(hero_color(), 1.9))
 			arena.popup(enemy.global_position + Vector2(0, -54), "SELKÄÄN!", hero_color(), 15)
 		deal_damage_to(enemy, dmg, 140.0, to_enemy.normalized())
@@ -51,7 +51,7 @@ func _ability2(dir: Vector2) -> void:
 	for angle_offset in [-0.28, 0.0, 0.28]:
 		Projectile.launch(self, global_position + dir * 24.0, dir.rotated(angle_offset), {
 			"speed": 950.0,
-			"dmg": 10.0,
+			"dmg": 15.0,
 			"radius": 8.0,
 			"life": 0.6,
 			"kb": 100.0,
@@ -93,7 +93,7 @@ func _shadow_dance() -> void:
 		visual.attack_swing()
 		AudioMgr.play("blade", 0.15)
 		Fx.slash(arena, global_position, aim, 60.0, 80.0, Color("d9c8ff"))
-		deal_damage_to(target, 24.0, 200.0, aim)
+		deal_damage_to(target, 32.0, 200.0, aim)
 		Fx.spark(arena, target.global_position, Palette.glow(Color("d9c8ff"), 1.9))
 		await get_tree().create_timer(0.22).timeout
 

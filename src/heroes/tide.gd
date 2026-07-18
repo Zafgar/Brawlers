@@ -5,7 +5,7 @@ extends Hero
 
 const SPEAR_RANGE := 145.0
 const SPEAR_ARC_DEG := 28.0
-const SPEAR_DMG := 15.0
+const SPEAR_DMG := 17.0
 
 func _init() -> void:
 	radius = 26.0

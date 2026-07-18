@@ -23,6 +23,7 @@ var _deny := {"tile": -1, "t": 0.0}
 var _bot_pick_timer := 0.0
 var _start_timer := 0.0
 var _bot_counter := 0
+var _detail_index := 0     # mitä sankaria kykypaneeli näyttää (viimeksi liikutettu kursori)
 
 
 func _ready() -> void:
@@ -251,6 +252,7 @@ func _handle_heroes_input(device: int, edge: Dictionary) -> void:
 			moved = true
 		if moved:
 			entry.cursor = mini(row * COLS + col, HeroDef.ORDER.size() - 1)
+			_detail_index = entry.cursor
 			AudioMgr.play("ui_move")
 
 	if edge.accept and not entry.locked:
@@ -261,6 +263,7 @@ func _handle_heroes_input(device: int, edge: Dictionary) -> void:
 		else:
 			entry.locked = true
 			entry.profile.hero_id = hero_id
+			_detail_index = entry.cursor
 			AudioMgr.play("ui_ok")
 			if _all_humans_locked():
 				_bot_pick_timer = 0.5
@@ -480,7 +483,8 @@ func _draw_device_icon(pos: Vector2, device: int) -> void:
 func _draw_heroes() -> void:
 	_draw_title("VALITSE SANKARI", 72)
 
-	var x0 := (1920.0 - (COLS * TILE_W + (COLS - 1) * TILE_GAP)) / 2.0
+	# Ruudukko vasemmalle, kykypaneeli oikealle (kaksipalstainen asettelu).
+	var x0 := 70.0
 	var y0 := 176.0
 	for i in range(HeroDef.ORDER.size()):
 		var col := i % COLS
@@ -488,6 +492,8 @@ func _draw_heroes() -> void:
 		var rect := Rect2(x0 + col * (TILE_W + TILE_GAP), y0 + row * (TILE_H + TILE_GAP),
 			TILE_W, TILE_H)
 		_draw_hero_tile(rect, i)
+
+	_draw_hero_detail(_detail_index)
 
 	# Pelaajachipit alareunassa
 	var all_profiles: Array = []
@@ -571,6 +577,55 @@ func _draw_hero_tile(rect: Rect2, tile_index: int) -> void:
 
 	if _deny.tile == tile_index and _deny.t > 0.0:
 		draw_rect(rect, Palette.with_alpha(Palette.BAD, _deny.t), false, 5.0)
+
+
+## Kykypaneeli oikealle: näyttää kursorin alla olevan sankarin kaikki kyvyt
+## ja mitä ne tekevät. Näin näkee pelivalikossa mihin sankari pystyy.
+func _draw_hero_detail(index: int) -> void:
+	var hero_id: String = HeroDef.ORDER[index]
+	var def := HeroDef.get_def(hero_id)
+	var c1: Color = def["color"]
+	var panel := Rect2(1160, 176, 690, 646)
+	_card(panel, Palette.with_alpha(Palette.UI_PANEL, 0.92), Palette.with_alpha(c1, 0.55), 2, 18)
+
+	var px := panel.position.x
+	var cx := px + panel.size.x / 2.0
+
+	# Medaljonki, nimi ja rooli
+	var med := Vector2(cx, panel.position.y + 64.0)
+	draw_arc(med, 48.0, _time, _time + TAU * 0.8, 24, Palette.with_alpha(Palette.glow(c1, 1.3), 0.5), 2.0)
+	draw_circle(med, 44.0, Palette.darker(def["color_b"], 0.55))
+	draw_circle(med, 40.0, c1)
+	draw_circle(med + Vector2(0, 14), 27.0, Palette.with_alpha(def["color_b"], 0.35))
+	HeroIcon.draw_symbol(self, hero_id, med, 25.0)
+	UiKit.draw_text(self, Vector2(cx, panel.position.y + 132.0), str(def["name"]), 32, c1, true, 5)
+	var stars := ""
+	for i in range(3):
+		stars += "★" if i < int(def["difficulty"]) else "☆"
+	UiKit.draw_text(self, Vector2(cx, panel.position.y + 164.0),
+		"%s   %s   ·   %s" % [def["role"], stars, def["weapon"]], 16, Palette.TEXT_DIM, true)
+	draw_line(Vector2(px + 26.0, panel.position.y + 186.0),
+		Vector2(panel.end.x - 26.0, panel.position.y + 186.0), Palette.with_alpha(c1, 0.3), 2.0)
+
+	# Kyvyt kuvauksineen
+	var slots := [
+		["basic", "PERUS", "R2 / hiiri vas."],
+		["a1", "KYKY 1", "R1 / hiiri oik."],
+		["a2", "KYKY 2", "L1 / Q"],
+		["dodge", "VÄISTÖ", "X / väli"],
+		["ult", "ULTI", "△ / E"],
+	]
+	var font := ThemeDB.fallback_font
+	var lx := px + 28.0
+	var y := panel.position.y + 214.0
+	for slot in slots:
+		var ab: Dictionary = def["abilities"][slot[0]]
+		UiKit.draw_text(self, Vector2(lx, y - 2.0), str(slot[1]), 11, Palette.with_alpha(c1, 0.85), false)
+		UiKit.draw_text(self, Vector2(lx + 84.0, y), str(ab["name"]), 20, Palette.TEXT_MAIN, false)
+		UiKit.draw_text(self, Vector2(panel.end.x - 150.0, y), str(slot[2]), 12, Palette.TEXT_DIM, false)
+		font.draw_multiline_string(get_canvas_item(), Vector2(lx + 84.0, y + 22.0),
+			str(ab["desc"]), HORIZONTAL_ALIGNMENT_LEFT, panel.size.x - 128.0, 15, -1, Palette.TEXT_DIM)
+		y += 78.0
 
 
 func _draw_player_chip(rect: Rect2, entry: Dictionary) -> void:

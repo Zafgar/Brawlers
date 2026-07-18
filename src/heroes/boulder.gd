@@ -5,7 +5,7 @@ extends Hero
 
 const PUNCH_RANGE := 95.0
 const PUNCH_ARC_DEG := 60.0
-const PUNCH_DMG := 20.0
+const PUNCH_DMG := 14.0
 
 var _rolling := 0.0
 var _roll_hit: Array = []
@@ -61,7 +61,7 @@ func _ability2(_dir: Vector2) -> void:
 	for enemy in arena.heroes_in_circle(global_position, 190.0):
 		if enemy.team == team:
 			continue
-		deal_damage_to(enemy, 16.0, 520.0)
+		deal_damage_to(enemy, 12.0, 520.0)
 
 
 ## Väistö: raskas loikka.
@@ -94,7 +94,7 @@ func _passive_update(delta: float) -> void:
 		if enemy.team == team or enemy in _roll_hit:
 			continue
 		_roll_hit.append(enemy)
-		deal_damage_to(enemy, 22.0, 620.0)
+		deal_damage_to(enemy, 20.0, 620.0)
 		arena.shake(0.2)
 
 

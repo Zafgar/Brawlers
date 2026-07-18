@@ -13,7 +13,7 @@ func _basic(dir: Vector2) -> void:
 	visual.attack_swing()
 	Projectile.launch(self, global_position + dir * 28.0, dir, {
 		"speed": 900.0,
-		"dmg": 13.0,
+		"dmg": 18.0,
 		"radius": 9.0,
 		"life": 0.75,
 		"kb": 90.0,
