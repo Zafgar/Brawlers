@@ -399,23 +399,34 @@ func _paint_luma(c1: Color, c2: Color) -> void:
 
 
 func _paint_blink(c1: Color, c2: Color) -> void:
-	# Huivi liikejäljestä
+	# Jälkikuvavana (haamumainen liike)
 	if _trail.size() > 3:
 		var pts := PackedVector2Array()
 		for i in range(mini(_trail.size(), 8)):
 			pts.append(to_local(_trail[i]) + Vector2(0, -18))
-		draw_polyline(pts, Palette.with_alpha(c2, 0.7), 5.0)
+		draw_polyline(pts, Palette.with_alpha(Palette.glow(c1, 1.3), 0.3), 6.0)
+		draw_polyline(pts, Palette.with_alpha(c2, 0.6), 3.0)
+
 	_body_base(Vector2.ZERO, 15.0, c1, c2)
-	# Naamio
-	draw_rect(Rect2(Vector2(-12, -10), Vector2(24, 8)), Palette.darker(c2, 0.65))
-	_eyes(Vector2(0, -6), 6.0, 3.2)
-	# Kaksi valomiekkaa
+	# Huppu
+	draw_arc(Vector2(0, -8), 15.0, PI - 0.3, TAU + 0.3, 20, c2, 7.0)
+	# Naamionauha
+	draw_rect(Rect2(Vector2(-12, -9), Vector2(24, 7)), Palette.darker(c2, 0.65))
+	# Hehkuvat kapeat silmät
+	var perp: Vector2 = hero.aim.orthogonal().normalized() * 6.0
+	for side in [-1.0, 1.0]:
+		var eye: Vector2 = Vector2(0, -6) + perp * side + hero.aim * 3.0
+		draw_line(eye - perp * 0.35, eye + perp * 0.35, Palette.glow(Color("d9c8ff"), 2.2), 2.5)
+
+	# Kaksi hehkuvaa energiaterää
 	for side in [-1.0, 1.0]:
 		var base: Vector2 = hero.aim.rotated(0.7 * side) * 16.0
-		var swing: float = _attack_anim * 1.6 * side
+		var swing: float = _attack_anim * 1.7 * side
 		var blade_dir: Vector2 = hero.aim.rotated(0.25 * side - swing)
-		draw_line(base, base + blade_dir * 22.0, Palette.glow(Color("d9c8ff"), 2.4), 3.5)
-		draw_circle(base, 3.0, c2)
+		var tip: Vector2 = base + blade_dir * 24.0
+		draw_line(base, tip, Palette.with_alpha(Palette.glow(Color("d9c8ff"), 1.6), 0.5), 7.0)
+		draw_line(base, tip, Palette.glow(Color("ece2ff"), 2.4), 3.0)
+		draw_circle(base, 3.5, c2)
 
 
 func _paint_bramble(c1: Color, c2: Color) -> void:

@@ -17,6 +17,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_ember(ci, center, r)
 		"luma":
 			_luma(ci, center, r)
+		"blink":
+			_blink(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -90,6 +92,26 @@ static func _luma(ci: CanvasItem, center: Vector2, r: float) -> void:
 	for i in range(4):
 		var d := center + Vector2.RIGHT.rotated(PI / 4.0 + TAU * i / 4.0) * r * 0.62
 		ci.draw_circle(d, r * 0.06, INK)
+
+
+static func _blink(ci: CanvasItem, center: Vector2, r: float) -> void:
+	# Kaksi ristissä olevaa valoterää.
+	for ang in [-0.72, 0.72]:
+		var d := Vector2.RIGHT.rotated(ang)
+		var a := center - d * r * 0.5
+		var b := center + d * r * 0.98
+		ci.draw_line(a + Vector2(0, r * 0.05), b + Vector2(0, r * 0.05), SHADE, r * 0.22)
+		ci.draw_line(a, b, INK, r * 0.15)
+		ci.draw_circle(b, r * 0.07, INK)
+	# Keskustimantti (kahvojen risteys)
+	var hub := PackedVector2Array([
+		center + Vector2(0, -r * 0.3), center + Vector2(r * 0.3, 0),
+		center + Vector2(0, r * 0.3), center + Vector2(-r * 0.3, 0)])
+	ci.draw_colored_polygon(hub, SHADE)
+	var inner := PackedVector2Array([
+		center + Vector2(0, -r * 0.17), center + Vector2(r * 0.17, 0),
+		center + Vector2(0, r * 0.17), center + Vector2(-r * 0.17, 0)])
+	ci.draw_colored_polygon(inner, INK)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.

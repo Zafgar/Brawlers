@@ -78,7 +78,7 @@ const HEROES := {
 		"color": Color("b48aff"),
 		"color_b": Color("5b2f9e"),
 		"abilities": {
-			"basic": {"name": "Valoviilto", "desc": "Nopea kaksoisviilto lähelle.", "cd": 0.4},
+			"basic": {"name": "Valoviilto", "desc": "Nopea kaksoisviilto. Selkäänisku tekee 50 % lisää.", "cd": 0.4},
 			"a1": {"name": "Teleportti", "desc": "Siirtyy hetkessä tähtäyksen suuntaan.", "cd": 6.0},
 			"a2": {"name": "Valoviuhka", "desc": "Heittää kolme valoterää viuhkana.", "cd": 7.0},
 			"dodge": {"name": "Sivuaskel", "desc": "Salamannopea väistöliike.", "cd": 3.0},

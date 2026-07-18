@@ -12,10 +12,11 @@ func _init() -> void:
 	radius = 22.0
 
 
-## Perushyökkäys: nopea valoviilto.
+## Perushyökkäys: nopea valoviilto. Selkäänisku tekee lisävahinkoa.
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()
-	AudioMgr.play("swing", 0.15)
+	AudioMgr.play("blade", 0.15)
+	Fx.slash(arena, global_position, dir, SLASH_RANGE, SLASH_ARC_DEG, Color("d9c8ff"))
 	for enemy in arena.alive_enemies(team):
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		if to_enemy.length() > SLASH_RANGE + enemy.radius:
@@ -23,18 +24,21 @@ func _basic(dir: Vector2) -> void:
 		if absf(rad_to_deg(dir.angle_to(to_enemy))) > SLASH_ARC_DEG:
 			continue
 		var dmg := SLASH_DMG
-		# Selkäänisku: kohde katsoo poispäin Blinkistä.
+		# Selkäänisku: kohde katsoo poispäin Blinkistä -> 50 % lisää.
 		if enemy.aim.dot(to_enemy.normalized()) > 0.3:
 			dmg *= 1.5
-			Fx.spark(arena, enemy.global_position, Palette.glow(hero_color(), 1.8))
+			Fx.spark(arena, enemy.global_position, Palette.glow(hero_color(), 1.9))
+			arena.popup(enemy.global_position + Vector2(0, -54), "SELKÄÄN!", hero_color(), 15)
 		deal_damage_to(enemy, dmg, 140.0, to_enemy.normalized())
 
 
-## Kyky 1: Teleportti tähtäyksen suuntaan.
+## Kyky 1: Teleportti tähtäyksen suuntaan (jättää valojuovan).
 func _ability1(dir: Vector2) -> void:
 	AudioMgr.play("blink")
-	Fx.flash(arena, global_position, Palette.glow(hero_color(), 1.6), 40.0, 0.3)
+	var from := global_position
+	Fx.flash(arena, from, Palette.glow(hero_color(), 1.6), 40.0, 0.3)
 	global_position = arena.map.clamp_to_field(global_position + dir * 270.0, 40.0)
+	Fx.beam(arena, from, global_position, Palette.glow(Color("d9c8ff"), 1.4), 8.0)
 	Fx.flash(arena, global_position, Palette.glow(hero_color(), 1.6), 46.0, 0.3)
 	Fx.ring(arena, global_position, Palette.glow(Color("d9c8ff"), 1.5), 60.0, 0.35)
 	iframes = maxf(iframes, 0.25)
@@ -42,7 +46,8 @@ func _ability1(dir: Vector2) -> void:
 
 ## Kyky 2: Valoviuhka — kolme valoterää viuhkana.
 func _ability2(dir: Vector2) -> void:
-	AudioMgr.play("swing", 0.1, -2.0)
+	AudioMgr.play("blade", 0.1, -2.0)
+	visual.attack_swing()
 	for angle_offset in [-0.28, 0.0, 0.28]:
 		Projectile.launch(self, global_position + dir * 24.0, dir.rotated(angle_offset), {
 			"speed": 950.0,
@@ -86,9 +91,10 @@ func _shadow_dance() -> void:
 		iframes = maxf(iframes, 0.3)
 		aim = (target.global_position - global_position).normalized()
 		visual.attack_swing()
-		AudioMgr.play("blink", 0.15)
+		AudioMgr.play("blade", 0.15)
+		Fx.slash(arena, global_position, aim, 60.0, 80.0, Color("d9c8ff"))
 		deal_damage_to(target, 24.0, 200.0, aim)
-		Fx.spark(arena, target.global_position, Palette.glow(Color("d9c8ff"), 1.8))
+		Fx.spark(arena, target.global_position, Palette.glow(Color("d9c8ff"), 1.9))
 		await get_tree().create_timer(0.22).timeout
 
 

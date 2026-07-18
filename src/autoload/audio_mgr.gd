@@ -156,6 +156,10 @@ func _synth_all() -> void:
 	sounds["blink"] = _mix2(
 		_tone(0.12, 880.0, 1760.0, "sine", 0.005, 0.07, 0.35),
 		_tone(0.08, 1760.0, 880.0, "sine", 0.01, 0.06, 0.2), 0.1)
+	# Valoterä: terävä nopea sähähdys
+	sounds["blade"] = _mix2(
+		_tone(0.1, 1700.0, 500.0, "saw", 0.002, 0.06, 0.32),
+		_noise(0.05, 0.16, 0.85), 0.0)
 	sounds["root"] = _tone(0.2, 130.0, 110.0, "saw", 0.01, 0.12, 0.4)
 	sounds["ko"] = _mix2(
 		_tone(0.3, 300.0, 80.0, "sine", 0.005, 0.22, 0.6),
