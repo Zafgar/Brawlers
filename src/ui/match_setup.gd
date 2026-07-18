@@ -10,7 +10,7 @@ const MAP_IDS := ["geargarden", "moonstone"]
 const MAP_NAMES := ["Geargarden", "Moonstone Ruins"]
 const MAP_DESC := {
 	"geargarden": "Geargarden: tasapainoinen perusareena — symmetrinen, keskusrattaat suojana, pensasaidat ja kuljetinhihnat.",
-	"moonstone": "Moonstone Ruins: taianomaiset rauniot, hohtavat kristallit ja ajoittain avautuvat portit.",
+	"moonstone": "Moonstone Ruins: portit aukeavat vuorotellen sivuilla — ajoita oikoreittisi. Avoin keskusta, hohtavat kristallit.",
 }
 
 const DESCRIPTIONS := {

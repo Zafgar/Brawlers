@@ -1,8 +1,12 @@
 class_name MapMoon
 extends MapBase
-## Moonstone Ruins — taianomaiset rauniot. Symmetrinen rakenne, hohtavat
-## kristallit, riimuympyrät ja ajoittain avautuvat portit sivukäytävillä.
-## Kristallit reagoivat lähellä oleviin hahmoihin kirkastumalla.
+## Moonstone Ruins — taianomaiset rauniot ja PORTTIEN AREENA.
+## Identiteetti: vuorottelevat sivuportit luovat aikapohjaista taktiikkaa.
+##  - Reliikki keskellä avoimella kuunkivialustalla (korkean riskin pito)
+##  - Kaksi sivuporttia aukeavat VUOROTELLEN: aina yksi oikoreitti auki,
+##    mutta puoli vaihtuu ~3 s välein -> jatkuva kiertopaine ja ajoitus
+##  - Portti varoittaa ennen sulkeutumista (reilu)
+##  - Hohtavat kristallit reagoivat lähelläoloon, riimuympyrät, kuunvalo
 
 const FLOOR_BASE := Color("1b1a38")
 const FLOOR_LIGHT := Color("332f66")
@@ -14,7 +18,10 @@ const MOONLIGHT := Color("cdd6ff")
 const RUNE := Color("9a86ff")
 
 const GATE_PERIOD := 8.0
-const GATE_OPEN_FROM := 5.0     # portti auki kun sykli > tämä
+# Vuorottelevat aukeamisikkunat (sykli 0..8 s): vasen auki 0-3,2 s,
+# oikea auki 4-7,2 s. Aina korkeintaan yksi auki, puoli vaihtuu.
+const GATE_WINDOWS := [Vector2(0.0, 3.2), Vector2(4.0, 7.2)]
+const GATE_WARN := 0.6          # sekuntia varoitusta ennen sulkeutumista
 
 var _crystals: Array = []       # {pos, color, size}
 var _rubble: Array = []
@@ -33,10 +40,12 @@ func _setup() -> void:
 		{"pos": Vector2(0, 430), "radius": 66.0},
 	]
 
-	# Ajoittain avautuvat portit sivujen pylväiden (±620, ±260) väliseen
-	# aukkoon: kiinni ollessaan estävät sivujen oikoreitin.
-	for side in [-1.0, 1.0]:
-		var rect := Rect2(Vector2(side * 620.0 - 22.0, -110.0), Vector2(44, 220))
+	# Vuorottelevat portit sivupylväiden (±620, ±260) väliseen aukkoon.
+	# Korkeus 360 sulkee koko aukon, ettei ohi voi kiilata suljettuna.
+	var sides := [-1.0, 1.0]
+	for i in range(sides.size()):
+		var side: float = sides[i]
+		var rect := Rect2(Vector2(side * 620.0 - 22.0, -180.0), Vector2(44, 360))
 		var body := StaticBody2D.new()
 		body.collision_layer = 1
 		body.collision_mask = 0
@@ -47,7 +56,9 @@ func _setup() -> void:
 		shape.shape = rect_shape
 		body.add_child(shape)
 		add_child(body)
-		_gates.append({"body": body, "rect": rect, "open": false})
+		var window: Vector2 = GATE_WINDOWS[i]
+		_gates.append({"body": body, "rect": rect, "open": false, "closing": false,
+			"open_from": window.x, "open_to": window.y})
 
 	# Kristallit pylväiden päällä ja siroteltuina.
 	for pillar in pillars:
@@ -73,13 +84,14 @@ func _setup() -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
-	# Porttien avautumissykli
+	# Vuorottelevat portit: kukin oma aukeamisikkunansa syklissä.
 	var cycle := fmod(_time, GATE_PERIOD)
-	var should_open := cycle > GATE_OPEN_FROM
 	for gate in _gates:
-		if gate.open != should_open:
-			gate.open = should_open
-			gate.body.collision_layer = 0 if should_open else 1
+		var is_open: bool = cycle >= gate.open_from and cycle < gate.open_to
+		if gate.open != is_open:
+			gate.open = is_open
+			gate.body.collision_layer = 0 if is_open else 1
+		gate.closing = is_open and (gate.open_to - cycle) < GATE_WARN
 	queue_redraw()
 
 
@@ -232,23 +244,29 @@ func _draw_gates() -> void:
 	for gate in _gates:
 		var rect: Rect2 = gate.rect
 		if gate.open:
-			# Auki: himmeät riimupylväät, käytävä vapaa
+			# Auki: pylväät reunoilla, käytävä vapaa
 			var pulse := 0.4 + 0.3 * sin(_time * 4.0)
-			draw_rect(Rect2(rect.position, Vector2(rect.size.x, 8)),
-				Palette.with_alpha(RUNE, 0.4 * pulse))
-			draw_rect(Rect2(rect.position + Vector2(0, rect.size.y - 8), Vector2(rect.size.x, 8)),
-				Palette.with_alpha(RUNE, 0.4 * pulse))
-			# Portaalikimallus
-			for i in range(3):
-				var y := rect.position.y + rect.size.y * (0.2 + i * 0.3)
+			var warn: bool = gate.closing
+			# Sulkeutumisvaroitus: nopea kellertävä väläys
+			var frame_col: Color = Color("ffd76d") if warn else RUNE
+			var frame_a := 0.4 * pulse
+			if warn:
+				frame_a = 0.6 + 0.4 * sin(_time * 24.0)
+			draw_rect(Rect2(rect.position, Vector2(rect.size.x, 10)),
+				Palette.with_alpha(Palette.glow(frame_col, 1.3), frame_a))
+			draw_rect(Rect2(rect.position + Vector2(0, rect.size.y - 10), Vector2(rect.size.x, 10)),
+				Palette.with_alpha(Palette.glow(frame_col, 1.3), frame_a))
+			# Portaalikimallus (varoituksessa kellertävä)
+			for i in range(4):
+				var y := rect.position.y + rect.size.y * (0.15 + i * 0.23)
 				draw_circle(Vector2(rect.get_center().x, y), 3.0,
-					Palette.with_alpha(CRYSTAL_B, 0.5 * pulse))
+					Palette.with_alpha(Color("ffd76d") if warn else CRYSTAL_B, 0.6 * pulse))
 		else:
 			# Kiinni: kiinteä energiaportti estää kulun
 			var shimmer := 0.7 + 0.3 * sin(_time * 6.0)
 			draw_rect(rect, Palette.with_alpha(RUNE, 0.25))
-			for i in range(5):
-				var t := i / 4.0
+			for i in range(8):
+				var t := i / 7.0
 				var y := rect.position.y + rect.size.y * t
 				draw_line(Vector2(rect.position.x, y), Vector2(rect.end.x, y),
 					Palette.with_alpha(Palette.glow(CRYSTAL_B, 1.3), 0.6 * shimmer), 2.0)
