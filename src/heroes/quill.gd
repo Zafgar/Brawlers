@@ -14,6 +14,15 @@ func _init() -> void:
 	radius = 23.0
 
 
+## Tarkkuuslaukaus tähdätään: pidä R1 pohjassa (tähtäysviiva) ja vapauta.
+func _aimed_slots() -> Array:
+	return ["a1"]
+
+
+func _aim_range(_slot: String) -> float:
+	return 580.0
+
+
 ## Latautuva perushyökkäys korvaa oletuslogiikan.
 func _attack_control(held: bool, just_pressed: bool, just_released: bool,
 		dir: Vector2, delta: float) -> void:
@@ -27,6 +36,11 @@ func _attack_control(held: bool, just_pressed: bool, just_released: bool,
 			rate *= 1.4
 		_charge = minf(_charge + rate * delta, 1.0)
 		visual.aux = _charge
+		# Tähtäysviiva latauksen aikana: pitenee ja kirkastuu ladattaessa.
+		_aim_active = true
+		_aim_len = 300.0 + 520.0 * _charge
+		_aim_color = Palette.glow(Palette.GOLD, 1.3) if _charge >= 1.0 else hero_color()
+		_aim_charge = _charge
 		# Merkkiääni ja kimallus, kun täysi lataus saavutetaan.
 		if _charge >= 1.0 and not _full_ready:
 			_full_ready = true

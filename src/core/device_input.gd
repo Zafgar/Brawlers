@@ -129,6 +129,22 @@ func ability2_just() -> bool:
 	return _just("a2")
 
 
+func ability1_held() -> bool:
+	return bool(_pressed.get("a1", false))
+
+
+func ability2_held() -> bool:
+	return bool(_pressed.get("a2", false))
+
+
+func ability1_released() -> bool:
+	return bool(_prev.get("a1", false)) and not bool(_pressed.get("a1", false))
+
+
+func ability2_released() -> bool:
+	return bool(_prev.get("a2", false)) and not bool(_pressed.get("a2", false))
+
+
 func dodge_just() -> bool:
 	return _just("dodge")
 

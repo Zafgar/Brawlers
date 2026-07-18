@@ -69,6 +69,15 @@ var _recent_damagers: Array = []    # [{hero, time}]
 var _ult_ready_announced := false
 var _buf := {"a1": 0.0, "a2": 0.0, "ult": 0.0, "dodge": 0.0}  # syötepuskurin ajastimet
 
+# Tähtäys: osa kyvyistä tähdätään pitämällä nappi pohjassa (tähtäysviiva
+# näkyy) ja laukaistaan vapautettaessa. Latauskyvyt (Quill) näyttävät myös viivan.
+var _aiming_slot := ""              # "" = ei tähtäystä, muuten "a1"/"a2"
+var aim_guide = null                # AimGuide-lapsisolmu
+var _aim_active := false            # piirretäänkö tähtäysviiva juuri nyt
+var _aim_len := 420.0
+var _aim_charge := 0.0              # 0..1, vaikuttaa viivan paksuuteen/kirkkauteen
+var _aim_color := Color.WHITE
+
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	arena = p_arena
@@ -93,6 +102,10 @@ func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	shape.shape = circle
 	add_child(shape)
 
+	aim_guide = AimGuide.new()
+	aim_guide.hero = self
+	add_child(aim_guide)
+
 	visual = HeroVisual.new()
 	visual.hero = self
 	add_child(visual)
@@ -101,8 +114,12 @@ func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 func _physics_process(delta: float) -> void:
 	if arena == null or arena.state != arena.State.PLAY:
 		velocity = Vector2.ZERO
+		_aim_active = false
+		_aiming_slot = ""
 		return
 	if not alive:
+		_aim_active = false
+		_aiming_slot = ""
 		respawn_timer -= delta
 		if respawn_timer <= 0.0:
 			_respawn()
@@ -143,6 +160,7 @@ func _physics_process(delta: float) -> void:
 	# heti kun jäähdytys sallii vaikka nappi painettiin hiukan etuajassa tai
 	# tainnutuksen aikana. Tämä tekee ohjaimesta paljon luotettavamman.
 	_buffer_inputs(delta)
+	_aim_active = false   # nollataan joka framessa; kyvyt/lataus aktivoivat tarvittaessa
 
 	# Toiminnot
 	if stun_timer <= 0.0:
@@ -152,14 +170,9 @@ func _physics_process(delta: float) -> void:
 			controller.attack_just_released(),
 			aim, delta)
 		# Kyvyt toimivat myös reliikkiä kannettaessa (kuten väistökin).
-		if _buf.a1 > 0.0 and cd.a1 <= 0.0:
-			_buf.a1 = 0.0
-			cd.a1 = cd_max.a1
-			_ability1(aim)
-		if _buf.a2 > 0.0 and cd.a2 <= 0.0:
-			_buf.a2 = 0.0
-			cd.a2 = cd_max.a2
-			_ability2(aim)
+		# Tähdättävät kyvyt (pito -> vapautus) hoidetaan _run_ability_slotissa.
+		_run_ability_slot("a1", 1)
+		_run_ability_slot("a2", 2)
 		if _buf.ult > 0.0 and ult_charge >= 100.0:
 			_buf.ult = 0.0
 			ult_charge = 0.0
@@ -174,6 +187,8 @@ func _physics_process(delta: float) -> void:
 			_dodge_action(dodge_dir.normalized())
 		if carrying and controller.drop_just():
 			arena.relic.drop_from_carrier(false)
+	else:
+		_aiming_slot = ""   # tainnutus keskeyttää tähtäyksen
 
 	# Palautuminen
 	since_damage += delta
@@ -221,6 +236,50 @@ func _buffer_inputs(delta: float) -> void:
 		_buf.ult = INPUT_BUFFER
 	if controller.dodge_just():
 		_buf.dodge = INPUT_BUFFER
+
+
+## Käsittelee yhden kykypaikan. Tähdättävä kyky (pito -> vapautus) näyttää
+## tähtäysviivan ja laukeaa vasta vapautettaessa; muut laukeavat heti
+## syötepuskurin kautta. Botit käyttävät aina välitöntä laukaisua.
+func _run_ability_slot(slot: String, num: int) -> void:
+	var aimed: bool = not controller.is_bot() and slot in _aimed_slots()
+	if aimed:
+		var held: bool = controller.ability1_held() if num == 1 else controller.ability2_held()
+		var released: bool = controller.ability1_released() if num == 1 else controller.ability2_released()
+		if _aiming_slot == slot:
+			_aim_active = true
+			_aim_len = _aim_range(slot)
+			_aim_color = hero_color()
+			_aim_charge = 1.0
+			if released:
+				_aiming_slot = ""
+				if cd[slot] <= 0.0:
+					cd[slot] = cd_max[slot]
+					_cast_slot(slot)
+		elif _aiming_slot == "" and held and cd[slot] <= 0.0:
+			_aiming_slot = slot
+	elif _buf[slot] > 0.0 and cd[slot] <= 0.0:
+		_buf[slot] = 0.0
+		cd[slot] = cd_max[slot]
+		_cast_slot(slot)
+
+
+func _cast_slot(slot: String) -> void:
+	if slot == "a1":
+		_ability1(aim)
+	else:
+		_ability2(aim)
+
+
+## Ylikirjoita palauttamaan kykypaikat ("a1"/"a2") jotka tähdätään pitämällä
+## nappi pohjassa. Oletuksena tyhjä -> kaikki kyvyt laukeavat heti painettaessa.
+func _aimed_slots() -> Array:
+	return []
+
+
+## Tähtäysviivan pituus kyvylle (ylikirjoitettavissa sankarikohtaisesti).
+func _aim_range(_slot: String) -> float:
+	return 420.0
 
 
 ## Oletushyökkäyskontrolli: liipaisin pohjassa -> ammu aina kun cd sallii.
@@ -410,6 +469,8 @@ func start_guard(duration: float, absorb := 0.7, arc_deg := 80.0) -> void:
 
 func _knockout(source: Hero) -> void:
 	alive = false
+	_aiming_slot = ""
+	_aim_active = false
 	respawn_timer = RESPAWN_TIME
 	profile.stats.deaths += 1
 	velocity = Vector2.ZERO
@@ -466,6 +527,8 @@ func _respawn() -> void:
 func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	alive = true
 	visible = true
+	_aiming_slot = ""
+	_aim_active = false
 	hp = max_hp
 	shield_hp = 0.0
 	carrying = false
@@ -497,3 +560,45 @@ func is_threatened() -> bool:
 
 func hero_color() -> Color:
 	return HeroDef.get_def(hero_id)["color"]
+
+
+## Tähtäysviiva: piirtää sankarin edestä katkoviivan ja tähtäimen kun kykyä
+## tähdätään tai latauskykyä ladataan. Lukee tilan sankarilta joka framessa.
+class AimGuide:
+	extends Node2D
+
+	var hero = null
+
+	func _ready() -> void:
+		z_index = -1
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		if hero == null or not is_instance_valid(hero):
+			return
+		if not hero.alive or not hero._aim_active:
+			return
+		var dir: Vector2 = hero.aim
+		if dir.length() < 0.1:
+			return
+		dir = dir.normalized()
+		var length: float = hero._aim_len
+		var charge: float = clampf(hero._aim_charge, 0.0, 1.0)
+		var col: Color = hero._aim_color
+		var rad: float = hero.radius
+		var start: Vector2 = dir * (rad + 6.0)
+		var tip: Vector2 = dir * length
+		# Katkoviiva pisteinä — näyttää suunnan peittämättä koko kenttää.
+		var dist := start.distance_to(tip)
+		var steps: int = int(dist / 16.0)
+		for i in range(steps):
+			var f := float(i) / maxf(float(steps), 1.0)
+			var p: Vector2 = start.lerp(tip, f)
+			var a: float = (0.14 + charge * 0.34) * (1.0 - f * 0.35)
+			draw_circle(p, 2.0 + charge * 1.5, Palette.with_alpha(col, a))
+		# Tähtäin kärkeen
+		var ring_a: float = 0.35 + charge * 0.45
+		draw_arc(tip, 12.0 + charge * 6.0, 0.0, TAU, 22, Palette.with_alpha(col, ring_a), 2.0)
+		draw_circle(tip, 3.0 + charge * 2.0, Palette.with_alpha(col, ring_a))

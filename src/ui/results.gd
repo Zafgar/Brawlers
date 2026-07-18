@@ -15,7 +15,7 @@ var _time := 0.0
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(MenuBackdrop.new())
-	AudioMgr.play_music("menu")
+	AudioMgr.play_music_pool("menu")
 	AudioMgr.play("match_win")
 
 	_compute_mvp()

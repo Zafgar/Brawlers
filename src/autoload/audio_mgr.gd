@@ -7,6 +7,13 @@ const RATE := 22050
 const POOL_SIZE := 12
 const MUSIC_VOL := -8.0          # musiikin soittimien häivytystaso
 
+# Biisipoolit: valikot ja taistelut arpovat vaihtelua näistä.
+const MUSIC_POOLS := {
+	"menu": ["menu", "menu2"],
+	"lobby": ["lobby", "lobby2"],
+	"battle": ["battle", "battle2", "battle3", "battle4"],
+}
+
 var _streams := {}
 var _players: Array = []
 var _music_players: Array = []      # kaksi soitinta ristihäivytystä varten
@@ -100,6 +107,22 @@ func play_music(track: String) -> void:
 		_crossfade_to(track)
 
 
+## Vaihtaa biisin annetusta poolista. Valitsee mieluiten jo valmiin biisin
+## joka EI ole nyt soimassa — näin erien ja valikoiden välillä tulee vaihtelua.
+func play_music_pool(pool: String) -> void:
+	var tracks: Array = MUSIC_POOLS.get(pool, [pool])
+	var ready_choices: Array = []
+	for t in tracks:
+		if _music_tracks.has(t) and t != _playing_track:
+			ready_choices.append(t)
+	var choice := ""
+	if not ready_choices.is_empty():
+		choice = ready_choices[randi() % ready_choices.size()]
+	else:
+		choice = tracks[randi() % tracks.size()]
+	play_music(choice)
+
+
 func _crossfade_to(track: String) -> void:
 	var cur: AudioStreamPlayer = _music_players[_active_idx]
 	var nxt: AudioStreamPlayer = _music_players[1 - _active_idx]
@@ -137,18 +160,35 @@ func _synth_all() -> void:
 		[110.0, 87.31, 130.81, 98.0], [true, false, false, false], 2.6, "tri", 0.0, 0.9), true)
 	call_deferred("_music_ready", {"menu": menu_wav})
 
-	# Loput biisit heti perään.
-	var music := {}
+	# Ensisijaiset biisit (yksi per näkymä) heti menun perään, jotta lobby ja
+	# taistelu soivat nopeasti ilman että vaihtelu­versioita tarvitsee odottaa.
+	var primary := {}
 	# Lobby: reipas ja odottava (C-G-Am-F, kevyt rytmi).
-	music["lobby"] = _to_wav(_make_track(
+	primary["lobby"] = _to_wav(_make_track(
 		[130.81, 98.0, 110.0, 87.31], [false, false, true, false], 2.0, "square", 0.45, 0.95), true)
 	# Taistelu 1: ajava ja jännittävä (Em-C-G-D).
-	music["battle"] = _to_wav(_make_track(
+	primary["battle"] = _to_wav(_make_track(
 		[82.41, 130.81, 98.0, 146.83], [true, false, false, false], 1.6, "saw", 1.0, 1.0), true)
+	call_deferred("_music_ready", primary)
+
+	# Vaihteluversiot viimeisenä (poolit arpovat näistä).
+	var variety := {}
+	# Menu 2: lämmin vaihtoehto (G-Bb-F-C).
+	variety["menu2"] = _to_wav(_make_track(
+		[98.0, 116.54, 87.31, 130.81], [false, true, false, false], 2.8, "tri", 0.0, 0.9), true)
+	# Lobby 2: napakampi odotus (Bb-F-C-G).
+	variety["lobby2"] = _to_wav(_make_track(
+		[116.54, 87.31, 130.81, 98.0], [false, false, false, true], 1.9, "square", 0.55, 0.95), true)
 	# Taistelu 2: vaihtelua (Am-F-G-Em).
-	music["battle2"] = _to_wav(_make_track(
+	variety["battle2"] = _to_wav(_make_track(
 		[110.0, 87.31, 98.0, 82.41], [true, false, false, true], 1.6, "saw", 1.0, 1.0), true)
-	call_deferred("_music_ready", music)
+	# Taistelu 3: kiivas (Dm-G-Em-A).
+	variety["battle3"] = _to_wav(_make_track(
+		[73.42, 98.0, 82.41, 110.0], [true, false, true, false], 1.5, "saw", 1.0, 1.0), true)
+	# Taistelu 4: raju huipennus (F-Bb-G-D).
+	variety["battle4"] = _to_wav(_make_track(
+		[87.31, 116.54, 98.0, 73.42], [false, false, false, false], 1.4, "saw", 1.0, 1.0), true)
+	call_deferred("_music_ready", variety)
 
 	# Tehosteet viimeisenä.
 	var sounds := {}

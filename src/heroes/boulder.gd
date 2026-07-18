@@ -15,6 +15,15 @@ func _init() -> void:
 	radius = 31.0
 
 
+## Kivimuuri tähdätään: pidä R1 pohjassa (tähtäysviiva) ja vapauta.
+func _aimed_slots() -> Array:
+	return ["a1"]
+
+
+func _aim_range(_slot: String) -> float:
+	return 150.0
+
+
 ## Perushyökkäys: raskas murskaava isku.
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()

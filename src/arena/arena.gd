@@ -31,7 +31,6 @@ var _pause_layer: CanvasLayer = null
 
 
 func _ready() -> void:
-	AudioMgr.play_music("battle" if randf() < 0.5 else "battle2")
 	map = _make_map()
 	add_child(map)
 
@@ -186,6 +185,8 @@ func _start_round_intro() -> void:
 
 
 func _run_intro() -> void:
+	# Uusi taistelubiisi joka erälle -> vaihtelua erien välillä.
+	AudioMgr.play_music_pool("battle")
 	var wins_needed := Game.rounds_to_win
 	hud.show_banner("ERÄ %d" % round_number,
 		"Pidä reliikkiä — %d pistettä voittaa erän (voitot: %d/%d – %d/%d)" % [

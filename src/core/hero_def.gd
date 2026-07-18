@@ -41,7 +41,7 @@ const HEROES := {
 		"color_b": Color("b33b17"),
 		"abilities": {
 			"basic": {"name": "Tulipallo", "desc": "Suora ammus, joka sytyttää jälkipolton.", "cd": 0.55},
-			"a1": {"name": "Liekkilammikko", "desc": "Heittää palavan alueen, joka polttaa vihollisia.", "cd": 8.0},
+			"a1": {"name": "Liekkilammikko", "desc": "Heittää palavan alueen, joka polttaa vihollisia. Tähtää pitämällä nappia pohjassa.", "cd": 8.0},
 			"a2": {"name": "Lämpöaalto", "desc": "Viuhkapurkaus eteen: vahinko, työntö ja jälkipoltto.", "cd": 7.0},
 			"dodge": {"name": "Kipinäliuku", "desc": "Nopea liuku, joka jättää kipinäjäljen.", "cd": 4.0},
 			"ult": {"name": "Tulimyrsky", "desc": "Laajeneva liekkirengas, joka jättää lammikoita.", "cd": 0.0},
@@ -117,7 +117,7 @@ const HEROES := {
 		"color_b": Color("1f6e52"),
 		"abilities": {
 			"basic": {"name": "Nuoli", "desc": "Pidä pohjassa ladataksesi. Paikallaan lataa nopeammin; täysi lataus lävistää.", "cd": 0.5},
-			"a1": {"name": "Tarkkuuslaukaus", "desc": "Pitkä, nopea ja lävistävä erikoisnuoli.", "cd": 7.0},
+			"a1": {"name": "Tarkkuuslaukaus", "desc": "Pitkä, nopea ja lävistävä erikoisnuoli. Tähtää pitämällä nappia pohjassa.", "cd": 7.0},
 			"a2": {"name": "Nuolisade", "desc": "Nuolia sataa valitulle alueelle hetken päästä.", "cd": 8.0},
 			"dodge": {"name": "Kuperkeikka", "desc": "Nopea kieräys, joka lataa jousen heti valmiiksi.", "cd": 3.5},
 			"ult": {"name": "Myrskysarja", "desc": "Ampuu nopean sarjan nuolia tähtäyksen mukaan.", "cd": 0.0},
@@ -136,7 +136,7 @@ const HEROES := {
 		"color_b": Color("4f5a66"),
 		"abilities": {
 			"basic": {"name": "Murskaava isku", "desc": "Raskas lyönti, joka tönäisee kunnolla.", "cd": 0.7},
-			"a1": {"name": "Kivimuuri", "desc": "Nostaa väliaikaisen muurin, joka estää liikkeen ja ammukset.", "cd": 10.0},
+			"a1": {"name": "Kivimuuri", "desc": "Nostaa väliaikaisen muurin, joka estää liikkeen ja ammukset. Tähtää pitämällä nappia pohjassa.", "cd": 10.0},
 			"a2": {"name": "Tömistys", "desc": "Isku maahan: työntää kaikki lähellä olevat kauas.", "cd": 8.0},
 			"dodge": {"name": "Jyräys", "desc": "Raskas loikka eteenpäin.", "cd": 5.0},
 			"ult": {"name": "Vyöry", "desc": "Vyöryy eteenpäin kaataen kaikki tieltään.", "cd": 0.0},

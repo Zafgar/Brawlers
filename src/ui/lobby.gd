@@ -28,7 +28,7 @@ var _detail_index := 0     # mitä sankaria kykypaneeli näyttää (viimeksi lii
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	AudioMgr.play_music("lobby")
+	AudioMgr.play_music_pool("lobby")
 	var backdrop := MenuBackdrop.new()
 	backdrop.team_glow = true
 	add_child(backdrop)

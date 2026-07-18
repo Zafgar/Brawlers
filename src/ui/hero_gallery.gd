@@ -10,7 +10,7 @@ var _selected := ""
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	AudioMgr.play_music("menu")
+	AudioMgr.play_music_pool("menu")
 	add_child(MenuBackdrop.new())
 
 	var margin := MarginContainer.new()

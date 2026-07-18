@@ -11,6 +11,15 @@ func _init() -> void:
 	radius = 24.0
 
 
+## Liekkilammikko tähdätään: pidä R1 pohjassa (tähtäysviiva) ja vapauta.
+func _aimed_slots() -> Array:
+	return ["a1"]
+
+
+func _aim_range(_slot: String) -> float:
+	return 360.0
+
+
 ## Perushyökkäys: tulipallo, joka jättää osuessaan jälkipolton.
 func _basic(dir: Vector2) -> void:
 	AudioMgr.play("fire", 0.12)

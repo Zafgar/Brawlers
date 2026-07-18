@@ -623,6 +623,23 @@ func ability2_just() -> bool:
 	return _flags.a2
 
 
+# Botit käyttävät välitöntä laukaisua, joten pito/vapautus eivät ole käytössä.
+func ability1_held() -> bool:
+	return false
+
+
+func ability2_held() -> bool:
+	return false
+
+
+func ability1_released() -> bool:
+	return false
+
+
+func ability2_released() -> bool:
+	return false
+
+
 func dodge_just() -> bool:
 	return _flags.dodge
 
