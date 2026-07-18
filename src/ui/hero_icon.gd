@@ -35,6 +35,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_tide(ci, center, r)
 		"scout":
 			_scout(ci, center, r)
+		"prism":
+			_prism(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -43,6 +45,25 @@ static func _letter(ci: CanvasItem, hero_id: String, center: Vector2, r: float) 
 	var def := HeroDef.get_def(hero_id)
 	UiKit.draw_text(ci, center + Vector2(0, r * 0.04), def["name"].substr(0, 1),
 		int(r * 1.15), Color.WHITE, true, maxi(2, int(r * 0.1)))
+
+
+## Prisma: kolmio, johon tulee säde vasemmalta ja josta hajoaa spektri oikealle.
+static func _prism(ci: CanvasItem, center: Vector2, r: float) -> void:
+	var s := r * 0.82
+	var lw: float = maxf(2.0, r * 0.07)
+	var tri := PackedVector2Array([
+		center + Vector2(0.0, -0.9) * s,
+		center + Vector2(0.8, 0.6) * s,
+		center + Vector2(-0.8, 0.6) * s,
+	])
+	ci.draw_colored_polygon(tri, INK)
+	ci.draw_polyline(tri + PackedVector2Array([tri[0]]), SHADE, lw)
+	# Tulosäde vasemmalta
+	ci.draw_line(center + Vector2(-1.2, 0.2) * s, center + Vector2(-0.1, 0.2) * s, INK, lw)
+	# Kolme hajaantuvaa säde oikealle
+	for i in range(3):
+		var y := center.y + 0.2 * s + (i - 1) * r * 0.32
+		ci.draw_line(center + Vector2(0.1, 0.2) * s, Vector2(center.x + 1.2 * s, y), INK, lw * 0.8)
 
 
 # --- Yksittäiset tunnukset ---

@@ -581,6 +581,8 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 				if ally.hp < ally.max_hp * 0.6:
 					hurt_allies += 1
 			return hurt_allies >= 2 or near_enemies >= 3
+		"prism":
+			return arena.heroes_in_circle(pos, 220.0, hero.team).size() >= 2
 	return near_enemies >= 2
 
 
@@ -612,6 +614,8 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 			return dist > 200.0 and dist < 700.0
 		"maestro":
 			return dist < 500.0 and not arena.heroes_in_circle(pos, 240.0, hero.team).is_empty()
+		"prism":
+			return dist < 430.0
 	return false
 
 
@@ -641,6 +645,8 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 			return dist < 500.0
 		"maestro":
 			return dist < 200.0
+		"prism":
+			return bb.lowest_ally != null and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.7
 	return false
 
 
@@ -709,6 +715,14 @@ func ability1_released() -> bool:
 
 
 func ability2_released() -> bool:
+	return false
+
+
+func ult_held() -> bool:
+	return false
+
+
+func ult_released() -> bool:
 	return false
 
 

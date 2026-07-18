@@ -6,6 +6,7 @@ class_name HeroDef
 const ORDER := [
 	"bastion", "ember", "luma", "blink", "bramble", "quill",
 	"boulder", "volt", "maestro", "shade", "tide", "scout",
+	"prism",
 ]
 
 const HEROES := {
@@ -235,6 +236,25 @@ const HEROES := {
 			"a2": {"name": "Tainnutuspallo", "desc": "Tahmea pallo, joka tainnuttaa hetkeksi.", "cd": 9.0},
 			"dodge": {"name": "Kierähdys", "desc": "Nopea rullaus, joka lataa kiväärin heti.", "cd": 3.5},
 			"ult": {"name": "Merkkisade", "desc": "Merkitsee kaikki lähiviholliset ja kiihdyttää joukkueen.", "cd": 0.0},
+		},
+	},
+	"prism": {
+		"name": "Prisma",
+		"role": "Tuki",
+		"difficulty": 3,
+		"hp": 190.0,
+		"speed": 315.0,
+		"ratings": {"kesto": 2, "liike": 3, "vahinko": 3, "tuki": 5},
+		"weapon": "Valoprisma",
+		"desc": "Sädetuki. Kanavoi säteitä: toinen vahingoittaa ja hidastaa, toinen parantaa liittolaisia. Käyttää manaa.",
+		"color": Color("5be0e0"),
+		"color_b": Color("1f7d8c"),
+		"abilities": {
+			"basic": {"name": "Valonsäde", "desc": "Kevyt valoammus.", "cd": 0.5},
+			"a1": {"name": "Polttosäde", "desc": "Pidä pohjassa: jatkuva säde joka vahingoittaa ja hidastaa vihollisia. Kuluttaa manaa.", "cd": 0.0},
+			"a2": {"name": "Hoitosäde", "desc": "Pidä pohjassa: jatkuva säde joka parantaa liittolaisia. Kuluttaa manaa.", "cd": 0.0},
+			"dodge": {"name": "Valonpyrähdys", "desc": "Nopea väistöliuku.", "cd": 3.5},
+			"ult": {"name": "Loistokehä", "desc": "Pidä pohjassa nähdäksesi alue, vapauta: sisällä olevat liittolaiset saavat lisää vahinkoa ja vauhtia.", "cd": 0.0},
 		},
 	},
 }

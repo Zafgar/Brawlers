@@ -92,6 +92,8 @@ func _draw() -> void:
 			_paint_scout(c1, c2)
 		"maestro":
 			_paint_maestro(c1, c2)
+		"prism":
+			_paint_prism(c1, c2)
 		_:
 			_paint_generic(c1, c2)
 
@@ -421,6 +423,35 @@ func _paint_luma(c1: Color, c2: Color) -> void:
 		star.append(tip + Vector2.RIGHT.rotated(TAU * i / 8.0 + _time * 2.0) * r)
 	draw_colored_polygon(star, Palette.glow(Palette.GOLD, 2.0))
 	draw_circle(tip, 3.0, Palette.glow(Color.WHITE, 1.6))
+
+
+func _paint_prism(c1: Color, c2: Color) -> void:
+	# Hehkuaura
+	var aura := 0.9 + 0.1 * sin(_time * 4.0)
+	draw_circle(Vector2.ZERO, 28.0 * aura, Palette.with_alpha(c1, 0.12))
+
+	# Kolme kiertävää valopistettä (prisman hajottama spektri)
+	for i in range(3):
+		var ang := _time * 1.4 + TAU * i / 3.0
+		var orb := Vector2(cos(ang), sin(ang) * 0.55) * 28.0 + Vector2(0, -6)
+		draw_circle(orb, 3.2, Palette.glow(c1, 1.5))
+
+	_body_base(Vector2.ZERO, 17.0, c1, c2)
+	_eyes(Vector2(0, -4), 6.5)
+
+	# Kädessä pyörivä prismakristalli, joka hehkuu tähtäyssuuntaan
+	var side: Vector2 = hero.aim.rotated(0.8)
+	var grip: Vector2 = side * 15.0
+	var crystal: Vector2 = side * 24.0 + hero.aim * 6.0
+	_hold(grip, c1, 17.0)
+	var spin := _time * 2.5
+	var tri := PackedVector2Array()
+	for i in range(3):
+		tri.append(crystal + Vector2.RIGHT.rotated(spin + TAU * i / 3.0) * 9.0)
+	draw_colored_polygon(tri, Palette.glow(c1, 1.6))
+	draw_polyline(tri + PackedVector2Array([tri[0]]), Palette.glow(Color.WHITE, 1.4), 2.0)
+	draw_circle(crystal, 3.0, Palette.glow(Color.WHITE, 1.6))
+	draw_circle(crystal + hero.aim * 8.0, 4.0, Palette.with_alpha(Palette.glow(c1, 1.6), 0.7))
 
 
 func _paint_blink(c1: Color, c2: Color) -> void:

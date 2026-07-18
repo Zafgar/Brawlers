@@ -100,6 +100,13 @@ var _rage_idle := 0.0              # aika viime taistelutoiminnasta (rage-vaimen
 var blue_buff := 0.0
 var red_buff := 0.0
 
+# Pidä-ja-vapauta ultimate (esim. Prisman alue-esikatselu) ja säde-overlay
+# (Prisman kanavoitavat säteet). Overlay piirretään AimGuidessa.
+var _ult_holding := false
+var _beam_active := false
+var _beam_len := 0.0
+var _beam_heal := false
+
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	arena = p_arena
@@ -151,11 +158,15 @@ func _physics_process(delta: float) -> void:
 		_aim_active = false
 		_aiming_slot = ""
 		_channel_slot = ""
+		_ult_holding = false
+		_beam_active = false
 		return
 	if not alive:
 		_aim_active = false
 		_aiming_slot = ""
 		_channel_slot = ""
+		_ult_holding = false
+		_beam_active = false
 		respawn_timer -= delta
 		if respawn_timer <= 0.0:
 			_respawn()
@@ -210,13 +221,18 @@ func _physics_process(delta: float) -> void:
 		# Tähdättävät kyvyt (pito -> vapautus) hoidetaan _run_ability_slotissa.
 		_run_ability_slot("a1", 1, delta)
 		_run_ability_slot("a2", 2, delta)
-		if _buf.ult > 0.0 and ult_charge >= 100.0:
+		# Ultimate: välitön (oletus) tai pidä-ja-vapauta (esim. Prisman alue).
+		if _ult_is_held() and not controller.is_bot():
+			if _ult_holding:
+				if controller.ult_released():
+					if ult_charge >= 100.0:
+						_fire_ult()
+					_ult_holding = false
+			elif controller.ult_held() and ult_charge >= 100.0:
+				_ult_holding = true
+		elif _buf.ult > 0.0 and ult_charge >= 100.0:
 			_buf.ult = 0.0
-			ult_charge = 0.0
-			_ult_ready_announced = false
-			AudioMgr.play("ult")
-			arena.shake(0.35)
-			_ultimate(aim)
+			_fire_ult()
 		if _buf.dodge > 0.0 and cd.dodge <= 0.0:
 			_buf.dodge = 0.0
 			cd.dodge = cd_max.dodge * (1.5 if carrying else 1.0)
@@ -423,6 +439,26 @@ func _channel_tick(_slot: String, _delta: float) -> void:
 
 func _channel_end(_slot: String) -> void:
 	pass
+
+
+func _fire_ult() -> void:
+	ult_charge = 0.0
+	_ult_ready_announced = false
+	_ult_holding = false
+	AudioMgr.play("ult")
+	arena.shake(0.35)
+	_ultimate(aim)
+
+
+## Ylikirjoita palauttamaan true jos ultimate pidetään pohjassa (esikatselu) ja
+## laukaistaan vapautettaessa. Oletuksena välitön.
+func _ult_is_held() -> bool:
+	return false
+
+
+## Pidä-ja-vapauta-ultin esikatselualueen säde (AimGuide piirtää renkaan).
+func _ult_preview_radius() -> float:
+	return 0.0
 
 
 ## Oletushyökkäyskontrolli: liipaisin pohjassa -> ammu aina kun cd sallii.
@@ -632,6 +668,8 @@ func _knockout(source: Hero) -> void:
 	_aiming_slot = ""
 	_aim_active = false
 	_channel_slot = ""
+	_ult_holding = false
+	_beam_active = false
 	blue_buff = 0.0           # tyrmäys rikkoo kantajan buffit (vihollisen "murskaus")
 	red_buff = 0.0
 	respawn_timer = RESPAWN_TIME
@@ -693,6 +731,8 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	visible = true
 	_aiming_slot = ""
 	_aim_active = false
+	_ult_holding = false
+	_beam_active = false
 	_reset_resource()
 	blue_buff = 0.0
 	red_buff = 0.0
@@ -739,33 +779,54 @@ class AimGuide:
 	func _ready() -> void:
 		z_index = -1
 
-	func _process(_delta: float) -> void:
+	var _t := 0.0
+
+	func _process(delta: float) -> void:
+		_t += delta
 		queue_redraw()
 
 	func _draw() -> void:
-		if hero == null or not is_instance_valid(hero):
+		if hero == null or not is_instance_valid(hero) or not hero.alive:
 			return
-		if not hero.alive or not hero._aim_active:
-			return
-		var dir: Vector2 = hero.aim
-		if dir.length() < 0.1:
-			return
-		dir = dir.normalized()
-		var length: float = hero._aim_len
-		var charge: float = clampf(hero._aim_charge, 0.0, 1.0)
-		var col: Color = hero._aim_color
-		var rad: float = hero.radius
-		var start: Vector2 = dir * (rad + 6.0)
-		var tip: Vector2 = dir * length
-		# Katkoviiva pisteinä — näyttää suunnan peittämättä koko kenttää.
-		var dist := start.distance_to(tip)
-		var steps: int = int(dist / 16.0)
-		for i in range(steps):
-			var f := float(i) / maxf(float(steps), 1.0)
-			var p: Vector2 = start.lerp(tip, f)
-			var a: float = (0.14 + charge * 0.34) * (1.0 - f * 0.35)
-			draw_circle(p, 2.0 + charge * 1.5, Palette.with_alpha(col, a))
-		# Tähtäin kärkeen
-		var ring_a: float = 0.35 + charge * 0.45
-		draw_arc(tip, 12.0 + charge * 6.0, 0.0, TAU, 22, Palette.with_alpha(col, ring_a), 2.0)
-		draw_circle(tip, 3.0 + charge * 2.0, Palette.with_alpha(col, ring_a))
+
+		# Ultin alue-esikatselu (pidä-ja-vapauta, esim. Prisma)
+		if hero._ult_holding:
+			var ur: float = hero._ult_preview_radius()
+			if ur > 0.0:
+				var uc: Color = hero.hero_color()
+				var up := 0.5 + 0.5 * sin(_t * 4.0)
+				draw_circle(Vector2.ZERO, ur, Palette.with_alpha(uc, 0.07))
+				draw_arc(Vector2.ZERO, ur, 0.0, TAU, 52,
+					Palette.with_alpha(Palette.glow(uc, 1.3), 0.5 + up * 0.3), 3.0)
+				draw_arc(Vector2.ZERO, ur * 0.6, 0.0, TAU, 40, Palette.with_alpha(uc, 0.3), 2.0)
+
+		# Kanavoitava säde (Prisma)
+		if hero._beam_active and hero.aim.length() > 0.1:
+			var bdir: Vector2 = hero.aim.normalized()
+			var bcol: Color = Color("6affa0") if hero._beam_heal else Palette.glow(hero.hero_color(), 1.3)
+			var bstart: Vector2 = bdir * (hero.radius + 4.0)
+			var bend: Vector2 = bdir * float(hero._beam_len)
+			var bpulse := 0.7 + 0.3 * sin(_t * 22.0)
+			draw_line(bstart, bend, Palette.with_alpha(bcol, 0.22), 12.0)
+			draw_line(bstart, bend, Palette.with_alpha(bcol, 0.55), 6.0 * bpulse)
+			draw_line(bstart, bend, Palette.with_alpha(Color.WHITE, 0.7), 2.0)
+			draw_circle(bend, 8.0 * bpulse, Palette.with_alpha(bcol, 0.6))
+
+		# Tähtäysviiva (pito-tähtää-kyvyt ja latauskyvyt)
+		if hero._aim_active and hero.aim.length() > 0.1:
+			var dir: Vector2 = hero.aim.normalized()
+			var length: float = hero._aim_len
+			var charge: float = clampf(hero._aim_charge, 0.0, 1.0)
+			var col: Color = hero._aim_color
+			var start: Vector2 = dir * (float(hero.radius) + 6.0)
+			var tip: Vector2 = dir * length
+			var dist := start.distance_to(tip)
+			var steps: int = int(dist / 16.0)
+			for i in range(steps):
+				var f := float(i) / maxf(float(steps), 1.0)
+				var p: Vector2 = start.lerp(tip, f)
+				var a: float = (0.14 + charge * 0.34) * (1.0 - f * 0.35)
+				draw_circle(p, 2.0 + charge * 1.5, Palette.with_alpha(col, a))
+			var ring_a: float = 0.35 + charge * 0.45
+			draw_arc(tip, 12.0 + charge * 6.0, 0.0, TAU, 22, Palette.with_alpha(col, ring_a), 2.0)
+			draw_circle(tip, 3.0 + charge * 2.0, Palette.with_alpha(col, ring_a))

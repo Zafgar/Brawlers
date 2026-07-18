@@ -145,6 +145,14 @@ func ability2_released() -> bool:
 	return bool(_prev.get("a2", false)) and not bool(_pressed.get("a2", false))
 
 
+func ult_held() -> bool:
+	return bool(_pressed.get("ult", false))
+
+
+func ult_released() -> bool:
+	return bool(_prev.get("ult", false)) and not bool(_pressed.get("ult", false))
+
+
 func dodge_just() -> bool:
 	return _just("dodge")
 
