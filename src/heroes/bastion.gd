@@ -8,6 +8,20 @@ const SWING_RANGE := 94.0
 const SWING_ARC_DEG := 72.0
 const SWING_DMG := 13.0
 
+# Kilpivallin ammustorjunta: iso etukaari, joka syö vihollisammukset ja
+# suojaa myös takana olevia liittolaisia (ei anna heille kilpeä, torjuu vain).
+const BLOCK_RADIUS := 250.0
+const BLOCK_ARC_DEG := 130.0
+
+# Vetoisku (a2): vetää ympäröivät viholliset eteen ja tainnuttaa, ei vahinkoa.
+const PULL_RADIUS := 220.0
+const PULL_FRONT_DIST := 92.0
+const PULL_SPEED := 1000.0
+const PULL_DUR := 0.2
+const PULL_STUN := 0.8
+
+var _wall_fx := 0.0
+
 func _init() -> void:
 	kb_resist = 0.55
 	radius = 30.0
@@ -34,6 +48,43 @@ func _channel_tick(_slot: String, delta: float) -> void:
 	res = maxf(res - 8.0 * delta, 0.0)
 	if res <= 0.0:
 		guard_timer = 0.0   # energia loppui -> kilpi putoaa heti
+		return
+	# Iso etukilpi torjuu vihollisammukset -> takana olevat liittolaiset suojassa.
+	_block_front_projectiles()
+	_wall_fx -= delta
+	if _wall_fx <= 0.0:
+		_wall_fx = 0.3
+		var a := aim.angle()
+		var half := deg_to_rad(BLOCK_ARC_DEG * 0.5)
+		# Hehkuva kilpivallikaari eteen
+		var pts := PackedVector2Array()
+		for i in range(9):
+			var ang: float = a - half + (2.0 * half) * i / 8.0
+			pts.append(global_position + Vector2(cos(ang), sin(ang)) * BLOCK_RADIUS)
+		for p in pts:
+			Fx.spark(arena, p, Palette.with_alpha(Palette.glow(Palette.SHIELD, 1.3), 0.7))
+
+
+## Torjuu vihollisammukset isolla etukaarella (ei kosketa taakse jääviä).
+func _block_front_projectiles() -> void:
+	for child in arena.get_children():
+		if not child is Projectile:
+			continue
+		var proj := child as Projectile
+		if proj.team == team:
+			continue
+		var to: Vector2 = proj.global_position - global_position
+		if to.length() > BLOCK_RADIUS or to.dot(aim) <= 0.0:
+			continue
+		if absf(rad_to_deg(aim.angle_to(to))) > BLOCK_ARC_DEG * 0.5:
+			continue
+		# Torju ammus.
+		profile.stats.prevented += proj.dmg
+		profile.add_score(proj.dmg * 0.08)
+		Fx.spark(arena, proj.global_position, Palette.glow(Palette.SHIELD, 1.5))
+		Fx.ring(arena, proj.global_position, Palette.with_alpha(Palette.SHIELD, 0.8), 20.0, 0.2, 3.0)
+		AudioMgr.play("shield", 0.15, 3.0)
+		proj.queue_free()
 
 
 ## Perushyökkäys: leveä nuijan pyyhkäisy eteen.
@@ -66,23 +117,28 @@ func _ability1(dir: Vector2) -> void:
 	visual.squash(1.1, 0.92)
 
 
-## Kyky 2: Maanjäristys — vahinko, työntö ja hidastus ympärillä.
-func _ability2(_dir: Vector2) -> void:
-	visual.squash(1.35, 0.65)
-	AudioMgr.play("quake")
-	arena.shake(0.4)
-	Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.5), 185.0, 0.55, 9.0)
-	Fx.ring(arena, global_position, Palette.with_alpha(hero_color(), 0.6), 120.0, 0.4, 5.0)
-	Fx.dust(arena, global_position)
-	# Säteittäiset halkeamat
-	for i in range(8):
-		var ang := TAU * i / 8.0 + randf() * 0.2
-		Fx.spark(arena, global_position + Vector2(cos(ang), sin(ang)) * 90.0, Color("6b5a3a"))
-	for enemy in arena.heroes_in_circle(global_position, 185.0):
+## Kyky 2: Vetoisku — vetää ympäröivät viholliset eteen ja tainnuttaa. Ei tee
+## vahinkoa, mutta kerää viholliset facing-suuntaan Bastionin eteen, jotta hän
+## voi hallita taistelua (esim. kilpivallin taakse kerätyt liittolaiset turvaan).
+func _ability2(dir: Vector2) -> void:
+	visual.squash(1.25, 0.75)
+	AudioMgr.play("quake", 0.05, 1.0)
+	arena.shake(0.3)
+	var front: Vector2 = global_position + dir * PULL_FRONT_DIST
+	Fx.ring(arena, global_position, Palette.glow(Palette.SHIELD, 1.4), PULL_RADIUS, 0.5, 7.0)
+	Fx.ring(arena, front, Palette.glow(hero_color(), 1.4), 70.0, 0.4, 5.0)
+	Fx.dust(arena, front)
+	for enemy in arena.heroes_in_circle(global_position, PULL_RADIUS):
 		if enemy.team == team:
 			continue
-		deal_damage_to(enemy, 14.0, 360.0)
-		enemy.apply_slow(0.55, 1.8)
+		# Vedä kohde eteen (syöksy kohti etupistettä) ja tainnuta — ei vahinkoa.
+		var toward: Vector2 = (front - enemy.global_position)
+		if toward.length() < 1.0:
+			toward = dir
+		enemy.dash(toward.normalized(), PULL_SPEED, PULL_DUR, false)
+		enemy.apply_stun(PULL_STUN)
+		Fx.spark(arena, enemy.global_position, Palette.glow(Palette.SHIELD, 1.4))
+		Fx.beam(arena, enemy.global_position, front, Palette.with_alpha(Palette.SHIELD, 0.5), 3.0)
 
 
 ## Väistö: raskas rynnäkkö, joka tönäisee osuessaan.

@@ -23,8 +23,8 @@ const HEROES := {
 		"color_b": Color("2e5f74"),
 		"abilities": {
 			"basic": {"name": "Nuijan heilautus", "desc": "Leveä pyyhkäisy eteen.", "cd": 0.6},
-			"a1": {"name": "Kilpivalli", "desc": "Pidä pohjassa nostaaksesi kilven: torjuu suurimman osan edestä tulevasta vahingosta ja kuluttaa energiaa saadun osuman mukaan.", "cd": 9.0},
-			"a2": {"name": "Maanjäristys", "desc": "Maahan isku: vahinkoa, työntö ja hidastus ympärillä.", "cd": 7.5},
+			"a1": {"name": "Kilpivalli", "desc": "Pidä pohjassa nostaaksesi ison etukilven: vaimentaa Bastionin ottamaa vahinkoa ja torjuu edestä tulevat vihollisammukset — suojaa myös takana olevat liittolaiset. Kuluttaa energiaa.", "cd": 9.0},
+			"a2": {"name": "Vetoisku", "desc": "Vetää ympäröivät viholliset eteen ja tainnuttaa (ei vahinkoa) — kerää viholliset haltuun kilven eteen.", "cd": 7.5},
 			"dodge": {"name": "Rynnäkkö", "desc": "Raskas syöksy, joka tönäisee vihollisia.", "cd": 5.0},
 			"ult": {"name": "Linnake", "desc": "Suuri kupoli, joka torjuu vihollisammukset ja kilpiää liittolaiset.", "cd": 0.0},
 		},
@@ -213,10 +213,10 @@ const HEROES := {
 		"color_b": Color("176d94"),
 		"abilities": {
 			"basic": {"name": "Keihäspisto", "desc": "Pitkä ja kapea pisto eteen.", "cd": 0.55},
-			"a1": {"name": "Vesivana", "desc": "Syöksy, joka jättää liittolaisia kiihdyttävän vanan.", "cd": 7.0},
-			"a2": {"name": "Aalto", "desc": "Työntävä vesiaalto eteen, joka hidastaa.", "cd": 7.5},
+			"a1": {"name": "Vesivana", "desc": "Syöksy, joka jättää kiihdyttävän vanan. 3 latausta, lyhyt käyttöväli — lataukset palautuvat hitaasti. Ei kuluta raivoa.", "cd": 0.55},
+			"a2": {"name": "Aalto", "desc": "Työntävä vesiaalto eteen, joka hidastaa. Kuluttaa raivoa.", "cd": 7.5},
 			"dodge": {"name": "Virtaliuku", "desc": "Liukas väistö, joka antaa vauhtia.", "cd": 4.0},
-			"ult": {"name": "Hyökyaalto", "desc": "Valtava laajeneva aalto, joka lakaisee ja hidastaa viholliset.", "cd": 0.0},
+			"ult": {"name": "Vesipatsas", "desc": "Ryntää vedellä eteen (tähtäyssuuntaan), nostaa lähiviholliset vesipatsaan päälle ja iskee heidät alas vahingolla ja tainnutuksella.", "cd": 0.0},
 		},
 	},
 	"scout": {
@@ -261,7 +261,7 @@ const HEROES := {
 		"name": "Rift",
 		"role": "Assassin",
 		"difficulty": 3,
-		"hp": 155.0,
+		"hp": 120.0,
 		"speed": 355.0,
 		"ratings": {"kesto": 1, "liike": 5, "vahinko": 5, "tuki": 1},
 		"weapon": "Tyhjyyden tikari",
@@ -270,7 +270,7 @@ const HEROES := {
 		"color_b": Color("3a0e5c"),
 		"abilities": {
 			"basic": {"name": "Tyhjyysviilto", "desc": "Melee-viilto joka kasaa pinon kohteeseen (enintään 5).", "cd": 0.32},
-			"a1": {"name": "Merkkiheitto", "desc": "Heittää merkin; jos se osuu (oma tai vihollinen), paina uudelleen varpataksesi kohteelle.", "cd": 8.0},
+			"a1": {"name": "Merkkiheitto", "desc": "Tähtää pitämällä nappia pohjassa ja vapauta heittääksesi merkin. Jos se osuu (oma tai vihollinen), paina uudelleen varpataksesi kohteelle.", "cd": 8.0},
 			"a2": {"name": "Räjäytys", "desc": "Melee-isku joka räjäyttää kohteen pinot: enemmän pinoja = enemmän vahinkoa. Täydet 5 pinoa nollaa jäähdytyksen.", "cd": 6.0},
 			"dodge": {"name": "Varjoloikka", "desc": "Nopea tyhjyysloikka.", "cd": 3.0},
 			"ult": {"name": "Ajanpysäytys", "desc": "Pysäyttää ajan ympärillä: kaikki muut (myös omat) jäätyvät hetkeksi, sinä liikut ja toimit vapaasti.", "cd": 0.0},

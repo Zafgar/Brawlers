@@ -32,6 +32,30 @@ func _init() -> void:
 	radius = 22.0
 
 
+## Merkkiheitto tähdätään: pidä R1 pohjassa (tähtäysviiva) ja vapauta
+## heittääksesi merkin haluttuun suuntaan. Varppaus (kun merkki on kiinni) sekä
+## odotus lennon aikana hoituvat välittömästi ilman tähtäystä.
+func _aimed_slots() -> Array:
+	return ["a1"]
+
+
+func _aim_range(_slot: String) -> float:
+	return 720.0
+
+
+func _aim_begin(_slot: String) -> bool:
+	# Merkki kiinni -> varppaa heti (ei tähtäystä).
+	if _mark_target != null and is_instance_valid(_mark_target) and _mark_target.alive:
+		_teleport_to_mark()
+		cd.a1 = cd_max.a1
+		return false
+	# Merkki vielä lennossa -> odota (ei uutta heittoa).
+	if _mark_pending:
+		return false
+	# Ei merkkiä -> aloita tähtäys (heitto laukeaa vapautettaessa).
+	return true
+
+
 ## Perushyökkäys: tyhjyysviilto, joka kasaa pinon osumaan.
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()

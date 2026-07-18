@@ -203,10 +203,12 @@ func _draw_status(bob: float) -> void:
 		else:
 			var afrac: float = clampf(float(hero.ammo) / float(hero.ammo_max), 0.0, 1.0)
 			draw_rect(Rect2(top + Vector2(-w / 2.0, ay), Vector2(w * afrac, 2.0)), Color("d9cbb0"))
-			# Lippaan segmenttiviivat
-			for s in range(1, 5):
-				var sx: float = -w / 2.0 + w * s / 5.0
-				draw_line(top + Vector2(sx, ay - 1.0), top + Vector2(sx, ay + 3.0), Color(0, 0, 0, 0.35), 1.0)
+			# Segmenttiviivat: pienelle latausmäärälle (esim. Tiden 3 syöksyä) yksi
+			# viiva per lataus; isolle lippaalle tasainen palkki ilman viivoja.
+			if hero.ammo_max <= 8:
+				for s in range(1, hero.ammo_max):
+					var sx: float = -w / 2.0 + w * float(s) / float(hero.ammo_max)
+					draw_line(top + Vector2(sx, ay - 1.0), top + Vector2(sx, ay + 3.0), Color(0, 0, 0, 0.4), 1.0)
 	if hero.shield_hp > 0.0:
 		var sfrac: float = clampf(hero.shield_hp / hero.max_hp, 0.0, 1.0)
 		draw_rect(Rect2(top + Vector2(-w / 2.0, -4.0), Vector2(w * sfrac, 3.0)), Palette.SHIELD)
@@ -230,16 +232,31 @@ func _draw_status(bob: float) -> void:
 			mark_center + Vector2(0, 7) * mark_pulse, mark_center + Vector2(-6, 0) * mark_pulse])
 		draw_colored_polygon(mark, Palette.glow(Palette.GOLD, 1.7))
 
-	# Void-pinot (Riftin) pieninä timantteina HP-palkin yllä
+	# Void-pinot (Riftin) HP-palkin yllä: 1–4 pinoa pieninä timantteina, mutta
+	# täydet 5 näkyvät yhtenä hehkuvana void-merkkinä (valmis räjäytettäväksi).
 	if hero.void_stacks > 0:
 		var vcol := Color("b48aff")
 		var n: int = hero.void_stacks
-		for i in range(n):
-			var px: float = -((n - 1) * 7.0) / 2.0 + i * 7.0
-			var pc: Vector2 = top + Vector2(px, -13.0)
-			draw_colored_polygon(PackedVector2Array([
-				pc + Vector2(0, -3.5), pc + Vector2(3, 0), pc + Vector2(0, 3.5), pc + Vector2(-3, 0)]),
-				Palette.glow(vcol, 1.6))
+		if n >= 5:
+			var mc: Vector2 = top + Vector2(0, -15.0)
+			var pulse: float = 1.0 + 0.25 * sin(_time * 9.0)
+			# Hehkukehä
+			draw_circle(mc, 9.0 * pulse, Palette.with_alpha(Palette.glow(vcol, 1.6), 0.35))
+			# Nelisakarainen void-tähti (kaksi timanttia ristissä)
+			for rot in [0.0, PI * 0.25]:
+				var pts := PackedVector2Array()
+				for k in range(4):
+					var a: float = rot + k * PI * 0.5
+					pts.append(mc + Vector2(cos(a), sin(a)) * 7.0 * pulse)
+				draw_colored_polygon(pts, Palette.glow(vcol, 1.7))
+			draw_circle(mc, 2.2, Palette.glow(Color.WHITE, 1.4))
+		else:
+			for i in range(n):
+				var px: float = -((n - 1) * 7.0) / 2.0 + i * 7.0
+				var pc: Vector2 = top + Vector2(px, -13.0)
+				draw_colored_polygon(PackedVector2Array([
+					pc + Vector2(0, -3.5), pc + Vector2(3, 0), pc + Vector2(0, 3.5), pc + Vector2(-3, 0)]),
+					Palette.glow(vcol, 1.6))
 
 	# Ajanpysäytys: void-jäätymisverho sankarin päälle
 	if hero.frozen > 0.0:

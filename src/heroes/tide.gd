@@ -7,20 +7,36 @@ const SPEAR_RANGE := 145.0
 const SPEAR_ARC_DEG := 28.0
 const SPEAR_DMG := 17.0
 
+const DASH_CHARGES := 3             # syöksylatauksia yhtä aikaa varastossa
+const DASH_RECHARGE := 5.0          # yhden latauksen palautuminen (hidas)
+
+# Ultti: vesiryntäys eteen, nostaa viholliset vesipatsaan päälle ja iskee alas.
+const RUSH_SPEED := 1150.0
+const RUSH_DUR := 0.3
+const RUSH_RADIUS := 210.0
+const LIFT_STUN := 0.5
+const SLAM_DMG := 34.0
+const SLAM_STUN := 0.7
+
+var _dash_recharge := 0.0
+
 func _init() -> void:
 	radius = 26.0
 	kb_resist = 0.2
 
 
-## Raivo: kertyy taistelusta ja purkautuu vesikykyihin. Mitä kovemmin
-## taistelet, sitä useammin voit syöksyä ja lyödä aaltoja.
+## Raivo: kertyy taistelusta ja purkautuu Aaltoon (a2). Syöksy (a1) on irti
+## raivosta: sillä on 3 latausta ja lyhyt käyttöväli, mutta lataukset palautuvat
+## hitaasti yksitellen — spämmääminen ei kannata.
 func _setup_resource() -> void:
 	res_type = "rage"
 	res_max = 100.0
 	res = 0.0
-	res_cost = {"basic": 0.0, "a1": 30.0, "a2": 40.0, "dodge": 0.0}
-	cd_max.a1 = 0.5
+	res_cost = {"basic": 0.0, "a1": 0.0, "a2": 40.0, "dodge": 0.0}
+	cd_max.a1 = 0.55
 	cd_max.a2 = 0.6
+	ammo_max = DASH_CHARGES
+	ammo = DASH_CHARGES
 
 
 ## Perushyökkäys: pitkä kapea keihäspisto.
@@ -40,8 +56,14 @@ func _basic(dir: Vector2) -> void:
 		Fx.spark(arena, global_position + dir * SPEAR_RANGE * 0.8, Color("4ad4ff"))
 
 
-## Kyky 1: Vesivana — syöksy, joka jättää kiihdyttävän vanan.
+## Kyky 1: Vesivana — syöksy, joka jättää kiihdyttävän vanan. Käyttää
+## syöksylatauksia (max 3) raivon sijaan.
 func _ability1(dir: Vector2) -> void:
+	if ammo <= 0:
+		return                          # ei latauksia jäljellä
+	if ammo >= ammo_max:
+		_dash_recharge = DASH_RECHARGE  # aloita palautuslaskuri täydestä
+	ammo -= 1
 	AudioMgr.play("water", 0.1, -3.0)
 	dash(dir, 950.0, 0.32, false)
 	_water_trail()
@@ -89,32 +111,66 @@ func _dodge_action(dir: Vector2) -> void:
 	Fx.burst(arena, global_position, Palette.with_alpha(Color("4ad4ff"), 0.5), 8, 140.0, 0.4, 4.0)
 
 
-## Ultimate: Hyökyaalto — valtava laajeneva aalto.
-func _ultimate(_dir: Vector2) -> void:
-	arena.popup(global_position + Vector2(0, -84), "HYÖKYAALTO!", Palette.glow(Color("4ad4ff"), 1.6), 26)
-	arena.shake(0.5)
+## Ultimate: Vesipatsas — ryntää vedellä eteen (tähtäyssuuntaan), nostaa
+## lähiviholliset vesipatsaan päälle ja iskee heidät alas vahingolla ja
+## tainnutuksella.
+func _ultimate(dir: Vector2) -> void:
+	var d: Vector2 = dir if dir.length() > 0.1 else aim
+	arena.popup(global_position + Vector2(0, -84), "VESIPATSAS!", Palette.glow(Color("4ad4ff"), 1.6), 26)
 	AudioMgr.play("wave", 0.05, -2.0)
-	_tidal_wave()
+	arena.shake(0.35)
+	dash(d, RUSH_SPEED, RUSH_DUR, true)
+	Fx.burst(arena, global_position, Palette.glow(Color("4ad4ff"), 1.5), 16, 300.0, 0.5, 6.0)
+	_rush_slam()
 
 
-func _tidal_wave() -> void:
-	var origin := global_position
-	for step in range(3):
-		if not is_inside_tree():
-			return
-		var r := 140.0 + step * 120.0
-		Fx.ring(arena, origin, Palette.glow(Color("4ad4ff"), 1.7), r, 0.5, 10.0)
-		Fx.ring(arena, origin, Palette.with_alpha(Color("bfeaf7"), 0.5), r * 0.7, 0.4, 5.0)
-		AudioMgr.play("wave", 0.1, 1.0)
-		for enemy in arena.heroes_in_circle(origin, r):
-			if enemy.team == team:
-				continue
-			deal_damage_to(enemy, 15.0, 620.0,
-				(enemy.global_position - origin).normalized())
-			enemy.apply_slow(0.7, 1.5)
-		await get_tree().create_timer(0.3).timeout
+func _rush_slam() -> void:
+	await get_tree().create_timer(RUSH_DUR).timeout
+	if not is_inside_tree() or not alive:
+		return
+	var center := global_position
+	arena.shake(0.3)
+	AudioMgr.play("wave", 0.1, 1.0)
+	# Nosta viholliset vesipatsaan päälle: vedä keskelle, tainnuta, "ilmaan".
+	var lifted: Array = []
+	for enemy in arena.heroes_in_circle(center, RUSH_RADIUS):
+		if enemy.team == team:
+			continue
+		var toward: Vector2 = center - enemy.global_position
+		if toward.length() > 1.0:
+			enemy.dash(toward.normalized(), 320.0, 0.15, false)
+		enemy.apply_stun(LIFT_STUN + SLAM_STUN)
+		enemy.visual.squash(0.6, 1.6)
+		lifted.append(enemy)
+		Fx.ring(arena, enemy.global_position, Palette.glow(Color("bfeaf7"), 1.5), 40.0, 0.45, 5.0)
+	# Vesipatsas keskellä
+	Fx.ring(arena, center, Palette.glow(Color("4ad4ff"), 1.7), 120.0, 0.5, 9.0)
+	Fx.burst(arena, center, Palette.glow(Color("bfeaf7"), 1.4), 20, 200.0, 0.5, 6.0)
+	await get_tree().create_timer(0.45).timeout
+	if not is_inside_tree():
+		return
+	# Iske alas: vahinko + tainnutus + isku ulospäin.
+	arena.shake(0.5)
+	AudioMgr.play("wave", 0.05, -3.0)
+	Fx.ring(arena, center, Palette.glow(Color("4ad4ff"), 1.7), RUSH_RADIUS, 0.5, 10.0)
+	for enemy in lifted:
+		if not is_instance_valid(enemy) or not enemy.alive:
+			continue
+		var away: Vector2 = enemy.global_position - center
+		if away.length() < 1.0:
+			away = Vector2.DOWN
+		deal_damage_to(enemy, SLAM_DMG, 260.0, away.normalized())
+		enemy.apply_stun(SLAM_STUN)
+		enemy.visual.squash(1.5, 0.6)
+		Fx.burst(arena, enemy.global_position, Palette.glow(Color("4ad4ff"), 1.6), 12, 260.0, 0.45, 6.0)
 
 
 func _passive_update(delta: float) -> void:
 	if haste_timer > 0.0 and hp < max_hp:
 		hp = minf(hp + 5.0 * delta, max_hp)
+	# Syöksylataukset palautuvat hitaasti yksitellen.
+	if ammo < ammo_max:
+		_dash_recharge -= delta
+		if _dash_recharge <= 0.0:
+			ammo += 1
+			_dash_recharge = DASH_RECHARGE
