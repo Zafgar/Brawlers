@@ -49,10 +49,17 @@ lobbyssa painamalla X.
   Luma ja Maestro (tuet), Blink ja Shade (assassinit), Bramble ja Tide
   (fighterit) sekä Quill ja Scout (rangerit). Jokaisella perushyökkäys,
   kaksi kykyä, väistö, ultimate ja passiivi.
-- **Kaksi kenttää**: *Geargarden* (mekaaninen puutarha: messinkirattaita,
-  pensasaitoja ja pelaajia työntäviä kuljetinhihnoja) ja *Moonstone Ruins*
-  (taianomaiset rauniot: hohtavat kristallit jotka reagoivat lähelläoloon,
-  riimuympyrät ja ajoittain avautuvat portit sivukäytävillä).
+- **Viisi kenttää**, joilla omat mekaniikkansa ja identiteettinsä:
+  - *Geargarden* — tasapainoinen perusareena: messinkirattaita, pensasaitoja
+    suojana ja pelaajia työntäviä kuljetinhihnoja
+  - *Moonstone Ruins* — taianomaiset rauniot: sivuportit aukeavat vuorotellen,
+    hohtavat kristallit reagoivat lähelläoloon
+  - *Splashport* — satama-areena: vesi hidastaa, lautat kuljettavat ja
+    hyppyalustat sinkoavat laiturille
+  - *Sparkring* — tiivis neon-areena: kimmoketolpat singahduttavat pois
+    (pinball-kaaosta, 1v1/2v2)
+  - *Dust Canyon* — suuri avoin autiomaa: pitkät näkölinjat ja poikki pyyhkivä
+    hiekkamyrsky, joka hidastaa ja työntää
 - **Botit** kolmella vaikeustasolla. Taso muuttaa vain reaktioita,
   tarkkuutta, ennakointia ja väistämistä — ei voimaa. Botit jakavat
   joukkueen tilannekuvan: ne hakevat reliikkiä, saattavat kantajaa,
@@ -90,6 +97,9 @@ src/
 │   ├── map_base.gd          # Karttojen yhteinen pohja: seinät, spawnit, apurit
 │   ├── map_gear.gd          # Geargarden: mekaaninen puutarha
 │   ├── map_moon.gd          # Moonstone Ruins: kristallirauniot ja portit
+│   ├── map_splash.gd        # Splashport: vesi, lautat, hyppyalustat
+│   ├── map_spark.gd         # Sparkring: tiivis neon-areena, kimmoketolpat
+│   ├── map_dust.gd          # Dust Canyon: avoin autiomaa, hiekkamyrsky
 │   ├── relic.gd             # Reliikki ja kantologiikka
 │   └── game_camera.gd       # Kaikki pelaajat rajaava kamera + tärinä
 ├── ai/
@@ -122,6 +132,5 @@ Speksi harkitsi 2D:tä ja 3D:tä. Valinta on tietoisesti **2D + 2.5D-vaikutelma*
 ## Jatkosuunnitelma (speksin mukaan)
 
 - Loput pelimuodot: Shard Rush, Zone Shift, Core Clash
-- Kolmas kenttä: Splashport
 - Sankarimäärän kasvatus kahdestatoista kahteenkymmeneen
 - Verkkopeli / Steam Remote Play -tuki

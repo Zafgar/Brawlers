@@ -79,6 +79,8 @@ func _make_map() -> MapBase:
 			return MapSplash.new()
 		"sparkring":
 			return MapSpark.new()
+		"dustcanyon":
+			return MapDust.new()
 		_:
 			return MapGear.new()
 
