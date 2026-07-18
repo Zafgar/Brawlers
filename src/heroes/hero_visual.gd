@@ -362,22 +362,40 @@ func _paint_ember(c1: Color, c2: Color) -> void:
 
 
 func _paint_luma(c1: Color, c2: Color) -> void:
-	# Hehkuva aura
-	draw_circle(Vector2.ZERO, 24.0, Palette.with_alpha(Color("ffe9a8"), 0.15))
+	# Pehmeä hehkuaura
+	var aura := 0.9 + 0.1 * sin(_time * 4.0)
+	draw_circle(Vector2.ZERO, 30.0 * aura, Palette.with_alpha(Color("ffe9a8"), 0.14))
+
+	# Leijuvat valopallot kiertävät (tuki-identiteetti)
+	for i in range(3):
+		var ang := _time * 1.2 + TAU * i / 3.0
+		var orb := Vector2(cos(ang), sin(ang) * 0.55) * 30.0 + Vector2(0, -8)
+		var osize := 3.5 + sin(_time * 5.0 + i) * 1.0
+		draw_circle(orb, osize * 1.8, Palette.with_alpha(Palette.GOLD, 0.2))
+		draw_circle(orb, osize, Palette.glow(Palette.GOLD, 1.5))
+
 	_body_base(Vector2.ZERO, 17.0, c1, c2)
 	_eyes(Vector2(0, -4), 6.5)
-	# Sädekehä
-	draw_arc(Vector2(0, -24), 10.0, 0.0, TAU, 24, Palette.glow(Palette.GOLD, 1.8), 3.0)
-	# Valosauva ja tähtikärki
+
+	# Sädekehä pään yllä
+	draw_arc(Vector2(0, -24), 11.0, 0.0, TAU, 24, Palette.glow(Palette.GOLD, 1.8), 3.0)
+	draw_arc(Vector2(0, -24), 11.0, _time * 2.0, _time * 2.0 + PI, 16,
+		Palette.glow(Color.WHITE, 1.4), 1.5)
+
+	# Käsivarsi ja valosauva
 	var side: Vector2 = hero.aim.rotated(0.9)
+	var grip: Vector2 = side * 15.0
 	var tip: Vector2 = side * 24.0 + hero.aim * 8.0
-	_hold(side * 13.0, c1, 17.0)
-	draw_line(side * 7.0, tip, Color("e8d9b0"), 4.0)
+	_hold(grip, c1, 17.0)
+	draw_line(grip, tip, Color("e8d9b0"), 4.0)
+	# Tähtikärki hehkulla
+	draw_circle(tip, 12.0, Palette.with_alpha(Palette.GOLD, 0.25))
 	var star := PackedVector2Array()
 	for i in range(8):
-		var r := 9.0 if i % 2 == 0 else 3.8
+		var r := 10.0 if i % 2 == 0 else 4.0
 		star.append(tip + Vector2.RIGHT.rotated(TAU * i / 8.0 + _time * 2.0) * r)
 	draw_colored_polygon(star, Palette.glow(Palette.GOLD, 2.0))
+	draw_circle(tip, 3.0, Palette.glow(Color.WHITE, 1.6))
 
 
 func _paint_blink(c1: Color, c2: Color) -> void:

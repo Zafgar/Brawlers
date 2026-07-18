@@ -140,6 +140,15 @@ func _synth_all() -> void:
 	sounds["heal"] = _seq([
 		[0.08, 660.0, 660.0, "sine"], [0.08, 880.0, 880.0, "sine"],
 		[0.12, 1100.0, 1100.0, "sine"]], 0.3)
+	# Valopulssi: pehmeä kellosointu
+	sounds["light"] = _mix2(
+		_tone(0.25, 880.0, 880.0, "sine", 0.005, 0.2, 0.28),
+		_tone(0.25, 1320.0, 1320.0, "sine", 0.01, 0.2, 0.13), 0.0)
+	# Siunaus: nouseva enkelimäinen kimallus (ulti)
+	sounds["blessing"] = _mix2(_seq([
+		[0.12, 660.0, 660.0, "sine"], [0.12, 880.0, 880.0, "sine"],
+		[0.12, 1100.0, 1100.0, "sine"], [0.3, 1320.0, 1320.0, "sine"]], 0.2),
+		_tone(0.6, 440.0, 880.0, "sine", 0.05, 0.45, 0.12), 0.0)
 	sounds["shield"] = _mix2(
 		_tone(0.15, 440.0, 440.0, "tri", 0.005, 0.1, 0.3),
 		_tone(0.15, 660.0, 660.0, "sine", 0.005, 0.1, 0.25), 0.0)

@@ -59,10 +59,10 @@ const HEROES := {
 		"color": Color("ffe9a8"),
 		"color_b": Color("d9a13f"),
 		"abilities": {
-			"basic": {"name": "Valopulssi", "desc": "Ammus, joka vahingoittaa vihollisia ja parantaa liittolaisia.", "cd": 0.5},
+			"basic": {"name": "Valopulssi", "desc": "Ammus, joka vahingoittaa vihollisia ja parantaa liittolaiset läpi mennessään.", "cd": 0.5},
 			"a1": {"name": "Hoitokehä", "desc": "Parantava purkaus Luman ympärillä.", "cd": 8.0},
-			"a2": {"name": "Suojasäde", "desc": "Antaa suojakilven lähimmälle liittolaiselle.", "cd": 7.0},
-			"dodge": {"name": "Pyrähdys", "desc": "Kevyt ja nopea väistö.", "cd": 3.5},
+			"a2": {"name": "Suojasäde", "desc": "Suojakilpi eniten kärsineelle liittolaiselle.", "cd": 7.0},
+			"dodge": {"name": "Pyrähdys", "desc": "Kevyt ja nopea väistö, joka antaa vauhtia.", "cd": 3.5},
 			"ult": {"name": "Valokenttä", "desc": "Suuri alue, joka parantaa ja nopeuttaa liittolaisia.", "cd": 0.0},
 		},
 	},

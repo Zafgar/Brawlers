@@ -95,6 +95,16 @@ static func slash(parent: Node, pos: Vector2, dir: Vector2, reach: float,
 	parent.add_child(node)
 
 
+## Suora hehkuva valosäde kahden pisteen välille (parannus, kilpi, merkintä).
+static func beam(parent: Node, from: Vector2, to: Vector2, color: Color, width := 6.0) -> void:
+	var node := BeamFx.new()
+	node.from_point = from
+	node.to_point = to
+	node.color = color
+	node.width = width
+	parent.add_child(node)
+
+
 ## Salamakaari kahden pisteen välille (Voltin ketjusalamat).
 static func bolt(parent: Node, from: Vector2, to: Vector2, color: Color) -> void:
 	var node := BoltFx.new()
@@ -110,6 +120,34 @@ static func knockout_burst(parent: Node, pos: Vector2, color: Color) -> void:
 	ring(parent, pos, Palette.glow(Color.WHITE, 1.4), 90.0, 0.45, 7.0)
 	burst(parent, pos, Palette.glow(color, 1.8), 22, 420.0, 0.7, 7.0)
 	burst(parent, pos, Color(1, 1, 1, 0.9), 10, 300.0, 0.5, 4.0)
+
+
+class BeamFx:
+	extends Node2D
+	var from_point := Vector2.ZERO
+	var to_point := Vector2.ZERO
+	var color := Color.WHITE
+	var width := 6.0
+	var _t := 0.0
+	const LIFE := 0.35
+
+	func _ready() -> void:
+		z_index = 23
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if _t >= LIFE:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var f: float = clampf(_t / LIFE, 0.0, 1.0)
+		var alpha := 1.0 - f
+		draw_line(from_point, to_point, Palette.with_alpha(Palette.glow(color, 1.4), alpha),
+			width * (1.0 - f * 0.5))
+		draw_line(from_point, to_point, Palette.with_alpha(Color.WHITE, alpha * 0.6), width * 0.35)
+		draw_circle(to_point, width * (1.0 - f), Palette.with_alpha(color, alpha * 0.8))
 
 
 class SlashFx:

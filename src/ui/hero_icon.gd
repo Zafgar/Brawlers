@@ -15,6 +15,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_bastion(ci, center, r)
 		"ember":
 			_ember(ci, center, r)
+		"luma":
+			_luma(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -69,6 +71,25 @@ static func _ember(ci: CanvasItem, center: Vector2, r: float) -> void:
 	# Kirkas ydin
 	var core := _teardrop(center + Vector2(0, r * 0.28), r * 0.34, r * 0.2)
 	ci.draw_colored_polygon(core, INK)
+
+
+static func _luma(ci: CanvasItem, center: Vector2, r: float) -> void:
+	# Nelisakarainen loistetähti pitkillä sakaroilla.
+	var star := PackedVector2Array()
+	for i in range(8):
+		var rr: float = r * 0.98 if i % 2 == 0 else r * 0.3
+		star.append(center + Vector2.RIGHT.rotated(-PI / 2.0 + TAU * i / 8.0) * rr)
+	var shadow := PackedVector2Array()
+	for p in star:
+		shadow.append(p + Vector2(0, r * 0.05))
+	ci.draw_colored_polygon(shadow, SHADE)
+	ci.draw_colored_polygon(star, INK)
+	ci.draw_circle(center, r * 0.24, SHADE)
+	ci.draw_circle(center, r * 0.14, INK)
+	# Pienet kimalteet
+	for i in range(4):
+		var d := center + Vector2.RIGHT.rotated(PI / 4.0 + TAU * i / 4.0) * r * 0.62
+		ci.draw_circle(d, r * 0.06, INK)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.
