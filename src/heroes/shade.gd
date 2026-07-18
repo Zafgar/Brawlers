@@ -12,7 +12,7 @@ func _init() -> void:
 
 ## Perushyökkäys: nopea varjokiekko.
 func _basic(dir: Vector2) -> void:
-	AudioMgr.play("swing", 0.15, -4.0)
+	AudioMgr.play("disc", 0.15, -2.0)
 	visual.attack_swing()
 	var dmg := 11.0
 	if _empower_timer > 0.0:
@@ -30,14 +30,18 @@ func _basic(dir: Vector2) -> void:
 
 ## Kyky 1: Naamioituminen — harhakuva jää, Shade häipyy varjoihin.
 func _ability1(dir: Vector2) -> void:
-	AudioMgr.play("blink", 0.1, -3.0)
+	AudioMgr.play("smoke")
+	var smoke_color := Palette.darker(hero_color(), 0.5)
 	var decoy := Decoy.new()
 	decoy.global_position = global_position
 	decoy.body_color = hero_color()
 	decoy.facing = aim
 	arena.add_child(decoy)
-	Fx.flash(arena, global_position, Palette.with_alpha(hero_color(), 0.7), 44.0, 0.3)
+	# Savupurske lähtöpisteeseen
+	Fx.burst(arena, global_position, Palette.with_alpha(smoke_color, 0.7), 12, 200.0, 0.5, 7.0)
 	global_position = arena.map.clamp_to_field(global_position + dir * 220.0, 40.0)
+	# ja saapumispisteeseen
+	Fx.burst(arena, global_position, Palette.with_alpha(smoke_color, 0.6), 10, 180.0, 0.5, 6.0)
 	_stealth_timer = 2.0
 	modulate = Color(1, 1, 1, 0.4)
 	apply_haste(1.25, 2.0)
@@ -46,7 +50,7 @@ func _ability1(dir: Vector2) -> void:
 
 ## Kyky 2: Palaava kiekko — lävistää ja palaa takaisin.
 func _ability2(dir: Vector2) -> void:
-	AudioMgr.play("swing", 0.1, -2.0)
+	AudioMgr.play("disc", 0.1, -4.0)
 	Projectile.launch(self, global_position + dir * 26.0, dir, {
 		"speed": 950.0,
 		"dmg": 12.0,
@@ -82,18 +86,23 @@ func _return_disc(pos: Vector2) -> void:
 func _dodge_action(dir: Vector2) -> void:
 	dash(dir, 1150.0, 0.12, true)
 	add_ult(6.0)
-	AudioMgr.play("dash", 0.12)
-	Fx.dust(arena, global_position)
+	AudioMgr.play("smoke", 0.12, 3.0)
+	Fx.burst(arena, global_position, Palette.with_alpha(Palette.darker(hero_color(), 0.5), 0.5),
+		8, 150.0, 0.4, 5.0)
 
 
 ## Ultimate: Varjoisku — hetken salamannopea ja iskut tehostuvat.
 func _ultimate(_dir: Vector2) -> void:
-	arena.popup(global_position + Vector2(0, -80), "VARJOISKU!", Palette.glow(hero_color(), 1.5), 24)
-	AudioMgr.play("blink", 0.05, 2.0)
+	arena.popup(global_position + Vector2(0, -84), "VARJOISKU!", Palette.glow(hero_color(), 1.5), 26)
+	AudioMgr.play("smoke", 0.05, -3.0)
+	AudioMgr.play("disc", 0.1, 2.0)
 	_empower_timer = 3.5
 	apply_haste(1.5, 3.5)
 	iframes = maxf(iframes, 0.4)
+	# Varjoaura ympärille
 	Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.6), 160.0, 0.5, 7.0)
+	Fx.burst(arena, global_position, Palette.with_alpha(Palette.darker(hero_color(), 0.5), 0.7),
+		16, 240.0, 0.6, 7.0)
 
 
 func _passive_update(delta: float) -> void:

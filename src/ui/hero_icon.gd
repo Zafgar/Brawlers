@@ -29,6 +29,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_volt(ci, center, r)
 		"maestro":
 			_maestro(ci, center, r)
+		"shade":
+			_shade(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -230,6 +232,20 @@ static func _maestro(ci: CanvasItem, center: Vector2, r: float) -> void:
 	ci.draw_line(stem_top, stem_top + Vector2(r * 0.45, r * 0.28), INK, r * 0.11)
 	ci.draw_line(stem_top + Vector2(0, r * 0.25), stem_top + Vector2(r * 0.42, r * 0.5),
 		INK, r * 0.09)
+
+
+static func _shade(ci: CanvasItem, center: Vector2, r: float) -> void:
+	# Nelisakarainen shuriken keskireiällä.
+	var star := PackedVector2Array()
+	for i in range(8):
+		var rr: float = r * 0.98 if i % 2 == 0 else r * 0.34
+		star.append(center + Vector2.RIGHT.rotated(TAU * i / 8.0 + PI / 8.0) * rr)
+	var shadow := PackedVector2Array()
+	for p in star:
+		shadow.append(p + Vector2(0, r * 0.05))
+	ci.draw_colored_polygon(shadow, SHADE)
+	ci.draw_colored_polygon(star, INK)
+	ci.draw_circle(center, r * 0.17, SHADE)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.

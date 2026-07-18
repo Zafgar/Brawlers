@@ -557,11 +557,15 @@ func _paint_volt(c1: Color, c2: Color) -> void:
 
 
 func _paint_shade(c1: Color, c2: Color) -> void:
-	# Savuvana
-	for i in range(3):
-		var puff := Vector2(-hero.aim.x * (14.0 + i * 8.0), 6.0 + sin(_time * 3.0 + i) * 3.0)
-		draw_circle(puff, 6.0 - i * 1.5, Palette.with_alpha(c2, 0.25 - i * 0.06))
+	# Savuvanat kiertävät (haihtuva olemus)
+	for i in range(4):
+		var sa := _time * 1.5 + TAU * i / 4.0
+		var sp := Vector2(cos(sa), sin(sa) * 0.6) * (18.0 + sin(_time * 3.0 + i) * 4.0) + Vector2(0, -6)
+		draw_circle(sp, 5.0 - i * 0.6, Palette.with_alpha(c2, 0.2))
+
 	_body_base(Vector2.ZERO, 16.0, c1, c2)
+	# Viitan kaulus
+	draw_arc(Vector2(0, -2), 17.0, PI - 0.5, TAU + 0.5, 18, Palette.darker(c2, 0.6), 5.0)
 	# Huppu
 	draw_arc(Vector2(0, -8), 14.0, PI - 0.3, TAU + 0.3, 20, c2, 8.0)
 	# Kapeat hehkuvat silmät
@@ -569,9 +573,17 @@ func _paint_shade(c1: Color, c2: Color) -> void:
 	for side in [-1.0, 1.0]:
 		var eye: Vector2 = Vector2(0, -8) + perp * side + hero.aim * 3.0
 		draw_line(eye - perp * 0.35, eye + perp * 0.35, Palette.glow(Color("d9c8ff"), 2.0), 2.5)
-	# Kiekko kädessä
-	var hand: Vector2 = hero.aim.rotated(-0.8 + _attack_anim * 1.2) * 18.0
-	draw_arc(hand, 8.0, _time * 6.0, _time * 6.0 + TAU * 0.8, 12, Palette.glow(c1, 1.4), 2.5)
+
+	# Käsivarsi ja pyörivä varjokiekko kädessä
+	var hand: Vector2 = hero.aim.rotated(-0.7 + _attack_anim * 1.4) * 18.0
+	_hold(hand * 0.6, c1, 16.0, 4.0)
+	var spin := _time * 8.0
+	var disc := PackedVector2Array()
+	for i in range(8):
+		var rr: float = 8.0 if i % 2 == 0 else 3.5
+		disc.append(hand + Vector2.RIGHT.rotated(spin + TAU * i / 8.0) * rr)
+	draw_colored_polygon(disc, Palette.glow(c1, 1.3))
+	draw_circle(hand, 2.5, Palette.darker(c2, 0.6))
 
 
 func _paint_tide(c1: Color, c2: Color) -> void:

@@ -192,11 +192,11 @@ const HEROES := {
 		"color": Color("9089b8"),
 		"color_b": Color("3f3a63"),
 		"abilities": {
-			"basic": {"name": "Varjokiekko", "desc": "Nopea pieni heittokiekko.", "cd": 0.45},
-			"a1": {"name": "Naamioituminen", "desc": "Jättää harhakuvan ja häipyy varjoihin.", "cd": 8.0},
-			"a2": {"name": "Palaava kiekko", "desc": "Kiekko lävistää ja palaa takaisin.", "cd": 7.0},
-			"dodge": {"name": "Varjoaskel", "desc": "Nopea väistö, joka lataa ultia.", "cd": 3.0},
-			"ult": {"name": "Varjoisku", "desc": "Hetken ajan salamannopea ja iskut tehostuvat.", "cd": 0.0},
+			"basic": {"name": "Varjokiekko", "desc": "Nopea pyörivä heittokiekko.", "cd": 0.45},
+			"a1": {"name": "Naamioituminen", "desc": "Jättää harhakuvan, häipyy savuun ja saa vauhtia.", "cd": 8.0},
+			"a2": {"name": "Palaava kiekko", "desc": "Kiekko lävistää useita ja palaa takaisin.", "cd": 7.0},
+			"dodge": {"name": "Varjoaskel", "desc": "Nopea väistö, joka lataa ultimatea.", "cd": 3.0},
+			"ult": {"name": "Varjoisku", "desc": "Hetken salamannopea; iskut tehostuvat 60 %.", "cd": 0.0},
 		},
 	},
 	"tide": {

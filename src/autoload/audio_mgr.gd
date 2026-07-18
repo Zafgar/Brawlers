@@ -179,6 +179,12 @@ func _synth_all() -> void:
 		[0.32, 1318.0, 1318.0, "square"]], 0.2),
 		_tone(0.75, 262.0, 523.0, "sine", 0.05, 0.5, 0.14), 0.0)
 	sounds["dash"] = _noise(0.1, 0.28, 0.7)
+	# Kiekko: viheltävä pyörivä heitto (Shade)
+	sounds["disc"] = _mix2(
+		_tone(0.14, 700.0, 1100.0, "saw", 0.004, 0.09, 0.2),
+		_noise(0.09, 0.16, 0.75), 0.03)
+	# Savu: pehmeä häivähdys (naamioituminen, varjoaskel)
+	sounds["smoke"] = _noise(0.3, 0.3, 0.32)
 	sounds["blink"] = _mix2(
 		_tone(0.12, 880.0, 1760.0, "sine", 0.005, 0.07, 0.35),
 		_tone(0.08, 1760.0, 880.0, "sine", 0.01, 0.06, 0.2), 0.1)
