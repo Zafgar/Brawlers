@@ -9,7 +9,7 @@ func _init() -> void:
 
 ## Perushyökkäys: työntävä ääniaalto.
 func _basic(dir: Vector2) -> void:
-	AudioMgr.play("bow", 0.2, -7.0)
+	AudioMgr.play("note", 0.15, -4.0)
 	visual.attack_swing()
 	Projectile.launch(self, global_position + dir * 28.0, dir, {
 		"speed": 820.0,
@@ -23,20 +23,27 @@ func _basic(dir: Vector2) -> void:
 
 ## Kyky 1: Kiihdytysriffi — vauhtia ja suojaa lähiliittolaisille.
 func _ability1(_dir: Vector2) -> void:
-	AudioMgr.play("heal", 0.1, -2.0)
+	AudioMgr.play("note", 0.05, 2.0)
 	Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.5), 240.0, 0.5, 6.0)
+	Fx.ring(arena, global_position, Palette.with_alpha(hero_color(), 0.6), 170.0, 0.4, 4.0)
 	for ally in arena.heroes_in_circle(global_position, 240.0, team):
 		ally.apply_haste(1.35, 3.0)
 		if ally != self:
 			ally.add_shield(20.0, 2.5, self)
+			Fx.spark(arena, ally.global_position, Palette.glow(hero_color(), 1.4))
 	visual.squash(1.2, 0.85)
 
 
 ## Kyky 2: Basso-isku — työntö ja lyhyt tainnutus eteen.
 func _ability2(dir: Vector2) -> void:
-	AudioMgr.play("slam", 0.1, -3.0)
-	arena.shake(0.2)
+	AudioMgr.play("bass")
+	arena.shake(0.25)
+	visual.squash(1.25, 0.8)
 	Fx.burst(arena, global_position + dir * 70.0, Palette.glow(hero_color(), 1.5), 16, 380.0, 0.4, 6.0)
+	# Bassoaalto kartion suuntaan
+	for step in range(1, 4):
+		Fx.ring(arena, global_position + dir * step * 55.0,
+			Palette.with_alpha(Palette.glow(hero_color(), 1.4), 0.6), 40.0 + step * 20.0, 0.35, 4.0)
 	for enemy in arena.alive_enemies(team):
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		if to_enemy.length() > 200.0 + enemy.radius:
@@ -50,13 +57,15 @@ func _ability2(dir: Vector2) -> void:
 ## Väistö: tahdinvaihto.
 func _dodge_action(dir: Vector2) -> void:
 	dash(dir, 1050.0, 0.14, true)
-	AudioMgr.play("dash", 0.12)
+	AudioMgr.play("dash", 0.12, 2.0)
 
 
 ## Ultimate: Crescendo — suuri parantava ja kiihdyttävä alue.
 func _ultimate(_dir: Vector2) -> void:
-	arena.popup(global_position + Vector2(0, -80), "CRESCENDO!", Palette.glow(hero_color(), 1.5), 24)
-	AudioMgr.play("round_win", 0.05, -2.0)
+	arena.popup(global_position + Vector2(0, -84), "CRESCENDO!", Palette.glow(hero_color(), 1.5), 26)
+	AudioMgr.play("crescendo")
+	Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.6), 300.0, 0.7, 8.0)
+	Fx.flash(arena, global_position, Palette.glow(hero_color(), 1.4), 120.0, 0.5)
 	Zone.spawn(self, global_position, {
 		"type": "heal",
 		"radius": 300.0,

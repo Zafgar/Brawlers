@@ -27,6 +27,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_boulder(ci, center, r)
 		"volt":
 			_volt(ci, center, r)
+		"maestro":
+			_maestro(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -206,6 +208,28 @@ static func _volt(ci: CanvasItem, center: Vector2, r: float) -> void:
 		shadow.append(p + Vector2(0, r * 0.05))
 	ci.draw_colored_polygon(shadow, SHADE)
 	ci.draw_colored_polygon(bolt, INK)
+
+
+static func _maestro(ci: CanvasItem, center: Vector2, r: float) -> void:
+	# Kahdeksasosanuotti: nuottipää, varsi ja lippu.
+	var head := center + Vector2(-r * 0.22, r * 0.48)
+	var np := PackedVector2Array()
+	for i in range(14):
+		var a := TAU * i / 14.0
+		np.append(head + Vector2(cos(a) * r * 0.4, sin(a) * r * 0.3))
+	var shadow := PackedVector2Array()
+	for p in np:
+		shadow.append(p + Vector2(0, r * 0.05))
+	ci.draw_colored_polygon(shadow, SHADE)
+	ci.draw_colored_polygon(np, INK)
+	# Varsi
+	var stem_bot := center + Vector2(r * 0.16, r * 0.44)
+	var stem_top := center + Vector2(r * 0.16, -r * 0.85)
+	ci.draw_line(stem_bot, stem_top, INK, r * 0.12)
+	# Lippu
+	ci.draw_line(stem_top, stem_top + Vector2(r * 0.45, r * 0.28), INK, r * 0.11)
+	ci.draw_line(stem_top + Vector2(0, r * 0.25), stem_top + Vector2(r * 0.42, r * 0.5),
+		INK, r * 0.09)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.

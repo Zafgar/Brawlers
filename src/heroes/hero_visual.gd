@@ -617,29 +617,42 @@ func _paint_scout(c1: Color, c2: Color) -> void:
 
 
 func _paint_maestro(c1: Color, c2: Color) -> void:
-	# Ääniaallot sivuilta musiikin tahtiin
+	# Leijuvat nuotit kiertävät
+	for i in range(3):
+		var na := _time * 1.4 + TAU * i / 3.0
+		var np := Vector2(cos(na), sin(na) * 0.5) * 32.0 + Vector2(0, -10)
+		np.y += sin(_time * 5.0 + i * 2.0) * 2.0
+		draw_circle(np, 3.5, Palette.glow(c1, 1.3))
+		draw_line(np + Vector2(3, 0), np + Vector2(3, -10), Palette.glow(c1, 1.3), 1.5)
+		draw_line(np + Vector2(3, -10), np + Vector2(7, -7), Palette.glow(c1, 1.3), 1.5)
+
+	# Ääniaallot torven suunnasta
 	for i in range(2):
 		var wave_r := 20.0 + fmod(_time * 30.0 + i * 14.0, 28.0)
 		var wave_alpha: float = 0.5 * (1.0 - (wave_r - 20.0) / 28.0)
 		draw_arc(hero.aim * 20.0, wave_r, hero.aim.angle() - 0.7, hero.aim.angle() + 0.7, 12,
-			Palette.with_alpha(c1, wave_alpha), 2.5)
+			Palette.with_alpha(Palette.glow(c1, 1.4), wave_alpha), 2.5)
+
 	_body_base(Vector2.ZERO, 18.0, c1, c2)
 	_eyes(Vector2(0, -4))
 	# Kuulokkeet
 	draw_arc(Vector2(0, -12), 14.0, PI + 0.3, TAU - 0.3, 16, c2, 4.0)
 	var head_perp: Vector2 = hero.aim.orthogonal().normalized() * 13.0
 	for side in [-1.0, 1.0]:
-		draw_circle(Vector2(0, -8) + head_perp * side, 5.0, c2)
-	# Ääniaaltoheitin: torvi tähtäyssuuntaan
-	var horn_base: Vector2 = hero.aim.rotated(0.7) * 14.0
-	var horn_tip: Vector2 = hero.aim * 24.0
+		draw_circle(Vector2(0, -8) + head_perp * side, 5.5, c2)
+		draw_circle(Vector2(0, -8) + head_perp * side, 2.5, Palette.glow(c1, 1.3))
+
+	# Käsivarsi ja ääniaaltotorvi tähtäyssuuntaan
+	var horn_base: Vector2 = hero.aim.rotated(0.6) * 14.0
+	var horn_tip: Vector2 = hero.aim * 26.0
 	_hold(horn_base, c1, 18.0)
 	draw_line(horn_base, horn_tip, Palette.darker(c2, 0.8), 5.0)
-	var horn_perp: Vector2 = hero.aim.orthogonal() * 7.0
+	var horn_perp: Vector2 = hero.aim.orthogonal() * 8.0
 	var horn := PackedVector2Array([
-		horn_tip + hero.aim * 8.0 + horn_perp, horn_tip + hero.aim * 8.0 - horn_perp,
+		horn_tip + hero.aim * 9.0 + horn_perp, horn_tip + hero.aim * 9.0 - horn_perp,
 		horn_tip - horn_perp * 0.4, horn_tip + horn_perp * 0.4])
 	draw_colored_polygon(horn, c1)
+	draw_circle(horn_tip + hero.aim * 8.0, 2.5, Palette.glow(Color.WHITE, 1.4))
 
 
 func _paint_quill(c1: Color, c2: Color) -> void:

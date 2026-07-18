@@ -164,6 +164,20 @@ func _synth_all() -> void:
 	sounds["shield"] = _mix2(
 		_tone(0.15, 440.0, 440.0, "tri", 0.005, 0.1, 0.3),
 		_tone(0.15, 660.0, 660.0, "sine", 0.005, 0.1, 0.25), 0.0)
+	# Nuotti: miellyttävä musiikkisointu (Maestron perusisku ja riffi)
+	sounds["note"] = _mix2(
+		_tone(0.18, 784.0, 784.0, "tri", 0.005, 0.14, 0.26),
+		_tone(0.18, 1176.0, 1176.0, "sine", 0.01, 0.14, 0.1), 0.0)
+	# Basso: syvä bassoisku
+	sounds["bass"] = _mix2(
+		_tone(0.26, 110.0, 68.0, "sine", 0.005, 0.2, 0.6),
+		_tone(0.2, 165.0, 110.0, "tri", 0.005, 0.15, 0.2), 0.0)
+	# Crescendo: nouseva riemukas huipennus (ulti)
+	sounds["crescendo"] = _mix2(_seq([
+		[0.12, 523.0, 523.0, "tri"], [0.12, 659.0, 659.0, "tri"],
+		[0.12, 784.0, 784.0, "tri"], [0.1, 1046.0, 1046.0, "tri"],
+		[0.32, 1318.0, 1318.0, "square"]], 0.2),
+		_tone(0.75, 262.0, 523.0, "sine", 0.05, 0.5, 0.14), 0.0)
 	sounds["dash"] = _noise(0.1, 0.28, 0.7)
 	sounds["blink"] = _mix2(
 		_tone(0.12, 880.0, 1760.0, "sine", 0.005, 0.07, 0.35),

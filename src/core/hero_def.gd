@@ -174,10 +174,10 @@ const HEROES := {
 		"color_b": Color("99307d"),
 		"abilities": {
 			"basic": {"name": "Ääniaalto", "desc": "Työntävä ääniammus.", "cd": 0.5},
-			"a1": {"name": "Kiihdytysriffi", "desc": "Lähellä olevat liittolaiset saavat vauhtia ja suojaa.", "cd": 8.0},
-			"a2": {"name": "Basso-isku", "desc": "Purkaus eteen: työntö ja lyhyt tainnutus.", "cd": 8.0},
+			"a1": {"name": "Kiihdytysriffi", "desc": "Lähiliittolaiset saavat vauhtia ja suojakilven.", "cd": 8.0},
+			"a2": {"name": "Basso-isku", "desc": "Bassoaalto eteen: työntö ja lyhyt tainnutus.", "cd": 8.0},
 			"dodge": {"name": "Tahdinvaihto", "desc": "Nopea sivuliuku.", "cd": 3.5},
-			"ult": {"name": "Crescendo", "desc": "Suuri alue: liittolaiset paranevat ja kiihtyvät.", "cd": 0.0},
+			"ult": {"name": "Crescendo", "desc": "Suuri alue: liittolaiset paranevat ja kiihtyvät, viholliset hidastuvat.", "cd": 0.0},
 		},
 	},
 	"shade": {
