@@ -97,11 +97,11 @@ const HEROES := {
 		"color": Color("7ed957"),
 		"color_b": Color("2f7a33"),
 		"abilities": {
-			"basic": {"name": "Ruoskanisku", "desc": "Keskipitkä pyyhkäisy kaaressa.", "cd": 0.55},
-			"a1": {"name": "Juurisidonta", "desc": "Köynnös, joka juurruttaa ensimmäisen osuman.", "cd": 8.0},
-			"a2": {"name": "Piikkipyörre", "desc": "Piikit sinkoutuvat ympärille ja jättävät piikkialueen.", "cd": 7.5},
+			"basic": {"name": "Ruoskanisku", "desc": "Kaareva pyyhkäisy, joka imee elinvoimaa osumista.", "cd": 0.55},
+			"a1": {"name": "Juurisidonta", "desc": "Köynnös, joka juurruttaa ensimmäisen osuman paikoilleen.", "cd": 8.0},
+			"a2": {"name": "Piikkipyörre", "desc": "Piikit sinkoutuvat ympärille ja jättävät hidastavan piikkialueen.", "cd": 7.5},
 			"dodge": {"name": "Köynnösheitto", "desc": "Vetäisee itsensä ruoskalla eteenpäin.", "cd": 4.0},
-			"ult": {"name": "Piikkipuutarha", "desc": "Suuri alue, joka hidastaa ja pistelee vihollisia.", "cd": 0.0},
+			"ult": {"name": "Piikkipuutarha", "desc": "Suuri alue, joka juurruttaa, hidastaa ja pistelee vihollisia.", "cd": 0.0},
 		},
 	},
 	"quill": {

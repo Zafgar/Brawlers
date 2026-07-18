@@ -430,28 +430,52 @@ func _paint_blink(c1: Color, c2: Color) -> void:
 
 
 func _paint_bramble(c1: Color, c2: Color) -> void:
+	# Ajelehtivat lehdet/itiöt
+	for i in range(3):
+		var la := _time * 0.8 + TAU * i / 3.0
+		var lp := Vector2(cos(la), sin(la) * 0.6) * 32.0 + Vector2(0, -6)
+		draw_colored_polygon(PackedVector2Array([
+			lp + Vector2(0, -4), lp + Vector2(3, 0), lp + Vector2(0, 4), lp + Vector2(-3, 0)]),
+			Palette.with_alpha(Color("7ed957"), 0.5))
+
 	# Piikkikruunu
 	for i in range(3):
 		var fx := -10.0 + 10.0 * i
+		var h := 26.0 + sin(_time * 4.0 + i) * 2.0
 		var thorn := PackedVector2Array([
-			Vector2(fx - 4, -16), Vector2(fx, -26), Vector2(fx + 4, -16)])
+			Vector2(fx - 4, -16), Vector2(fx, -h), Vector2(fx + 4, -16)])
 		draw_colored_polygon(thorn, c2)
+
+	# Puumainen runko
 	_body_base(Vector2.ZERO, 21.0, c1, c2)
+	# Kaarnasaumat
+	draw_line(Vector2(-6, -6), Vector2(-3, 10), Palette.darker(c2, 0.7), 2.0)
+	draw_line(Vector2(7, -4), Vector2(4, 12), Palette.darker(c2, 0.7), 2.0)
+
 	# Lehtiolkapäät
 	for side in [-1.0, 1.0]:
 		var leaf := PackedVector2Array([
-			Vector2(14 * side, -8), Vector2(26 * side, -16), Vector2(20 * side, -2)])
+			Vector2(14 * side, -8), Vector2(27 * side, -17), Vector2(24 * side, -4),
+			Vector2(20 * side, -2)])
 		draw_colored_polygon(leaf, Palette.darker(c1, 0.8))
+		draw_line(Vector2(15 * side, -6), Vector2(25 * side, -14), Palette.darker(c2, 0.7), 1.5)
 	_eyes(Vector2(0, -5), 7.5)
-	# Köynnösruoska aaltoilee tähtäyksen suuntaan
+
+	# Käsivarsi ja köynnösruoska (aaltoilee tähtäyksen suuntaan)
+	_hold(hero.aim * 12.0, c1, 21.0)
 	var pts := PackedVector2Array()
-	var reach := 30.0 + _attack_anim * 34.0
-	for i in range(9):
-		var t := i / 8.0
-		var wave: Vector2 = hero.aim.orthogonal() * sin(t * 6.0 + _time * 5.0) * 5.0 * t
+	var reach := 30.0 + _attack_anim * 40.0
+	for i in range(10):
+		var t := i / 9.0
+		var wave: Vector2 = hero.aim.orthogonal() * sin(t * 6.0 + _time * 5.0) * 6.0 * t
 		pts.append(hero.aim * (10.0 + reach * t) + wave)
-	draw_polyline(pts, Palette.darker(c1, 0.75), 4.0)
-	draw_circle(pts[pts.size() - 1], 4.0, c2)
+	draw_polyline(pts, Palette.darker(c1, 0.7), 5.0)
+	draw_polyline(pts, c1, 2.5)
+	# Piikit ruoskan varrella
+	for i in range(2, pts.size(), 2):
+		var seg: Vector2 = (pts[i] - pts[i - 1]).orthogonal().normalized() * 4.0
+		draw_line(pts[i], pts[i] + seg, c2, 2.0)
+	draw_circle(pts[pts.size() - 1], 5.0, c2)
 
 
 func _paint_boulder(c1: Color, c2: Color) -> void:

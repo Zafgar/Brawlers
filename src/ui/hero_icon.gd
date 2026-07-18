@@ -19,6 +19,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_luma(ci, center, r)
 		"blink":
 			_blink(ci, center, r)
+		"bramble":
+			_bramble(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -112,6 +114,34 @@ static func _blink(ci: CanvasItem, center: Vector2, r: float) -> void:
 		center + Vector2(0, -r * 0.17), center + Vector2(r * 0.17, 0),
 		center + Vector2(0, r * 0.17), center + Vector2(-r * 0.17, 0)])
 	ci.draw_colored_polygon(inner, INK)
+
+
+static func _bramble(ci: CanvasItem, center: Vector2, r: float) -> void:
+	# Piikikäs lehti: kärki ylhäällä, ruoto ja sivupiikit.
+	var leaf := PackedVector2Array([
+		center + Vector2(0, -r * 0.95),
+		center + Vector2(r * 0.5, -r * 0.18),
+		center + Vector2(r * 0.42, r * 0.5),
+		center + Vector2(0, r * 0.9),
+		center + Vector2(-r * 0.42, r * 0.5),
+		center + Vector2(-r * 0.5, -r * 0.18),
+	])
+	var shadow := PackedVector2Array()
+	for p in leaf:
+		shadow.append(p + Vector2(0, r * 0.05))
+	ci.draw_colored_polygon(shadow, SHADE)
+	ci.draw_colored_polygon(leaf, INK)
+	# Ruoto ja suonet
+	ci.draw_line(center + Vector2(0, -r * 0.8), center + Vector2(0, r * 0.8), SHADE, r * 0.1)
+	for side in [-1.0, 1.0]:
+		ci.draw_line(center + Vector2(0, -r * 0.1), center + Vector2(side * r * 0.32, r * 0.28),
+			SHADE, r * 0.06)
+	# Sivupiikit
+	for side in [-1.0, 1.0]:
+		var base := center + Vector2(side * r * 0.46, -r * 0.05)
+		ci.draw_colored_polygon(PackedVector2Array([
+			base + Vector2(0, -r * 0.12), base + Vector2(side * r * 0.28, 0),
+			base + Vector2(0, r * 0.12)]), INK)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.

@@ -161,6 +161,14 @@ func _synth_all() -> void:
 		_tone(0.1, 1700.0, 500.0, "saw", 0.002, 0.06, 0.32),
 		_noise(0.05, 0.16, 0.85), 0.0)
 	sounds["root"] = _tone(0.2, 130.0, 110.0, "saw", 0.01, 0.12, 0.4)
+	# Köynnös: napsahtava orgaaninen ruoskanisku
+	sounds["vine"] = _mix2(
+		_tone(0.12, 420.0, 90.0, "saw", 0.002, 0.08, 0.32),
+		_noise(0.07, 0.24, 0.7), 0.0)
+	# Piikit: kahiseva piikkipurkaus
+	sounds["thorns"] = _mix2(
+		_noise(0.24, 0.36, 0.62),
+		_tone(0.2, 200.0, 120.0, "tri", 0.005, 0.15, 0.16), 0.0)
 	sounds["ko"] = _mix2(
 		_tone(0.3, 300.0, 80.0, "sine", 0.005, 0.22, 0.6),
 		_tone(0.15, 990.0, 1320.0, "sine", 0.02, 0.1, 0.2), 0.05)
