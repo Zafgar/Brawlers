@@ -78,6 +78,12 @@ var _aim_len := 420.0
 var _aim_charge := 0.0              # 0..1, vaikuttaa viivan paksuuteen/kirkkauteen
 var _aim_color := Color.WHITE
 
+# Vaikeustason kertoimet (vain epäreilu botti poikkeaa 1.0:sta); setup() lukee
+# nämä bottiohjaimelta ja soveltaa combatissa.
+var dmg_out_mult := 1.0
+var dmg_in_mult := 1.0
+var ult_gain_mult := 1.0
+
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	arena = p_arena
@@ -92,6 +98,15 @@ func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	base_speed = def["speed"]
 	for slot in ["basic", "a1", "a2", "dodge"]:
 		cd_max[slot] = HeroDef.cooldown(hero_id, slot)
+
+	# Bottien vaikeustason kertoimet (taso 6 = epäreilu huijaa).
+	if controller != null and controller.is_bot():
+		dmg_out_mult = controller.damage_mult
+		dmg_in_mult = controller.damage_taken_mult
+		ult_gain_mult = controller.ult_gain_mult
+		base_speed *= controller.speed_mult
+		for slot in cd_max:
+			cd_max[slot] = float(cd_max[slot]) * controller.cooldown_mult
 
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	collision_layer = 2
@@ -351,6 +366,12 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 	if not alive or iframes > 0.0:
 		return 0.0
 
+	# Vaikeustason huijauskertoimet (vain epäreilu botti poikkeaa 1.0:sta):
+	# hyökkääjän aiheuttama vahinko ja kohteen ottama vahinko.
+	if source != null and is_instance_valid(source):
+		amount *= source.dmg_out_mult
+	amount *= dmg_in_mult
+
 	# Merkitty kohde (Scoutin vaahtomerkki) ottaa lisävahinkoa kaikilta.
 	if mark_timer > 0.0:
 		amount *= 1.25
@@ -425,7 +446,7 @@ func add_shield(amount: float, duration: float, source: Hero) -> void:
 func add_ult(points: float) -> void:
 	if ult_charge >= 100.0:
 		return
-	ult_charge = minf(ult_charge + points, 100.0)
+	ult_charge = minf(ult_charge + points * ult_gain_mult, 100.0)
 	if ult_charge >= 100.0 and not _ult_ready_announced:
 		_ult_ready_announced = true
 		AudioMgr.play("ult_ready")

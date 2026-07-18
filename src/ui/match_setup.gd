@@ -19,7 +19,7 @@ const MAP_DESC := {
 const DESCRIPTIONS := {
 	"size": "Montako pelaajaa kummassakin joukkueessa. Tyhjät paikat täytetään boteilla.",
 	"rounds": "Paras kolmesta = kaksi erävoittoa, paras viidestä = kolme.",
-	"bots": "Taso vaikuttaa bottien reaktioihin ja tarkkuuteen — ei niiden voimaan.",
+	"bots": "Tasot 1–6. Ylempi taso reagoi nopeammin ja tähtää tarkemmin. Taso 6 on tahallaan epäreilu — se huijaa (kovempi vahinko, sitkeämpi, nopeammat kyvyt).",
 	"mode": "Relic Hold: kanna reliikkiä pisteisiin. Ydinvalta: hallitse siirtyvää ydinaluetta yksin joukkueellasi.",
 	"map": "Geargarden: mekaaninen puutarha, jossa on kuljetinhihnoja ja rattaita.",
 }

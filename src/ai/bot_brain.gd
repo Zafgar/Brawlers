@@ -31,6 +31,14 @@ var ult_chance := 0.9
 var prediction := 0.5
 var aggression := 1.0           # kuinka suuren osan ajasta botti oikeasti hyökkää
 
+# Taso 6 (epäreilu) huijaa: nämä poikkeavat 1.0:sta vain kyseisellä tasolla.
+# Hero lukee kertoimet setup()issa ja soveltaa niitä.
+var damage_mult := 1.0          # aiheutettu vahinko
+var damage_taken_mult := 1.0    # otettu vahinko
+var cooldown_mult := 1.0        # jäähdytysten kerroin
+var ult_gain_mult := 1.0        # ultin latautuminen
+var speed_mult := 1.0           # liikkumisnopeus
+
 # Roolikohtaiset (asetetaan ensimmäisellä päivityksellä)
 var _role := ""
 var _pref_range := 300.0
@@ -65,36 +73,36 @@ var _hold_pause := 0.0
 
 
 func _init(p_level: int) -> void:
-	level = p_level
-	if level == Game.BotLevel.EASY:
-		# Selvästi aloittelijaystävällinen: hidas reagointi, huono tähtäys,
-		# harvoin väistää tai käyttää kykyjä, ja taistelee vain osan ajasta.
-		reaction = 0.72
-		aim_error_deg = 27.0
-		decision_interval = 0.7
-		dodge_chance = 0.05
-		ability_chance = 0.3
-		prediction = 0.0
-		aggression = 0.5
-	elif level == Game.BotLevel.HARD:
-		reaction = 0.12
-		aim_error_deg = 3.5
-		decision_interval = 0.2
-		dodge_chance = 0.78
-		ability_chance = 0.92
-		prediction = 0.92
-		aggression = 1.0
-	else:
-		reaction = 0.26
-		aim_error_deg = 9.0
-		decision_interval = 0.36
-		dodge_chance = 0.4
-		ability_chance = 0.7
-		prediction = 0.55
-		aggression = 0.85
+	level = clampi(p_level, 0, 5)
+	# Per-taso arvot (indeksi 0–5 = taso 1–6). Ylempi taso: nopeampi reagointi,
+	# tarkempi tähtäys, tiheämmät päätökset, enemmän väistöjä ja kykyjä sekä
+	# suurempi aggressio (kuinka suuren osan ajasta botti hyökkää).
+	var reactions := [0.85, 0.6, 0.4, 0.25, 0.15, 0.06]
+	var aims := [30.0, 22.0, 13.0, 8.0, 4.0, 1.2]
+	var decisions := [0.75, 0.6, 0.45, 0.32, 0.22, 0.15]
+	var dodges := [0.03, 0.12, 0.32, 0.52, 0.72, 0.95]
+	var abilities := [0.25, 0.42, 0.62, 0.78, 0.9, 1.0]
+	var predicts := [0.0, 0.15, 0.4, 0.62, 0.85, 1.0]
+	var aggros := [0.45, 0.62, 0.8, 0.9, 1.0, 1.0]
+	reaction = reactions[level]
+	aim_error_deg = aims[level]
+	decision_interval = decisions[level]
+	dodge_chance = dodges[level]
+	ability_chance = abilities[level]
+	prediction = predicts[level]
+	aggression = aggros[level]
 	# Ultimatet ovat arvokkaimpia — niitä käytetään kaikilla tasoilla,
 	# heikommilla vain hieman huonommalla ajoituksella.
 	ult_chance = clampf(ability_chance + 0.35, 0.0, 1.0)
+
+	# Taso 6 (epäreilu) huijaa avoimesti: kovempi vahinko, vähemmän otettua,
+	# nopeammat jäähdytykset ja ultin lataus sekä hieman lisää vauhtia.
+	if level >= 5:
+		damage_mult = 1.35
+		damage_taken_mult = 0.7
+		cooldown_mult = 0.6
+		ult_gain_mult = 1.6
+		speed_mult = 1.1
 
 
 func _setup_role(hero: Hero) -> void:

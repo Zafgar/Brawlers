@@ -2,15 +2,20 @@ extends Node
 ## Globaali pelitila: otteluasetukset, pelaajakokoonpano, ruutujen vaihto
 ## ja pysyvät asetukset. Autoload-nimi: Game.
 
-enum BotLevel { EASY, NORMAL, HARD }
-
-const BOT_LEVEL_NAMES := ["Helppo", "Normaali", "Kova"]
+# Bottien vaikeustasot 1–6 (indeksit 0–5). Taso 6 on tahallaan epäreilu:
+# se huijaa (enemmän vahinkoa, vähemmän otettua, nopeammat jäähdytykset ym.).
+const BOT_MIN_LEVEL := 1
+const BOT_MAX_LEVEL := 6
+const BOT_LEVEL_NAMES := [
+	"1 – Vasta-alkaja", "2 – Helppo", "3 – Normaali",
+	"4 – Kova", "5 – Mestari", "6 – Epäreilu",
+]
 const OPTIONS_PATH := "user://arena_options.cfg"
 
 # Otteluasetukset
 var team_size := 2
 var rounds_to_win := 2          # 2 = paras kolmesta, 3 = paras viidestä
-var bot_level: int = BotLevel.NORMAL
+var bot_level := 2              # 0–5 (näytetään 1–6); oletus taso 3 (Normaali)
 var map_id := "geargarden"
 var mode_id := "relic"
 var practice := false
@@ -118,7 +123,7 @@ func go_setup(practice_mode: bool) -> void:
 	if practice_mode:
 		team_size = 1
 		rounds_to_win = 1
-		bot_level = BotLevel.EASY
+		bot_level = 0
 		go_lobby()
 	else:
 		_swap(MatchSetup.new())
@@ -139,7 +144,7 @@ func try_hero(hero_id: String) -> void:
 	practice = true
 	team_size = 1
 	rounds_to_win = 1
-	bot_level = BotLevel.EASY
+	bot_level = 0
 	mode_id = "relic"
 
 	var human := PlayerProfile.new()
