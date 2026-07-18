@@ -192,7 +192,7 @@ func _synth_all() -> void:
 
 	# Tehosteet viimeisenä.
 	var sounds := {}
-	sounds["ui_move"] = _tone(0.05, 660.0, 880.0, "sine", 0.005, 0.03, 0.22)
+	sounds["ui_move"] = _tone(0.05, 660.0, 880.0, "sine", 0.005, 0.03, 0.28)
 	sounds["ui_ok"] = _seq([[0.06, 520.0, 520.0, "sine"], [0.09, 780.0, 780.0, "sine"]], 0.5)
 	sounds["ui_back"] = _tone(0.1, 520.0, 340.0, "sine", 0.005, 0.06, 0.4)
 	sounds["count_tick"] = _tone(0.06, 880.0, 880.0, "square", 0.002, 0.04, 0.25)
@@ -211,17 +211,17 @@ func _synth_all() -> void:
 		[0.5, 1318.0, 1318.0, "square"]], 0.24),
 		_noise(1.1, 0.08, 0.15), 0.0)
 	sounds["hit"] = _mix2(
-		_tone(0.08, 220.0, 140.0, "tri", 0.002, 0.05, 0.5),
-		_noise(0.06, 0.25, 0.4), 0.0)
-	sounds["swing"] = _noise(0.12, 0.3, 0.75)
+		_tone(0.08, 220.0, 140.0, "tri", 0.002, 0.05, 0.42),
+		_noise(0.06, 0.22, 0.4), 0.0)
+	sounds["swing"] = _noise(0.12, 0.26, 0.75)
 	sounds["slam"] = _mix2(
-		_tone(0.25, 90.0, 50.0, "sine", 0.005, 0.18, 0.7),
-		_noise(0.12, 0.35, 0.3), 0.0)
+		_tone(0.25, 90.0, 50.0, "sine", 0.005, 0.18, 0.5),
+		_noise(0.12, 0.26, 0.3), 0.0)
 	# Raskas maanjäristys: syvä basso + pitkä kohina-jyrinä
 	sounds["quake"] = _mix2(_mix2(
-		_tone(0.5, 70.0, 38.0, "sine", 0.005, 0.35, 0.8),
-		_tone(0.4, 120.0, 60.0, "tri", 0.005, 0.3, 0.3), 0.0),
-		_noise(0.45, 0.4, 0.2), 0.02)
+		_tone(0.5, 70.0, 38.0, "sine", 0.005, 0.35, 0.44),
+		_tone(0.4, 120.0, 60.0, "tri", 0.005, 0.3, 0.2), 0.0),
+		_noise(0.45, 0.26, 0.2), 0.02)
 	# Kilpi ylös: napakka metallinen kilahdus
 	sounds["guard_up"] = _mix2(
 		_tone(0.18, 520.0, 780.0, "tri", 0.002, 0.12, 0.35),
@@ -232,8 +232,8 @@ func _synth_all() -> void:
 		_tone(0.6, 165.0, 330.0, "tri", 0.05, 0.4, 0.2), 0.05)
 	# Kivet: murenevat kivet (muuri, vyöry)
 	sounds["rock"] = _mix2(
-		_noise(0.35, 0.4, 0.35),
-		_tone(0.3, 150.0, 70.0, "tri", 0.005, 0.2, 0.28), 0.0)
+		_noise(0.35, 0.3, 0.35),
+		_tone(0.3, 150.0, 70.0, "tri", 0.005, 0.2, 0.22), 0.0)
 	sounds["fire"] = _mix2(
 		_tone(0.15, 330.0, 190.0, "saw", 0.01, 0.1, 0.3),
 		_noise(0.15, 0.2, 0.5), 0.0)
@@ -277,8 +277,8 @@ func _synth_all() -> void:
 		_tone(0.18, 1176.0, 1176.0, "sine", 0.01, 0.14, 0.1), 0.0)
 	# Basso: syvä bassoisku
 	sounds["bass"] = _mix2(
-		_tone(0.26, 110.0, 68.0, "sine", 0.005, 0.2, 0.6),
-		_tone(0.2, 165.0, 110.0, "tri", 0.005, 0.15, 0.2), 0.0)
+		_tone(0.26, 110.0, 68.0, "sine", 0.005, 0.2, 0.48),
+		_tone(0.2, 165.0, 110.0, "tri", 0.005, 0.15, 0.16), 0.0)
 	# Crescendo: nouseva riemukas huipennus (ulti)
 	sounds["crescendo"] = _mix2(_seq([
 		[0.12, 523.0, 523.0, "tri"], [0.12, 659.0, 659.0, "tri"],
@@ -325,8 +325,8 @@ func _synth_all() -> void:
 		_noise(0.24, 0.36, 0.62),
 		_tone(0.2, 200.0, 120.0, "tri", 0.005, 0.15, 0.16), 0.0)
 	sounds["ko"] = _mix2(
-		_tone(0.3, 300.0, 80.0, "sine", 0.005, 0.22, 0.6),
-		_tone(0.15, 990.0, 1320.0, "sine", 0.02, 0.1, 0.2), 0.05)
+		_tone(0.3, 300.0, 80.0, "sine", 0.005, 0.22, 0.5),
+		_tone(0.15, 990.0, 1320.0, "sine", 0.02, 0.1, 0.16), 0.05)
 	sounds["respawn"] = _tone(0.3, 440.0, 1320.0, "sine", 0.02, 0.2, 0.35)
 	sounds["pickup"] = _seq([[0.07, 660.0, 660.0, "sine"], [0.1, 990.0, 990.0, "sine"]], 0.4)
 	sounds["drop"] = _tone(0.12, 660.0, 330.0, "sine", 0.005, 0.08, 0.4)
@@ -337,7 +337,7 @@ func _synth_all() -> void:
 	sounds["ult_ready"] = _mix2(
 		_tone(0.3, 1320.0, 1320.0, "sine", 0.005, 0.25, 0.3),
 		_tone(0.3, 1980.0, 1980.0, "sine", 0.01, 0.25, 0.15), 0.03)
-	sounds["score"] = _tone(0.08, 1100.0, 1100.0, "sine", 0.003, 0.06, 0.3)
+	sounds["score"] = _tone(0.08, 1100.0, 1100.0, "sine", 0.003, 0.06, 0.42)
 	# Kimmoke: pomppiva boing (Sparkringin bumperit)
 	sounds["bump"] = _mix2(
 		_tone(0.14, 260.0, 760.0, "sine", 0.004, 0.1, 0.4),

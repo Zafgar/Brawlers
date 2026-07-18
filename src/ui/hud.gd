@@ -44,6 +44,14 @@ func setup(p_arena) -> void:
 	_score_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_score_panel)
 
+	# Buffilaskuri tulospaneelin alle: näyttää ajan seuraavaan buffiaaltoon.
+	var buff_strip := BuffStrip.new()
+	buff_strip.arena = arena
+	buff_strip.position = Vector2(960.0 - 150.0, 112.0)
+	buff_strip.size = Vector2(300.0, 30.0)
+	buff_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(buff_strip)
+
 	_feed_box = UiKit.vbox(4)
 	_feed_box.position = Vector2(1920.0 - 420.0, 120.0)
 	_feed_box.size = Vector2(400.0, 300.0)
@@ -54,14 +62,18 @@ func setup(p_arena) -> void:
 
 ## Iso banneri ruudun yläkolmanteen: "ERÄ 1", "SININEN VOITTAA ERÄN!" jne.
 func show_banner(big: String, small := "", dur := 2.0) -> void:
+	# Absoluuttinen sijainti täysruudun juuressa (ei ankkuriesiasetusta, joka
+	# siirtäisi position-arvon ruudun keskeltä -> ulos oikeasta reunasta).
+	# Container-leveys pakotetaan custom_minimum_sizella (pelkkä .size ei pysy
+	# containerissa), jotta keskitetty teksti osuu ruudun keskelle.
 	var box := UiKit.vbox(6)
-	box.set_anchors_preset(Control.PRESET_CENTER_TOP)
 	box.position = Vector2(960.0 - 600.0, 250.0)
-	box.size = Vector2(1200.0, 200.0)
+	box.custom_minimum_size = Vector2(1200.0, 0.0)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	var big_label := UiKit.title(big, 68)
 	big_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	big_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(big_label)
 	if small != "":
 		var small_label := UiKit.label(small, 26, Palette.TEXT_DIM)
@@ -85,8 +97,9 @@ func show_banner(big: String, small := "", dur := 2.0) -> void:
 
 ## Valtava keskinumero: lähtölaskenta ja "PELIIN!".
 func show_big_number(text: String) -> void:
+	# Absoluuttinen sijainti (ei ankkuriesiasetusta — muuten numero valuu ulos
+	# ruudun oikeasta reunasta).
 	var label := UiKit.title(text, 150)
-	label.set_anchors_preset(Control.PRESET_CENTER)
 	label.position = Vector2(960.0 - 500.0, 400.0)
 	label.size = Vector2(1000.0, 220.0)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -205,3 +218,43 @@ class ScorePanel:
 			gem_center + Vector2(0, -10) * pulse, gem_center + Vector2(8, 0) * pulse,
 			gem_center + Vector2(0, 10) * pulse, gem_center + Vector2(-8, 0) * pulse])
 		draw_colored_polygon(gem, gem_color)
+
+
+## Buffilaskuri: näyttää ajan seuraavaan kenttäbuffiaaltoon (power spike).
+class BuffStrip:
+	extends Control
+
+	var arena = null
+	var _time := 0.0
+
+	func _process(delta: float) -> void:
+		_time += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		if arena == null:
+			return
+		var t: float = arena.next_buff_in()
+		if t < 0.0:
+			return
+		var bg := StyleBoxFlat.new()
+		bg.bg_color = Palette.with_alpha(Palette.UI_PANEL, 0.8)
+		bg.set_corner_radius_all(12)
+		bg.border_color = Palette.with_alpha(Palette.GOLD, 0.3)
+		bg.set_border_width_all(1)
+		bg.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
+		var cy := size.y / 2.0
+		_diamond(Vector2(24, cy), Color("6aa0ff"))
+		_diamond(Vector2(42, cy), Color("ff7a6a"))
+		var secs := int(ceil(t))
+		var soon: bool = t <= 8.0
+		var col: Color = Palette.TEXT_DIM
+		if soon:
+			col = Palette.with_alpha(Palette.glow(Palette.GOLD, 1.3), 0.7 + 0.3 * sin(_time * 6.0))
+		UiKit.draw_text(self, Vector2(size.x / 2.0 + 22.0, cy),
+			"BUFFIT  %d:%02d" % [secs / 60, secs % 60], 17, col, true, 3)
+
+	func _diamond(c: Vector2, col: Color) -> void:
+		draw_colored_polygon(PackedVector2Array([
+			c + Vector2(0, -6), c + Vector2(5, 0), c + Vector2(0, 6), c + Vector2(-5, 0)]),
+			Palette.glow(col, 1.4))

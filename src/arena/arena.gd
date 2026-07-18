@@ -36,9 +36,10 @@ var sudden_death := false
 var _koth_relocate_timer := 0.0
 var _koth_spots: Array = []
 
-# Kenttäbuffit (blue/red) ilmestyvät tasaisin väliajoin molemmille tiimeille.
-const BUFF_INTERVAL := 35.0
-const BUFF_FIRST := 18.0
+# Kenttäbuffit (blue/red) ovat harvinainen power spike -työkalu: niitä tulee
+# harvoin, ja HUD näyttää laskurin seuraavaan aaltoon.
+const BUFF_INTERVAL := 70.0
+const BUFF_FIRST := 40.0
 var _buff_timer := BUFF_FIRST
 
 var map: MapBase = null
@@ -403,6 +404,13 @@ func _spawn_buff(type: String, team: int, pos: Vector2) -> void:
 	buff.setup(self, type, team, pos)
 	add_child(buff)
 	buffs.append(buff)
+
+
+## Aika seuraavaan buffiaaltoon sekunneissa (HUD-laskuri). -1 = ei näytetä.
+func next_buff_in() -> float:
+	if state != State.PLAY:
+		return -1.0
+	return maxf(_buff_timer, 0.0)
 
 
 func _input(event: InputEvent) -> void:
