@@ -31,6 +31,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_maestro(ci, center, r)
 		"shade":
 			_shade(ci, center, r)
+		"tide":
+			_tide(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -246,6 +248,25 @@ static func _shade(ci: CanvasItem, center: Vector2, r: float) -> void:
 	ci.draw_colored_polygon(shadow, SHADE)
 	ci.draw_colored_polygon(star, INK)
 	ci.draw_circle(center, r * 0.17, SHADE)
+
+
+static func _tide(ci: CanvasItem, center: Vector2, r: float) -> void:
+	# Atrain: varsi, poikkipuu ja kolme piikkiä.
+	var shaft_bot := center + Vector2(0, r * 0.92)
+	var shaft_top := center + Vector2(0, -r * 0.25)
+	ci.draw_line(shaft_bot + Vector2(0, r * 0.05), shaft_top + Vector2(0, r * 0.05), SHADE, r * 0.16)
+	ci.draw_line(shaft_bot, shaft_top, INK, r * 0.12)
+	ci.draw_line(center + Vector2(-r * 0.5, -r * 0.25), center + Vector2(r * 0.5, -r * 0.25),
+		INK, r * 0.11)
+	for x in [-0.5, 0.0, 0.5]:
+		var top: float = -r * 0.95 if x == 0.0 else -r * 0.8
+		var px := center + Vector2(x * r, -r * 0.25)
+		ci.draw_line(px, center + Vector2(x * r, top), INK, r * 0.09)
+		# Piikin kärki
+		ci.draw_colored_polygon(PackedVector2Array([
+			center + Vector2(x * r, top - r * 0.14),
+			center + Vector2(x * r - r * 0.08, top),
+			center + Vector2(x * r + r * 0.08, top)]), INK)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.

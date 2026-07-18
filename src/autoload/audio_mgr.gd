@@ -185,6 +185,14 @@ func _synth_all() -> void:
 		_noise(0.09, 0.16, 0.75), 0.03)
 	# Savu: pehmeä häivähdys (naamioituminen, varjoaskel)
 	sounds["smoke"] = _noise(0.3, 0.3, 0.32)
+	# Vesi: lyhyt roiske (Tiden keihäs)
+	sounds["water"] = _mix2(
+		_noise(0.15, 0.3, 0.5),
+		_tone(0.12, 500.0, 900.0, "sine", 0.005, 0.08, 0.13), 0.0)
+	# Aalto: vellova vesipurske (aalto, hyökyaalto)
+	sounds["wave"] = _mix2(
+		_noise(0.42, 0.4, 0.42),
+		_tone(0.38, 300.0, 620.0, "sine", 0.02, 0.28, 0.15), 0.0)
 	sounds["blink"] = _mix2(
 		_tone(0.12, 880.0, 1760.0, "sine", 0.005, 0.07, 0.35),
 		_tone(0.08, 1760.0, 880.0, "sine", 0.01, 0.06, 0.2), 0.1)

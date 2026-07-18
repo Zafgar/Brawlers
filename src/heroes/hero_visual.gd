@@ -587,14 +587,25 @@ func _paint_shade(c1: Color, c2: Color) -> void:
 
 
 func _paint_tide(c1: Color, c2: Color) -> void:
+	# Leijuvat vesipisarat kiertävät
+	for i in range(3):
+		var da := _time * 1.6 + TAU * i / 3.0
+		var dp := Vector2(cos(da), sin(da) * 0.6) * 30.0 + Vector2(0, -8)
+		draw_circle(dp, 3.0, Palette.with_alpha(Palette.glow(c1, 1.3), 0.6))
+
 	# Aaltoharja
 	for i in range(3):
 		var wave_x := -10.0 + i * 10.0
-		draw_arc(Vector2(wave_x, -16), 6.0, PI, TAU, 10, Palette.glow(c1, 1.3), 3.0)
+		var wh := 6.0 + sin(_time * 5.0 + i) * 1.5
+		draw_arc(Vector2(wave_x, -16), wh, PI, TAU, 10, Palette.glow(c1, 1.3), 3.0)
+
 	_body_base(Vector2.ZERO, 20.0, c1, c2)
+	# Märkä kiilto
+	draw_circle(Vector2(-6, -8), 5.0, Palette.with_alpha(Color.WHITE, 0.28))
 	_eyes(Vector2(0, -5), 7.0)
-	# Vesikeihäs: pitkä varsi + kolmiokärki
-	var reach := 30.0 + _attack_anim * 26.0
+
+	# Käsivarsi ja vesikeihäs (piikkikärki + väkäset)
+	var reach := 30.0 + _attack_anim * 28.0
 	var tip: Vector2 = hero.aim * (16.0 + reach)
 	var tail: Vector2 = -hero.aim * 14.0 + hero.aim.orthogonal() * 6.0
 	_hold(hero.aim * 12.0, c1, 20.0)
@@ -603,7 +614,10 @@ func _paint_tide(c1: Color, c2: Color) -> void:
 	var spear_head := PackedVector2Array([
 		tip + hero.aim * 12.0, tip + head_perp, tip - head_perp])
 	draw_colored_polygon(spear_head, Palette.glow(c1, 1.5))
-	# Pisara keihään kärjestä
+	# Väkäset
+	draw_line(tip, tip - hero.aim * 6.0 + head_perp * 1.4, Palette.glow(c1, 1.3), 2.0)
+	draw_line(tip, tip - hero.aim * 6.0 - head_perp * 1.4, Palette.glow(c1, 1.3), 2.0)
+	# Pisara kärjestä iskiessä
 	if _attack_anim > 0.5:
 		draw_circle(tip + hero.aim * 14.0, 3.0, Palette.with_alpha(c1, 0.8))
 

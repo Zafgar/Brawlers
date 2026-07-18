@@ -213,9 +213,9 @@ const HEROES := {
 		"abilities": {
 			"basic": {"name": "Keihäspisto", "desc": "Pitkä ja kapea pisto eteen.", "cd": 0.55},
 			"a1": {"name": "Vesivana", "desc": "Syöksy, joka jättää liittolaisia kiihdyttävän vanan.", "cd": 7.0},
-			"a2": {"name": "Aalto", "desc": "Työntävä vesiaalto eteen.", "cd": 7.5},
+			"a2": {"name": "Aalto", "desc": "Työntävä vesiaalto eteen, joka hidastaa.", "cd": 7.5},
 			"dodge": {"name": "Virtaliuku", "desc": "Liukas väistö, joka antaa vauhtia.", "cd": 4.0},
-			"ult": {"name": "Hyökyaalto", "desc": "Valtava laajeneva aalto, joka lakaisee viholliset.", "cd": 0.0},
+			"ult": {"name": "Hyökyaalto", "desc": "Valtava laajeneva aalto, joka lakaisee ja hidastaa viholliset.", "cd": 0.0},
 		},
 	},
 	"scout": {
