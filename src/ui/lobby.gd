@@ -355,32 +355,70 @@ func _panel_style(border: Color) -> StyleBoxFlat:
 	return sb
 
 
+## Pyöristetty kortti (täyttö + reunus).
+func _card(rect: Rect2, bg: Color, border: Color, border_w: float, radius: float) -> void:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.border_color = border
+	sb.set_border_width_all(int(border_w))
+	sb.set_corner_radius_all(int(radius))
+	sb.draw(get_canvas_item(), rect)
+
+
+## Otsikko hehkuvalla joukkuevärialaviivalla.
+func _draw_title(text: String, y: float) -> void:
+	UiKit.draw_text(self, Vector2(960, y), text, 64, Palette.TEXT_MAIN, true, 8)
+	var w := 440.0
+	var uy := y + 46.0
+	var pulse := 0.5 + 0.5 * sin(_time * 1.5)
+	draw_rect(Rect2(960 - w / 2.0, uy, w / 2.0, 6.0), Palette.glow(Palette.TEAM_BLUE, 1.3))
+	draw_rect(Rect2(960, uy, w / 2.0, 6.0), Palette.glow(Palette.TEAM_ORANGE, 1.3))
+	draw_circle(Vector2(960, uy + 3.0), 8.0 + pulse * 2.0, Palette.glow(Palette.GOLD, 1.5))
+
+
+## Tyhjä (botti täyttää) paikka.
+func _draw_seat_empty(rect: Rect2) -> void:
+	_card(rect, Color(0, 0, 0, 0.22), Palette.with_alpha(Palette.TEXT_DIM, 0.25), 2, 16)
+	var bp := rect.position + Vector2(66, rect.size.y / 2.0)
+	draw_circle(bp, 30.0, Palette.with_alpha(Palette.TEXT_DIM, 0.15))
+	draw_rect(Rect2(bp + Vector2(-16, -14), Vector2(32, 28)), Palette.with_alpha(Palette.TEXT_DIM, 0.4), false, 2.0)
+	draw_circle(bp + Vector2(-7, -2), 3.5, Palette.with_alpha(Palette.TEXT_DIM, 0.5))
+	draw_circle(bp + Vector2(7, -2), 3.5, Palette.with_alpha(Palette.TEXT_DIM, 0.5))
+	draw_line(bp + Vector2(0, -14), bp + Vector2(0, -22), Palette.with_alpha(Palette.TEXT_DIM, 0.4), 2.0)
+	UiKit.draw_text(self, rect.position + Vector2(128, rect.size.y / 2.0 - 8.0),
+		"BOTTI TÄYTTÄÄ", 24, Palette.with_alpha(Palette.TEXT_DIM, 0.6), false)
+	UiKit.draw_text(self, rect.position + Vector2(128, rect.size.y / 2.0 + 22.0),
+		"tai liity tähän paikkaan", 15, Palette.with_alpha(Palette.TEXT_DIM, 0.45), false)
+
+
 func _draw_join() -> void:
-	UiKit.draw_text(self, Vector2(960, 80), "PELAAJAT", 64, Palette.TEXT_MAIN, true, 8)
-	UiKit.draw_text(self, Vector2(960, 140),
+	_draw_title("PELAAJAT", 78)
+	UiKit.draw_text(self, Vector2(960, 150),
 		"Paina X (ohjain) tai Enter (näppäimistö) liittyäksesi", 24, Palette.TEXT_DIM, true)
 
 	for team in [0, 1]:
 		var panel_x := 150.0 if team == 0 else 990.0
+		var tc: Color = Palette.team(team)
 		var rect := Rect2(panel_x, 210, 780, 720)
-		_panel_style(Palette.with_alpha(Palette.team(team), 0.6))\
-			.draw(get_canvas_item(), rect)
-		UiKit.draw_text(self, Vector2(panel_x + 390, 250),
-			Game.team_name(team), 34, Palette.team(team), true, 5)
+		# Hehku paneelin taakse
+		draw_circle(rect.get_center(), 320.0, Palette.with_alpha(tc, 0.05))
+		_card(rect, Palette.with_alpha(Palette.UI_PANEL, 0.85), Palette.with_alpha(tc, 0.6), 3, 22)
+		# Otsikkopalkki
+		UiKit.draw_text(self, Vector2(panel_x + 390, 254), Game.team_name(team), 34, tc, true, 5)
+		UiKit.draw_text(self, Vector2(panel_x + 710, 254),
+			"%d/%d" % [_team_human_count(team), Game.team_size], 22,
+			Palette.with_alpha(tc, 0.85), true)
+		draw_line(Vector2(panel_x + 40, 288), Vector2(panel_x + 740, 288),
+			Palette.with_alpha(tc, 0.35), 2.0)
 
 		var seat := 0
 		for entry in players:
 			if entry.profile.team != team:
 				continue
-			_draw_seat_human(Rect2(panel_x + 40, 290 + seat * 155.0, 700, 140), entry)
+			_draw_seat_human(Rect2(panel_x + 34, 306 + seat * 150.0, 712, 132), entry)
 			seat += 1
 		while seat < Game.team_size:
-			var seat_rect := Rect2(panel_x + 40, 290 + seat * 155.0, 700, 140)
-			draw_rect(seat_rect, Color(0, 0, 0, 0.28))
-			UiKit.draw_text(self, seat_rect.get_center() + Vector2(0, -12), "BOTTI", 26,
-				Palette.with_alpha(Palette.TEXT_DIM, 0.7), true)
-			UiKit.draw_text(self, seat_rect.get_center() + Vector2(0, 22),
-				"tai vapaa paikka pelaajalle", 16, Palette.with_alpha(Palette.TEXT_DIM, 0.5), true)
+			_draw_seat_empty(Rect2(panel_x + 34, 306 + seat * 150.0, 712, 132))
 			seat += 1
 
 	UiKit.draw_text(self, Vector2(960, 990),
@@ -393,26 +431,35 @@ func _draw_join() -> void:
 
 func _draw_seat_human(rect: Rect2, entry: Dictionary) -> void:
 	var profile: PlayerProfile = entry.profile
-	draw_rect(rect, Color(0, 0, 0, 0.4))
-	draw_rect(rect, Palette.with_alpha(profile.color(), 0.9), false, 3.0)
+	var pc: Color = profile.color()
+	_card(rect, Palette.with_alpha(pc, 0.10), Palette.with_alpha(pc, 0.9), 3, 16)
 
-	var badge := rect.position + Vector2(70, rect.size.y / 2.0)
-	draw_circle(badge, 36.0, profile.color())
-	UiKit.draw_text(self, badge + Vector2(0, 2), str(profile.index + 1), 34,
-		Palette.TEXT_DARK, true)
+	# Pelaajamedaljonki
+	var badge := rect.position + Vector2(66, rect.size.y / 2.0)
+	draw_circle(badge, 40.0, Palette.with_alpha(Color.BLACK, 0.3))
+	draw_circle(badge, 36.0, pc)
+	draw_circle(badge + Vector2(-11, -11), 9.0, Palette.with_alpha(Color.WHITE, 0.35))
+	UiKit.draw_text(self, badge + Vector2(0, 2), str(profile.index + 1), 34, Palette.TEXT_DARK, true)
 
-	UiKit.draw_text(self, rect.position + Vector2(150, rect.size.y / 2.0 - 16.0),
+	UiKit.draw_text(self, rect.position + Vector2(128, rect.size.y / 2.0 - 14.0),
 		profile.display_name, 28, Palette.TEXT_MAIN, false)
-	_draw_device_icon(rect.position + Vector2(150, rect.size.y / 2.0 + 22.0), profile.device)
+	_draw_device_icon(rect.position + Vector2(128, rect.size.y / 2.0 + 22.0), profile.device)
 
+	# Valmiustila
+	var rp := rect.position + Vector2(rect.size.x - 84, rect.size.y / 2.0)
 	if entry.ready:
-		var check := rect.position + Vector2(rect.size.x - 70, rect.size.y / 2.0)
-		draw_circle(check, 26.0, Palette.GOOD)
-		draw_line(check + Vector2(-10, 0), check + Vector2(-3, 9), Palette.TEXT_DARK, 5.0)
-		draw_line(check + Vector2(-3, 9), check + Vector2(12, -9), Palette.TEXT_DARK, 5.0)
+		draw_circle(rp, 30.0, Palette.with_alpha(Palette.GOOD, 0.25))
+		draw_circle(rp, 24.0, Palette.GOOD)
+		draw_line(rp + Vector2(-11, 0), rp + Vector2(-3, 10), Palette.TEXT_DARK, 5.0)
+		draw_line(rp + Vector2(-3, 10), rp + Vector2(13, -10), Palette.TEXT_DARK, 5.0)
+		UiKit.draw_text(self, rect.position + Vector2(rect.size.x - 84, rect.size.y - 18.0),
+			"VALMIS", 12, Palette.GOOD, true)
 	else:
-		UiKit.draw_text(self, rect.position + Vector2(rect.size.x - 90, rect.size.y / 2.0),
-			"VALMIS?", 20, Palette.with_alpha(Palette.TEXT_DIM, 0.6 + 0.3 * sin(_time * 3.0)), true)
+		var pulse := 0.5 + 0.5 * sin(_time * 3.0)
+		draw_arc(rp, 24.0, 0.0, TAU, 24, Palette.with_alpha(pc, 0.4 + pulse * 0.3), 3.0)
+		UiKit.draw_text(self, rp + Vector2(0, 1), "X", 22, Palette.with_alpha(pc, 0.6 + pulse * 0.4), true)
+		UiKit.draw_text(self, rect.position + Vector2(rect.size.x - 84, rect.size.y - 18.0),
+			"= VALMIS", 12, Palette.TEXT_DIM, true)
 
 
 func _draw_device_icon(pos: Vector2, device: int) -> void:
@@ -431,10 +478,10 @@ func _draw_device_icon(pos: Vector2, device: int) -> void:
 
 
 func _draw_heroes() -> void:
-	UiKit.draw_text(self, Vector2(960, 80), "VALITSE SANKARI", 64, Palette.TEXT_MAIN, true, 8)
+	_draw_title("VALITSE SANKARI", 72)
 
 	var x0 := (1920.0 - (COLS * TILE_W + (COLS - 1) * TILE_GAP)) / 2.0
-	var y0 := 150.0
+	var y0 := 176.0
 	for i in range(HeroDef.ORDER.size()):
 		var col := i % COLS
 		var row := i / COLS
@@ -466,12 +513,28 @@ func _draw_heroes() -> void:
 func _draw_hero_tile(rect: Rect2, tile_index: int) -> void:
 	var hero_id: String = HeroDef.ORDER[tile_index]
 	var def := HeroDef.get_def(hero_id)
-	_panel_style(Palette.with_alpha(def["color_b"], 0.7)).draw(get_canvas_item(), rect)
+	var c1: Color = def["color"]
+	var c2: Color = def["color_b"]
 
-	var med := rect.position + Vector2(rect.size.x / 2.0, 62.0)
-	draw_circle(med, 38.0, Palette.darker(def["color_b"], 0.55))
-	draw_circle(med, 34.0, def["color"])
-	draw_circle(med + Vector2(0, 12), 24.0, Palette.with_alpha(def["color_b"], 0.35))
+	var hovered := false
+	var any_locked := false
+	for entry in players:
+		if entry.cursor == tile_index:
+			hovered = true
+			if entry.locked:
+				any_locked = true
+
+	if hovered:
+		draw_circle(rect.get_center(), rect.size.x * 0.62, Palette.with_alpha(c1, 0.06))
+	var border: Color = Palette.with_alpha(c1, 0.8) if hovered else Palette.with_alpha(c2, 0.7)
+	_card(rect, Palette.with_alpha(Palette.UI_PANEL, 0.88), border, 2, 18)
+
+	# Medaljonki hehkukehineen
+	var med := rect.position + Vector2(rect.size.x / 2.0, 60.0)
+	draw_arc(med, 42.0, _time, _time + TAU * 0.8, 24, Palette.with_alpha(Palette.glow(c1, 1.3), 0.5), 2.0)
+	draw_circle(med, 38.0, Palette.darker(c2, 0.55))
+	draw_circle(med, 34.0, c1)
+	draw_circle(med + Vector2(0, 12), 24.0, Palette.with_alpha(c2, 0.35))
 	HeroIcon.draw_symbol(self, hero_id, med, 22.0)
 
 	UiKit.draw_text(self, rect.position + Vector2(rect.size.x / 2.0, 126.0),
@@ -480,19 +543,31 @@ func _draw_hero_tile(rect: Rect2, tile_index: int) -> void:
 	for i in range(3):
 		stars += "★" if i < int(def["difficulty"]) else "☆"
 	UiKit.draw_text(self, rect.position + Vector2(rect.size.x / 2.0, 154.0),
-		"%s  %s" % [def["role"], stars], 17, def["color"], true)
+		"%s  %s" % [def["role"], stars], 17, c1, true)
 	UiKit.draw_text(self, rect.position + Vector2(rect.size.x / 2.0, 178.0),
 		def["weapon"], 13, Palette.TEXT_DIM, true)
 
-	# Kursorit: jokaisen pelaajan oma värikehys, sisennettynä pinottuna
+	# Lukituksen tummennus (tekstien päälle, ennen kehyksiä)
+	if any_locked:
+		_card(rect, Color(0.03, 0.04, 0.1, 0.42), Color(0, 0, 0, 0), 0, 18)
+
+	# Kursorikehykset (jokaisen pelaajan oma väri, pinottu)
 	var inset := 0.0
 	for entry in players:
 		if entry.cursor != tile_index:
 			continue
-		var alpha := 0.5 if entry.locked else (0.75 + 0.25 * sin(_time * 5.0))
+		var alpha := 0.55 if entry.locked else (0.75 + 0.25 * sin(_time * 5.0))
 		draw_rect(rect.grow(-inset), Palette.with_alpha(entry.profile.color(), alpha), false,
-			4.0 if not entry.locked else 2.0)
+			4.0 if not entry.locked else 3.0)
 		inset += 6.0
+
+	# Lukitus-check päälle
+	if any_locked:
+		var lc := rect.get_center()
+		draw_circle(lc, 30.0, Palette.with_alpha(Palette.GOOD, 0.25))
+		draw_circle(lc, 23.0, Palette.GOOD)
+		draw_line(lc + Vector2(-10, 0), lc + Vector2(-2, 9), Palette.TEXT_DARK, 5.0)
+		draw_line(lc + Vector2(-2, 9), lc + Vector2(12, -9), Palette.TEXT_DARK, 5.0)
 
 	if _deny.tile == tile_index and _deny.t > 0.0:
 		draw_rect(rect, Palette.with_alpha(Palette.BAD, _deny.t), false, 5.0)
@@ -500,22 +575,35 @@ func _draw_hero_tile(rect: Rect2, tile_index: int) -> void:
 
 func _draw_player_chip(rect: Rect2, entry: Dictionary) -> void:
 	var profile: PlayerProfile = entry.profile
-	draw_rect(rect, Palette.with_alpha(Palette.team(profile.team), 0.16))
-	draw_rect(rect, Palette.with_alpha(Palette.team(profile.team), 0.6), false, 2.0)
+	var tc: Color = Palette.team(profile.team)
+	var locked: bool = entry.get("locked", false)
+	_card(rect, Palette.with_alpha(tc, 0.16), Palette.with_alpha(tc, 0.6), 2, 12)
 
+	# Pelaajatunnus vasemmalle
 	if profile.is_human():
-		draw_circle(rect.position + Vector2(26, rect.size.y / 2.0), 15.0, profile.color())
-		UiKit.draw_text(self, rect.position + Vector2(26, rect.size.y / 2.0 + 1),
+		draw_circle(rect.position + Vector2(24, rect.size.y / 2.0), 15.0, profile.color())
+		UiKit.draw_text(self, rect.position + Vector2(24, rect.size.y / 2.0 + 1),
 			str(profile.index + 1), 16, Palette.TEXT_DARK, true)
 	else:
-		UiKit.draw_text(self, rect.position + Vector2(26, rect.size.y / 2.0), "BOT", 13,
+		UiKit.draw_text(self, rect.position + Vector2(24, rect.size.y / 2.0), "BOT", 13,
 			Palette.TEXT_DIM, true)
 
-	UiKit.draw_text(self, rect.position + Vector2(52, 24), profile.display_name, 17,
+	UiKit.draw_text(self, rect.position + Vector2(48, 22), profile.display_name, 16,
 		Palette.TEXT_MAIN, false)
 	var pick_text := "..."
 	if profile.hero_id != "":
 		pick_text = HeroDef.get_def(profile.hero_id)["name"]
-	var locked: bool = entry.get("locked", false)
-	UiKit.draw_text(self, rect.position + Vector2(52, 50), pick_text, 17,
+	UiKit.draw_text(self, rect.position + Vector2(48, 48), pick_text, 16,
 		Palette.GOLD if locked else Palette.TEXT_DIM, false)
+
+	# Valitun sankarin medaljonki oikealle
+	if profile.hero_id != "":
+		var hdef := HeroDef.get_def(profile.hero_id)
+		var med := rect.position + Vector2(rect.size.x - 28.0, rect.size.y / 2.0)
+		draw_circle(med, 21.0, Palette.darker(hdef["color_b"], 0.55))
+		draw_circle(med, 17.0, hdef["color"])
+		HeroIcon.draw_symbol(self, profile.hero_id, med, 11.0)
+		if locked:
+			draw_circle(med + Vector2(13, -13), 8.0, Palette.GOOD)
+			draw_line(med + Vector2(9, -13), med + Vector2(12, -10), Palette.TEXT_DARK, 2.0)
+			draw_line(med + Vector2(12, -10), med + Vector2(17, -16), Palette.TEXT_DARK, 2.0)
