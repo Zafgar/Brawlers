@@ -7,6 +7,19 @@ func _init() -> void:
 	radius = 24.0
 
 
+## Mana: hoidot ja suojat maksavat manaa mutta jäähtyvät nopeasti — voit
+## ketjuttaa parannuksia ja kilpiä kunnes mana loppuu, sitten se palautuu.
+## Valopulssi (perus) on ilmainen.
+func _setup_resource() -> void:
+	res_type = "mana"
+	res_max = 100.0
+	res = 100.0
+	res_regen = 14.0
+	res_cost = {"basic": 0.0, "a1": 30.0, "a2": 24.0, "dodge": 0.0}
+	cd_max.a1 = 1.5
+	cd_max.a2 = 1.2
+
+
 ## Perushyökkäys: valopulssi — vahingoittaa vihollisia ja parantaa
 ## liittolaiset, joiden läpi se kulkee.
 func _basic(dir: Vector2) -> void:

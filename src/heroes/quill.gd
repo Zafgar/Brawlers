@@ -14,6 +14,19 @@ func _init() -> void:
 	radius = 23.0
 
 
+## Energia: erikoislaukaukset maksavat energiaa. Energia palautuu itsekseen
+## mutta karttuu ennen kaikkea osumista — tarkka ampuja pitää kykynsä käynnissä.
+## Ladattava jousi (perus) on ilmainen ja lataa energiaa osuessaan.
+func _setup_resource() -> void:
+	res_type = "energy"
+	res_max = 100.0
+	res = 100.0
+	res_regen = 12.0
+	res_cost = {"basic": 0.0, "a1": 34.0, "a2": 40.0, "dodge": 0.0}
+	cd_max.a1 = 2.0
+	cd_max.a2 = 2.5
+
+
 ## Tarkkuuslaukaus tähdätään: pidä R1 pohjassa (tähtäysviiva) ja vapauta.
 func _aimed_slots() -> Array:
 	return ["a1"]

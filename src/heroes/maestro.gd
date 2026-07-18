@@ -7,6 +7,19 @@ func _init() -> void:
 	radius = 24.0
 
 
+## Mana: riffit ja bassoiskut maksavat manaa mutta jäähtyvät nopeasti — voit
+## kiihdyttää ja suojata joukkuetta tiuhaan kunnes mana loppuu. Ääniaalto
+## (perus) on ilmainen.
+func _setup_resource() -> void:
+	res_type = "mana"
+	res_max = 100.0
+	res = 100.0
+	res_regen = 14.0
+	res_cost = {"basic": 0.0, "a1": 26.0, "a2": 30.0, "dodge": 0.0}
+	cd_max.a1 = 1.4
+	cd_max.a2 = 1.6
+
+
 ## Perushyökkäys: työntävä ääniaalto.
 func _basic(dir: Vector2) -> void:
 	AudioMgr.play("note", 0.15, -4.0)

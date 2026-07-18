@@ -6,10 +6,12 @@ extends Control
 
 enum Phase { JOIN, HEROES, STARTING }
 
-const COLS := 4
-const TILE_W := 250.0
-const TILE_H := 200.0
-const TILE_GAP := 20.0
+# Ruudukko mitoitettu 14 sankarille: 5 saraketta = 3 riviä, mahtuu pelaaja-
+# chippien (y=830) ja kykypaneelin (x=1160) väliin ilman päällekkäisyyttä.
+const COLS := 5
+const TILE_W := 202.0
+const TILE_H := 196.0
+const TILE_GAP := 18.0
 
 var phase: int = Phase.JOIN
 
@@ -484,7 +486,7 @@ func _draw_heroes() -> void:
 	_draw_title("VALITSE SANKARI", 72)
 
 	# Ruudukko vasemmalle, kykypaneeli oikealle (kaksipalstainen asettelu).
-	var x0 := 70.0
+	var x0 := 58.0
 	var y0 := 176.0
 	for i in range(HeroDef.ORDER.size()):
 		var col := i % COLS

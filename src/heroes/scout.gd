@@ -7,6 +7,19 @@ func _init() -> void:
 	radius = 23.0
 
 
+## Energia: merkki- ja tainnutuspallot maksavat energiaa. Energia palautuu
+## itsekseen mutta karttuu ennen kaikkea osumista — pidä vaahtopurske käynnissä,
+## niin merkitset ja tainnutat tiuhaan. Purske (perus) on ilmainen.
+func _setup_resource() -> void:
+	res_type = "energy"
+	res_max = 100.0
+	res = 100.0
+	res_regen = 13.0
+	res_cost = {"basic": 0.0, "a1": 30.0, "a2": 36.0, "dodge": 0.0}
+	cd_max.a1 = 1.6
+	cd_max.a2 = 2.2
+
+
 ## Merkkipanos tähdätään: pidä R1 pohjassa (tähtäysviiva) ja vapauta.
 func _aimed_slots() -> Array:
 	return ["a1"]

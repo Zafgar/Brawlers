@@ -56,7 +56,7 @@ const HEROES := {
 		"speed": 325.0,
 		"ratings": {"kesto": 3, "liike": 3, "vahinko": 2, "tuki": 5},
 		"weapon": "Valosauva",
-		"desc": "Joukkueen sydän. Parantaa, suojaa ja pitää kaikki pelissä.",
+		"desc": "Joukkueen sydän. Käyttää manaa — voi ketjuttaa hoitoja ja kilpiä kunnes mana loppuu, sitten se palautuu.",
 		"color": Color("ffe9a8"),
 		"color_b": Color("d9a13f"),
 		"abilities": {
@@ -113,7 +113,7 @@ const HEROES := {
 		"speed": 330.0,
 		"ratings": {"kesto": 2, "liike": 3, "vahinko": 4, "tuki": 2},
 		"weapon": "Jousi",
-		"desc": "Tarkka-ampuja. Ladattu nuoli palkitsee kärsivällisen.",
+		"desc": "Tarkka-ampuja. Osumat lataavat energiaa, joka ruokkii erikoislaukauksia — tarkkuus palkitaan.",
 		"color": Color("5fd0a0"),
 		"color_b": Color("1f6e52"),
 		"abilities": {
@@ -170,7 +170,7 @@ const HEROES := {
 		"speed": 320.0,
 		"ratings": {"kesto": 3, "liike": 3, "vahinko": 2, "tuki": 5},
 		"weapon": "Ääniaaltoheitin",
-		"desc": "Rytmin mestari. Kiihdyttää joukkueen täyteen vauhtiin.",
+		"desc": "Rytmin mestari. Käyttää manaa — kiihdyttää ja suojaa joukkuetta tiuhaan kunnes mana loppuu, sitten se palautuu.",
 		"color": Color("ff6bd0"),
 		"color_b": Color("99307d"),
 		"abilities": {
@@ -227,7 +227,7 @@ const HEROES := {
 		"speed": 330.0,
 		"ratings": {"kesto": 2, "liike": 3, "vahinko": 3, "tuki": 4},
 		"weapon": "Vaahtopallokivääri",
-		"desc": "Joukkueen silmät. Merkityt viholliset ottavat lisävahinkoa kaikilta.",
+		"desc": "Joukkueen silmät. Osumat lataavat energiaa, joka ruokkii merkki- ja tainnutuspalloja — pidä purske käynnissä.",
 		"color": Color("c9d16b"),
 		"color_b": Color("6b7a2f"),
 		"abilities": {
