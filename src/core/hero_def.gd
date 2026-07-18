@@ -116,10 +116,10 @@ const HEROES := {
 		"color": Color("5fd0a0"),
 		"color_b": Color("1f6e52"),
 		"abilities": {
-			"basic": {"name": "Nuoli", "desc": "Pidä pohjassa ladataksesi: täysi lataus lävistää.", "cd": 0.5},
+			"basic": {"name": "Nuoli", "desc": "Pidä pohjassa ladataksesi. Paikallaan lataa nopeammin; täysi lataus lävistää.", "cd": 0.5},
 			"a1": {"name": "Tarkkuuslaukaus", "desc": "Pitkä, nopea ja lävistävä erikoisnuoli.", "cd": 7.0},
 			"a2": {"name": "Nuolisade", "desc": "Nuolia sataa valitulle alueelle hetken päästä.", "cd": 8.0},
-			"dodge": {"name": "Kuperkeikka", "desc": "Nopea kieräys, joka lataa jousta.", "cd": 3.5},
+			"dodge": {"name": "Kuperkeikka", "desc": "Nopea kieräys, joka lataa jousen heti valmiiksi.", "cd": 3.5},
 			"ult": {"name": "Myrskysarja", "desc": "Ampuu nopean sarjan nuolia tähtäyksen mukaan.", "cd": 0.0},
 		},
 	},

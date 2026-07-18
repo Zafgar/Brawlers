@@ -21,6 +21,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_blink(ci, center, r)
 		"bramble":
 			_bramble(ci, center, r)
+		"quill":
+			_quill(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -142,6 +144,27 @@ static func _bramble(ci: CanvasItem, center: Vector2, r: float) -> void:
 		ci.draw_colored_polygon(PackedVector2Array([
 			base + Vector2(0, -r * 0.12), base + Vector2(side * r * 0.28, 0),
 			base + Vector2(0, r * 0.12)]), INK)
+
+
+static func _quill(ci: CanvasItem, center: Vector2, r: float) -> void:
+	# Jousi vasemmalla + vaakanuoli oikealle.
+	var bc := center + Vector2(-r * 0.35, 0)
+	var br := r * 0.82
+	ci.draw_arc(bc, br, -1.05, 1.05, 22, SHADE, r * 0.2)
+	ci.draw_arc(bc, br, -1.05, 1.05, 22, INK, r * 0.13)
+	var e1 := bc + Vector2(cos(-1.05), sin(-1.05)) * br
+	var e2 := bc + Vector2(cos(1.05), sin(1.05)) * br
+	ci.draw_line(e1, e2, INK, r * 0.05)
+	# Nuoli
+	var tail := center + Vector2(-r * 0.42, 0)
+	var tip := center + Vector2(r * 0.78, 0)
+	ci.draw_line(tail, tip, INK, r * 0.1)
+	ci.draw_colored_polygon(PackedVector2Array([
+		tip + Vector2(r * 0.14, 0), tip + Vector2(-r * 0.12, -r * 0.17),
+		tip + Vector2(-r * 0.12, r * 0.17)]), INK)
+	# Sulat
+	ci.draw_line(tail, tail + Vector2(-r * 0.2, -r * 0.15), INK, r * 0.05)
+	ci.draw_line(tail, tail + Vector2(-r * 0.2, r * 0.15), INK, r * 0.05)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.

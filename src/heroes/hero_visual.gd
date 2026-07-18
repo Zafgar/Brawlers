@@ -604,24 +604,49 @@ func _paint_maestro(c1: Color, c2: Color) -> void:
 
 
 func _paint_quill(c1: Color, c2: Color) -> void:
+	# Nuoliviini selässä (rungon takana)
+	for i in range(3):
+		var qx := -16.0 + i * 4.0
+		draw_line(Vector2(qx, 8), Vector2(qx - 6.0, -18.0), Palette.darker(c2, 0.7), 2.5)
+		# Sulat
+		draw_line(Vector2(qx - 6.0, -18.0), Vector2(qx - 9.0, -15.0), c1, 1.5)
+		draw_line(Vector2(qx - 6.0, -18.0), Vector2(qx - 3.0, -15.0), c1, 1.5)
+	draw_arc(Vector2(-8, -2), 8.0, PI * 0.3, PI * 1.2, 10, Palette.darker(c2, 0.75), 3.0)
+
 	_body_base(Vector2.ZERO, 17.0, c1, c2)
 	# Huppu
 	draw_arc(Vector2(0, -6), 15.0, PI + 0.4, TAU - 0.4, 20, c2, 7.0)
 	_eyes(Vector2(0, -4), 6.5)
-	# Jousi tähtäyksen suunnassa
+
+	# Käsivarsi ja recurve-jousi tähtäyksen suunnassa
 	var a: float = hero.aim.angle()
 	var bow_pos: Vector2 = hero.aim * 22.0
-	_hold(hero.aim * 15.0, c1, 17.0)
-	draw_arc(bow_pos, 14.0, a - 1.25, a + 1.25, 16, Color("8a6a3f"), 4.0)
-	var top: Vector2 = bow_pos + Vector2.RIGHT.rotated(a - 1.25) * 14.0
-	var bottom: Vector2 = bow_pos + Vector2.RIGHT.rotated(a + 1.25) * 14.0
-	var pull: Vector2 = bow_pos - hero.aim * (4.0 + aux * 10.0)
+	_hold(hero.aim * 14.0, c1, 17.0)
+
+	# Latausaura kasvaa aux:n mukaan
+	if aux > 0.05:
+		draw_circle(bow_pos + hero.aim * 12.0, 4.0 + aux * 9.0,
+			Palette.with_alpha(Palette.glow(Palette.GOLD, 1.0 + aux), 0.25 + aux * 0.35))
+
+	# Jousen sanka + recurve-kärjet
+	draw_arc(bow_pos, 15.0, a - 1.25, a + 1.25, 18, Color("6b4f2a"), 5.0)
+	draw_arc(bow_pos, 15.0, a - 1.25, a + 1.25, 18, Color("a5824a"), 3.0)
+	var top: Vector2 = bow_pos + Vector2.RIGHT.rotated(a - 1.25) * 15.0
+	var bottom: Vector2 = bow_pos + Vector2.RIGHT.rotated(a + 1.25) * 15.0
+	draw_line(top, top + hero.aim.rotated(-0.5) * 5.0, Color("6b4f2a"), 4.0)
+	draw_line(bottom, bottom + hero.aim.rotated(0.5) * 5.0, Color("6b4f2a"), 4.0)
+	# Jänne, jota lataus vetää taakse
+	var pull: Vector2 = bow_pos - hero.aim * (4.0 + aux * 11.0)
 	draw_line(top, pull, Color("e8e2d0"), 2.0)
 	draw_line(bottom, pull, Color("e8e2d0"), 2.0)
 	if aux > 0.05:
-		# Ladattu nuoli hehkuu
+		# Ladattu nuoli hehkuu voimakkaammin täydessä latauksessa
 		var glow_color: Color = Palette.glow(c1, 1.0 + aux * 1.5)
-		draw_line(pull, bow_pos + hero.aim * 16.0, glow_color, 3.0)
+		draw_line(pull, bow_pos + hero.aim * 18.0, glow_color, 3.0)
+		var arrow_tip: Vector2 = bow_pos + hero.aim * 18.0
+		draw_colored_polygon(PackedVector2Array([
+			arrow_tip + hero.aim * 5.0,
+			arrow_tip + hero.aim.orthogonal() * 3.0,
+			arrow_tip - hero.aim.orthogonal() * 3.0]), glow_color)
 		if aux >= 1.0:
-			draw_circle(bow_pos + hero.aim * 16.0, 5.0 + sin(_time * 12.0) * 1.5,
-				Palette.glow(Palette.GOLD, 2.0))
+			draw_circle(arrow_tip, 5.0 + sin(_time * 12.0) * 1.5, Palette.glow(Palette.GOLD, 2.0))

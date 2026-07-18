@@ -137,6 +137,14 @@ func _synth_all() -> void:
 	sounds["bow"] = _mix2(
 		_tone(0.09, 1200.0, 300.0, "tri", 0.002, 0.06, 0.4),
 		_noise(0.03, 0.2, 0.8), 0.0)
+	# Täysi lataus: voimakas syvä jännitteen laukeaminen
+	sounds["bow_charged"] = _mix2(
+		_tone(0.22, 260.0, 720.0, "saw", 0.01, 0.14, 0.32),
+		_tone(0.14, 1500.0, 400.0, "tri", 0.002, 0.1, 0.22), 0.06)
+	# Nuolisade: viheltävä sarja
+	sounds["arrow_rain"] = _mix2(
+		_noise(0.4, 0.28, 0.72),
+		_tone(0.4, 1300.0, 320.0, "sine", 0.02, 0.3, 0.13), 0.0)
 	sounds["heal"] = _seq([
 		[0.08, 660.0, 660.0, "sine"], [0.08, 880.0, 880.0, "sine"],
 		[0.12, 1100.0, 1100.0, "sine"]], 0.3)
