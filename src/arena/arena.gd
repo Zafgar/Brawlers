@@ -38,6 +38,7 @@ var camera: GameCamera = null
 var hud = null                    # HudLayer
 var heroes: Array = []
 var zones: Array = []
+var buffs: Array = []              # aktiiviset FieldBuffit (botit lukevat näitä)
 var blackboards: Array = []
 
 var _sd_hold := 0.0
@@ -136,6 +137,7 @@ func _make_hero(id: String) -> Hero:
 
 func _physics_process(delta: float) -> void:
 	zones = zones.filter(func(z): return is_instance_valid(z))
+	buffs = buffs.filter(func(b): return is_instance_valid(b))
 	for blackboard in blackboards:
 		blackboard.update(delta)
 
@@ -325,6 +327,7 @@ func _spawn_buff(type: String, team: int, pos: Vector2) -> void:
 	var buff := FieldBuff.new()
 	buff.setup(self, type, team, pos)
 	add_child(buff)
+	buffs.append(buff)
 
 
 func _input(event: InputEvent) -> void:
@@ -345,6 +348,7 @@ func _start_round_intro() -> void:
 	for child in get_children():
 		if child is FieldBuff:
 			child.queue_free()
+	buffs.clear()
 	relic.reset_to_home()
 	if mode == "koth":
 		relic.control_team = -1

@@ -15,7 +15,7 @@ extends RefCounted
 ## Vaikeustaso EI muuta vahinkoa tai kestoa — vain reaktioaikaa,
 ## tähtäysvirhettä, ennakointia, väistämistä ja kykyjen käyttötodennäköisyyttä.
 
-enum Mode { GET_RELIC, ATTACK_CARRIER, ESCORT, CARRY, RETREAT, FIGHT, SUPPORT }
+enum Mode { GET_RELIC, ATTACK_CARRIER, ESCORT, CARRY, RETREAT, FIGHT, SUPPORT, GET_BUFF }
 
 const BACKLINE_ROLES := ["Tuki", "Ranger", "Mage"]
 
@@ -30,6 +30,8 @@ var ability_chance := 0.6
 var ult_chance := 0.9
 var prediction := 0.5
 var aggression := 1.0           # kuinka suuren osan ajasta botti oikeasti hyökkää
+var buff_focus := 0.5           # kuinka innokkaasti/kaukaa botti hakee buffeja
+var buff_deny := 0.0            # kuinka herkästi botti rikkoo vihollisen buffin
 
 # Taso 6 (epäreilu) huijaa: nämä poikkeavat 1.0:sta vain kyseisellä tasolla.
 # Hero lukee kertoimet setup()issa ja soveltaa niitä.
@@ -50,6 +52,7 @@ var _is_ranged := false
 var _hero: Hero = null
 var _mode: int = Mode.FIGHT
 var _target: Hero = null
+var _buff_target = null          # tavoiteltu FieldBuff (GET_BUFF-tilassa)
 var _move := Vector2.ZERO
 var _aim := Vector2.RIGHT
 
@@ -84,6 +87,10 @@ func _init(p_level: int) -> void:
 	var abilities := [0.25, 0.42, 0.62, 0.78, 0.9, 1.0]
 	var predicts := [0.0, 0.15, 0.4, 0.62, 0.85, 1.0]
 	var aggros := [0.45, 0.62, 0.8, 0.9, 1.0, 1.0]
+	# Buffien haku ja vihollisen buffin rikkominen: ylemmät tasot osaavat ja
+	# ehtivät hoitaa buffit paremmin ja denyaavat vihollisen buffit.
+	var focuses := [0.05, 0.25, 0.5, 0.72, 0.9, 1.0]
+	var denies := [0.0, 0.0, 0.2, 0.45, 0.72, 0.95]
 	reaction = reactions[level]
 	aim_error_deg = aims[level]
 	decision_interval = decisions[level]
@@ -91,6 +98,8 @@ func _init(p_level: int) -> void:
 	ability_chance = abilities[level]
 	prediction = predicts[level]
 	aggression = aggros[level]
+	buff_focus = focuses[level]
+	buff_deny = denies[level]
 	# Ultimatet ovat arvokkaimpia — niitä käytetään kaikilla tasoilla,
 	# heikommilla vain hieman huonommalla ajoituksella.
 	ult_chance = clampf(ability_chance + 0.35, 0.0, 1.0)
@@ -175,6 +184,14 @@ func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 		return
 	if _mode == Mode.RETREAT and hero.hp < hero.max_hp * 0.6:
 		return  # jatka vetäytymistä kunnes palautunut
+
+	# Kenttäbuffit: hae oman tiimin arvokas buffi tai riko vihollisen buffi.
+	# Vaikeustaso päättää kuinka innokkaasti ja kaukaa (buff_focus/buff_deny).
+	var buff: FieldBuff = _pick_buff(hero, arena)
+	if buff != null:
+		_mode = Mode.GET_BUFF
+		_buff_target = buff
+		return
 
 	# Vapaa reliikki: lähin (ei-tuki) hakee sen, muut ottavat roolinsa.
 	if arena.relic.is_free():
@@ -282,11 +299,58 @@ func _nearest_to(list: Array, from: Vector2, max_dist: float) -> Hero:
 	return best
 
 
+## Paras tavoiteltava buffi (oma napattava tai vihollisen rikottava) tai null.
+## Etäisyysraja ja denyaus skaalautuvat vaikeustasolla (buff_focus/buff_deny).
+func _pick_buff(hero: Hero, arena) -> FieldBuff:
+	if buff_focus < 0.06 or arena.buffs.is_empty():
+		return null
+	var pos: Vector2 = hero.global_position
+	var max_divert := 320.0 + buff_focus * 950.0
+	var best: FieldBuff = null
+	var best_score := 45.0
+	for b in arena.buffs:
+		if not is_instance_valid(b):
+			continue
+		var d: float = pos.distance_to(b.global_position)
+		if d > max_divert:
+			continue
+		var val := 0.0
+		if b.owner_team == hero.team:
+			# Oman tiimin buffi: nappaa. Sininen hyödyttää vain resurssisankaria.
+			if b.type == "red":
+				val = 110.0
+			elif _has_resource(hero):
+				val = 125.0
+			else:
+				val = 10.0
+		else:
+			# Vihollisen buffi: riko (deny) jos vaikeustaso sallii.
+			if buff_deny < 0.06:
+				continue
+			val = buff_deny * 95.0
+			if _is_assassin or _is_ranged:
+				val += 25.0
+		var score := val - d * 0.12
+		if score > best_score:
+			best_score = score
+			best = b
+	return best
+
+
+func _has_resource(hero: Hero) -> bool:
+	return hero.res_type != ""
+
+
 func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> void:
 	var pos: Vector2 = hero.global_position
 	var goal := pos
 
 	match _mode:
+		Mode.GET_BUFF:
+			if _buff_target != null and is_instance_valid(_buff_target):
+				goal = _buff_target.global_position
+			else:
+				goal = _combat_goal(hero, arena, bb, pos)  # buffi meni -> taistele
 		Mode.GET_RELIC:
 			goal = arena.relic.global_position
 		Mode.RETREAT:
