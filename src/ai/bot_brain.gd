@@ -1,15 +1,23 @@
 class_name BotBrain
 extends RefCounted
-## Botin aivot. Toteuttaa täsmälleen saman rajapinnan kuin DeviceInput,
-## joten Hero ei erota bottia ihmisestä. Päätökset tehdään utility-
-## arvioinnilla ja joukkueen TeamBlackboard-tilannekuvalla.
+## Botin aivot. Toteuttaa saman rajapinnan kuin DeviceInput, joten Hero ei
+## erota bottia ihmisestä. Päätökset perustuvat sankarin ROOLIIN, joukkueen
+## jaettuun TeamBlackboard-tilannekuvaan ja utility-arviointiin.
+##
+## Roolit ohjaavat käytöstä:
+##   Tankki   — johtaa rintamaa, peelaa suojeltavan edestä
+##   Tuki     — pysyy suojeltavan takana, parantaa ja buffaa, välttää etulinjaa
+##   Assassin — kiertää takalinjaan, iskee heikoimpia, vetäytyy ajoissa
+##   Fighter  — lähitaistelu keskietäisyydeltä, kestävä
+##   Mage     — keskietäisyys, alueenhallinta
+##   Ranger   — pitää etäisyyttä ja kitettää
 ##
 ## Vaikeustaso EI muuta vahinkoa tai kestoa — vain reaktioaikaa,
-## tähtäysvirhettä, ennakointia, väistämistä ja kykyjen käyttöä.
+## tähtäysvirhettä, ennakointia, väistämistä ja kykyjen käyttötodennäköisyyttä.
 
 enum Mode { GET_RELIC, ATTACK_CARRIER, ESCORT, CARRY, RETREAT, FIGHT, SUPPORT }
 
-const MELEE_HEROES := ["bastion", "blink", "bramble", "boulder", "tide"]
+const BACKLINE_ROLES := ["Tuki", "Ranger", "Mage"]
 
 var level := 1
 
@@ -19,7 +27,16 @@ var aim_error_deg := 9.0
 var decision_interval := 0.4
 var dodge_chance := 0.35
 var ability_chance := 0.6
+var ult_chance := 0.9
 var prediction := 0.5
+
+# Roolikohtaiset (asetetaan ensimmäisellä päivityksellä)
+var _role := ""
+var _pref_range := 300.0
+var _is_tank := false
+var _is_support := false
+var _is_assassin := false
+var _is_ranged := false
 
 var _hero: Hero = null
 var _mode: int = Mode.FIGHT
@@ -49,24 +66,50 @@ func _init(p_level: int) -> void:
 	if level == Game.BotLevel.EASY:
 		reaction = 0.45
 		aim_error_deg = 16.0
-		decision_interval = 0.6
-		dodge_chance = 0.10
-		ability_chance = 0.35
-		prediction = 0.0
+		decision_interval = 0.55
+		dodge_chance = 0.12
+		ability_chance = 0.45
+		prediction = 0.15
 	elif level == Game.BotLevel.HARD:
-		reaction = 0.14
+		reaction = 0.13
 		aim_error_deg = 4.0
-		decision_interval = 0.25
-		dodge_chance = 0.70
-		ability_chance = 0.85
+		decision_interval = 0.22
+		dodge_chance = 0.72
+		ability_chance = 0.9
 		prediction = 0.9
 	else:
-		reaction = 0.28
+		reaction = 0.27
 		aim_error_deg = 9.0
-		decision_interval = 0.4
-		dodge_chance = 0.35
-		ability_chance = 0.6
+		decision_interval = 0.38
+		dodge_chance = 0.38
+		ability_chance = 0.68
 		prediction = 0.5
+	# Ultimatet ovat arvokkaimpia — niitä käytetään kaikilla tasoilla,
+	# heikommilla vain hieman huonommalla ajoituksella.
+	ult_chance = clampf(ability_chance + 0.35, 0.0, 1.0)
+
+
+func _setup_role(hero: Hero) -> void:
+	_role = HeroDef.get_def(hero.hero_id)["role"]
+	_is_tank = _role == "Tankki"
+	_is_support = _role == "Tuki"
+	_is_assassin = _role == "Assassin"
+	_is_ranged = _role in ["Mage", "Ranger"]
+	match _role:
+		"Tankki":
+			_pref_range = 75.0
+		"Fighter":
+			_pref_range = 110.0
+		"Assassin":
+			_pref_range = 95.0
+		"Mage":
+			_pref_range = 330.0
+		"Ranger":
+			_pref_range = 430.0
+		"Tuki":
+			_pref_range = 280.0
+		_:
+			_pref_range = 200.0
 
 
 func update(hero: Hero, delta: float) -> void:
@@ -75,6 +118,8 @@ func update(hero: Hero, delta: float) -> void:
 	_attack_prev = _attack
 	for key in _flags:
 		_flags[key] = false
+	if _role == "":
+		_setup_role(hero)
 
 	var arena = hero.arena
 	var bb: TeamBlackboard = arena.blackboard(hero.team)
@@ -85,73 +130,140 @@ func update(hero: Hero, delta: float) -> void:
 		_aim_err_timer = 0.3
 		_aim_err = deg_to_rad(randf_range(-aim_error_deg, aim_error_deg))
 
+	var decided := false
 	_decision_timer -= delta
 	if _decision_timer <= 0.0:
 		_decision_timer = decision_interval
 		_decide(hero, arena, bb)
+		decided = true
 
-	_update_target(hero, arena)
+	_update_target(hero, arena, bb)
 	_update_movement(hero, arena, bb, delta)
 	_update_aim(hero)
 	_update_attack(hero, delta)
-	_update_abilities(hero, arena, bb)
+	_update_abilities(hero, arena, bb, decided)
 	_update_dodge(hero, arena, delta)
 
 
-## Utility-arviointi: mikä toimintatila on nyt arvokkain.
+## Valitsee toimintatilan roolin ja tilanteen mukaan.
 func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	if hero.carrying:
 		_mode = Mode.CARRY
 		return
-	if hero.hp < hero.max_hp * 0.3:
+	# Assassinit ja tuet vetäytyvät aikaisemmin (hauraita).
+	var retreat_hp := 0.3
+	if _is_assassin or _is_support:
+		retreat_hp = 0.4
+	if hero.hp < hero.max_hp * retreat_hp:
 		_mode = Mode.RETREAT
 		return
-	if _mode == Mode.RETREAT and hero.hp < hero.max_hp * 0.55:
+	if _mode == Mode.RETREAT and hero.hp < hero.max_hp * 0.6:
 		return  # jatka vetäytymistä kunnes palautunut
 
-	# Tukisankarit pysyvät pulassa olevan liittolaisen lähellä.
-	if hero.hero_id in ["luma", "maestro"] and bb.lowest_ally != null and bb.lowest_ally != hero:
-		if bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.6:
-			_mode = Mode.SUPPORT
-			return
-
+	# Vapaa reliikki: lähin (ei-tuki) hakee sen, muut ottavat roolinsa.
 	if arena.relic.is_free():
-		# Lähin oman joukkueen jäsen hakee reliikin, muut taistelevat.
 		var my_dist: float = hero.global_position.distance_to(arena.relic.global_position)
 		var closest := true
+		var someone_near := false
 		for ally in arena.alive_allies(hero.team):
 			if ally == hero:
 				continue
-			if ally.global_position.distance_to(arena.relic.global_position) < my_dist - 40.0:
+			var ad: float = ally.global_position.distance_to(arena.relic.global_position)
+			if ad < my_dist - 40.0:
 				closest = false
-				break
-		_mode = Mode.GET_RELIC if closest or randf() < 0.25 else Mode.FIGHT
+			if ad < my_dist + 120.0:
+				someone_near = true
+		var grab := closest or randf() < 0.2
+		# Tuki nappaa reliikin vain jos kukaan muu ei ole lähellä (kanto
+		# estäisi sen kykyjä).
+		if _is_support and someone_near:
+			grab = false
+		if grab:
+			_mode = Mode.GET_RELIC
+		else:
+			_mode = Mode.SUPPORT if _is_support else Mode.FIGHT
 		return
 
+	# Vihollisella reliikki: koko joukkue kokoontuu kantajan kimppuun.
 	if bb.enemy_carrier != null:
 		_mode = Mode.ATTACK_CARRIER
 		return
-	if bb.own_carrier != null:
-		_mode = Mode.ESCORT
+
+	# Omalla joukkueella reliikki: tankit ja tuet saattavat, muut peelaavat.
+	if bb.own_carrier != null and bb.own_carrier != hero:
+		if _is_support or _is_tank:
+			_mode = Mode.ESCORT
+		else:
+			_mode = Mode.FIGHT
 		return
-	_mode = Mode.FIGHT
+
+	# Ei reliikkiä kentällä: tuet asemoivat, muut taistelevat.
+	_mode = Mode.SUPPORT if _is_support else Mode.FIGHT
 
 
-func _update_target(hero: Hero, arena) -> void:
-	var nearest: Hero = null
-	var best := 999999.0
-	for enemy in arena.alive_enemies(hero.team):
-		var d: float = enemy.global_position.distance_to(hero.global_position)
-		if d < best:
-			best = d
-			nearest = enemy
-	if _mode == Mode.ATTACK_CARRIER:
-		var bb: TeamBlackboard = arena.blackboard(hero.team)
-		if bb.enemy_carrier != null:
-			nearest = bb.enemy_carrier
-	if nearest != _target:
-		_target = nearest
+## Kohteenvalinta roolin mukaan.
+func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
+	var enemies: Array = arena.alive_enemies(hero.team)
+	if enemies.is_empty():
+		_target = null
+		return
+
+	var pos: Vector2 = hero.global_position
+	var pick: Hero = null
+
+	if _mode == Mode.ATTACK_CARRIER and bb.enemy_carrier != null \
+			and is_instance_valid(bb.enemy_carrier):
+		pick = bb.enemy_carrier
+	elif _is_assassin:
+		# Assassinit suosivat heikkoja takalinjan sankareita.
+		var best_score := -1e20
+		for enemy in enemies:
+			var d: float = enemy.global_position.distance_to(pos)
+			if d > 700.0:
+				continue
+			var score := -d
+			if HeroDef.get_def(enemy.hero_id)["role"] in BACKLINE_ROLES:
+				score += 260.0
+			score += (1.0 - enemy.hp / enemy.max_hp) * 320.0
+			if score > best_score:
+				best_score = score
+				pick = enemy
+		if pick == null:
+			pick = _nearest(enemies, pos)
+	else:
+		# Tankki suojaa: jos joku uhkaa suojeltavaa, käännytään sitä vastaan.
+		if _is_tank and bb.protect_ally != null and bb.protect_ally != hero:
+			var threat := _nearest_to(enemies, bb.protect_ally.global_position, 240.0)
+			if threat != null:
+				pick = threat
+		if pick == null:
+			pick = _nearest(enemies, pos)
+
+	if pick != _target:
+		_target = pick
 		_reaction_left = reaction
+
+
+func _nearest(list: Array, from: Vector2) -> Hero:
+	var best: Hero = null
+	var best_d := 1e20
+	for h in list:
+		var d: float = h.global_position.distance_to(from)
+		if d < best_d:
+			best_d = d
+			best = h
+	return best
+
+
+func _nearest_to(list: Array, from: Vector2, max_dist: float) -> Hero:
+	var best: Hero = null
+	var best_d := max_dist
+	for h in list:
+		var d: float = h.global_position.distance_to(from)
+		if d < best_d:
+			best_d = d
+			best = h
+	return best
 
 
 func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> void:
@@ -161,45 +273,16 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> v
 	match _mode:
 		Mode.GET_RELIC:
 			goal = arena.relic.global_position
-		Mode.ATTACK_CARRIER:
-			if _target != null and is_instance_valid(_target):
-				goal = _target.global_position
-		Mode.ESCORT:
-			if bb.own_carrier != null:
-				var toward_threat := Vector2.ZERO
-				if bb.threat_center != Vector2.ZERO:
-					toward_threat = (bb.threat_center - bb.own_carrier.global_position).normalized() * 200.0
-				goal = bb.own_carrier.global_position + toward_threat
-		Mode.CARRY:
-			# Pakoile lähintä vihollista, pysy pelialueen keskiosissa.
-			var flee := Vector2.ZERO
-			if _target != null and is_instance_valid(_target):
-				var away: Vector2 = pos - _target.global_position
-				if away.length() < 420.0:
-					flee = away.normalized() * 300.0
-			var orbit: Vector2 = (pos - Vector2.ZERO).orthogonal().normalized() * 120.0 * _strafe_dir
-			goal = arena.map.clamp_to_field(pos + flee + orbit, 160.0)
-			if flee == Vector2.ZERO:
-				goal = arena.map.clamp_to_field(pos + orbit, 160.0)
 		Mode.RETREAT:
 			goal = bb.retreat_pos
+		Mode.CARRY:
+			goal = _carry_goal(arena, pos)
+		Mode.ESCORT:
+			goal = _escort_goal(hero, arena, bb, pos)
 		Mode.SUPPORT:
-			if bb.lowest_ally != null:
-				goal = bb.lowest_ally.global_position + \
-					(pos - bb.lowest_ally.global_position).normalized() * 130.0
-		Mode.FIGHT:
-			if _target != null and is_instance_valid(_target):
-				var dist: float = pos.distance_to(_target.global_position)
-				var preferred := 90.0 if hero.hero_id in MELEE_HEROES else 380.0
-				var to_target: Vector2 = (_target.global_position - pos).normalized()
-				if dist > preferred + 40.0:
-					goal = _target.global_position - to_target * preferred
-				elif dist < preferred - 60.0:
-					goal = pos - to_target * 120.0
-				else:
-					goal = pos
-			else:
-				goal = arena.relic.global_position
+			goal = _support_goal(hero, arena, bb, pos)
+		Mode.FIGHT, Mode.ATTACK_CARRIER:
+			goal = _combat_goal(hero, arena, bb, pos)
 
 	var desired: Vector2 = goal - pos
 	if desired.length() < 24.0:
@@ -235,6 +318,81 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> v
 	_move = desired.limit_length(1.0)
 
 
+## Kantaja kiertää keskustaa ja pakoilee lähintä vihollista.
+func _carry_goal(arena, pos: Vector2) -> Vector2:
+	var flee := Vector2.ZERO
+	if _target != null and is_instance_valid(_target):
+		var away: Vector2 = pos - _target.global_position
+		if away.length() < 420.0:
+			flee = away.normalized() * 300.0
+	var orbit: Vector2 = (pos - Vector2.ZERO).orthogonal().normalized() * 120.0 * _strafe_dir
+	return arena.map.clamp_to_field(pos + flee + orbit, 160.0)
+
+
+## Saatto: tankki asettuu kantajan eteen, tuki taakse.
+func _escort_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector2:
+	var anchor: Hero = bb.own_carrier
+	if anchor == null:
+		return _combat_goal(hero, arena, bb, pos)
+	var to_threat := Vector2.RIGHT
+	if bb.threat_center != Vector2.ZERO:
+		to_threat = (bb.threat_center - anchor.global_position).normalized()
+	if _is_tank:
+		# Tankki rintaman puolelle, valmiina blokkaamaan.
+		return anchor.global_position + to_threat * 150.0
+	# Tuki suojaan kantajan taakse.
+	return anchor.global_position - to_threat * 110.0
+
+
+## Tuki pysyy suojeltavan takana ja pakenee jos vihollinen pääsee lähelle.
+func _support_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector2:
+	var pocket: Hero = bb.protect_ally
+	if pocket == null or pocket == hero:
+		pocket = bb.frontline_ally
+	if pocket == null or pocket == hero:
+		# Ei suojeltavaa: pysy lähellä keskustaa mutta poissa vihollisista.
+		var base := arena.relic.global_position
+		if _target != null and is_instance_valid(_target) \
+				and _target.global_position.distance_to(pos) < 240.0:
+			return pos + (pos - _target.global_position).normalized() * 200.0
+		return base
+	var back := Vector2.ZERO
+	if bb.threat_center != Vector2.ZERO:
+		back = (pocket.global_position - bb.threat_center).normalized()
+	var goal: Vector2 = pocket.global_position + back * 120.0
+	# Väistä jos vihollinen liian lähellä (tuki ei kestä etulinjaa).
+	if _target != null and is_instance_valid(_target):
+		var d: float = _target.global_position.distance_to(pos)
+		if d < 200.0:
+			goal = pos + (pos - _target.global_position).normalized() * 200.0
+	return goal
+
+
+## Taisteluasemointi: lähesty kohdetta roolin ihannematkalle. Tankki peelaa.
+func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector2:
+	# Tankin peel: jos vihollinen uhkaa suojeltavaa, asetu väliin.
+	if _is_tank and bb.protect_ally != null and bb.protect_ally != hero \
+			and _target != null and is_instance_valid(_target):
+		var pd: float = _target.global_position.distance_to(bb.protect_ally.global_position)
+		if pd < 220.0:
+			return bb.protect_ally.global_position \
+				+ (_target.global_position - bb.protect_ally.global_position).normalized() * 60.0
+
+	if _target == null or not is_instance_valid(_target):
+		if bb.own_carrier != null and is_instance_valid(bb.own_carrier):
+			return bb.own_carrier.global_position
+		return arena.relic.global_position
+
+	var dist: float = pos.distance_to(_target.global_position)
+	var to_target: Vector2 = (_target.global_position - pos).normalized()
+	if dist > _pref_range + 40.0:
+		return _target.global_position - to_target * _pref_range
+	elif dist < _pref_range - 60.0:
+		# Liian lähellä (etenkin kaukotaistelijat): peräänny.
+		return pos - to_target * 120.0
+	return pos
+
+
 func _update_aim(hero: Hero) -> void:
 	if _target == null or not is_instance_valid(_target) or not _target.alive:
 		if _move.length() > 0.1:
@@ -253,8 +411,10 @@ func _update_attack(hero: Hero, delta: float) -> void:
 	if _reaction_left > 0.0 or _mode == Mode.RETREAT:
 		return
 	var dist: float = hero.global_position.distance_to(_target.global_position)
-	var in_range: bool = dist < (130.0 if hero.hero_id in MELEE_HEROES else 550.0)
-	if not in_range:
+	var attack_range := _pref_range + 120.0
+	if _is_tank or _role == "Fighter" or _is_assassin:
+		attack_range = 150.0
+	if dist > attack_range:
 		_hold_timer = 0.0
 		return
 
@@ -272,114 +432,124 @@ func _update_attack(hero: Hero, delta: float) -> void:
 		_attack = true
 
 
-func _update_abilities(hero: Hero, arena, bb: TeamBlackboard) -> void:
-	# Kykyjä harkitaan vain päätöstahdissa, portitettuna vaikeustasolla.
-	if _decision_timer > decision_interval - 0.05 and randf() > ability_chance:
+## Kyvyt harkitaan vain päätöstahdissa, portitettuna vaikeustasolla.
+func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> void:
+	if not decided:
 		return
 	var pos: Vector2 = hero.global_position
-	var dist := 999999.0
+	var dist := 1e20
 	if _target != null and is_instance_valid(_target):
 		dist = pos.distance_to(_target.global_position)
-
 	var near_enemies: int = arena.heroes_in_circle(pos, 320.0, 1 - hero.team).size()
 
-	# Ultimate
+	# Ultimate — arvokkain, käytetään herkemmin kaikilla vaikeustasoilla.
 	if hero.ult_charge >= 100.0:
-		var use_ult := false
-		match hero.hero_id:
-			"bastion":
-				use_ult = (hero.carrying and near_enemies >= 1) or near_enemies >= 2 \
-					or (bb.own_carrier != null and pos.distance_to(bb.own_carrier.global_position) < 250.0 and near_enemies >= 1)
-			"ember", "bramble":
-				use_ult = near_enemies >= 2
-			"blink":
-				use_ult = dist < 450.0 and hero.hp > hero.max_hp * 0.4
-			"luma":
-				var hurt := 0
-				for ally in arena.heroes_in_circle(pos, 300.0, hero.team):
-					if ally.hp < ally.max_hp * 0.6:
-						hurt += 1
-				use_ult = hurt >= 2 or (bb.own_carrier != null and bb.own_carrier.hp < bb.own_carrier.max_hp * 0.5)
-			"quill":
-				use_ult = dist < 700.0 and near_enemies >= 1
-			"boulder", "tide":
-				use_ult = near_enemies >= 2 or (hero.carrying and near_enemies >= 1)
-			"volt":
-				use_ult = near_enemies >= 2 or (dist < 400.0 and near_enemies >= 1)
-			"shade":
-				use_ult = dist < 350.0 and hero.hp > hero.max_hp * 0.35
-			"scout":
-				use_ult = arena.heroes_in_circle(pos, 640.0, 1 - hero.team).size() >= 2
-			"maestro":
-				var hurt_allies := 0
-				for ally in arena.heroes_in_circle(pos, 300.0, hero.team):
-					if ally.hp < ally.max_hp * 0.6:
-						hurt_allies += 1
-				use_ult = hurt_allies >= 2 or near_enemies >= 3
-			_:
-				use_ult = near_enemies >= 2
-		if use_ult:
+		if _want_ult(hero, arena, bb, dist, near_enemies) and randf() < ult_chance:
 			_flags.ult = true
 			return
 
-	# Kyky 1
-	if hero.cd.a1 <= 0.0:
-		match hero.hero_id:
-			"bastion":
-				_flags.a1 = dist < 260.0
-			"ember":
-				_flags.a1 = dist > 180.0 and dist < 620.0
-			"luma":
-				_flags.a1 = bb.lowest_ally != null \
-					and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.75 \
-					and pos.distance_to(bb.lowest_ally.global_position) < 190.0
-			"blink":
-				_flags.a1 = dist > 250.0 and dist < 500.0 and _mode in [Mode.FIGHT, Mode.ATTACK_CARRIER]
-			"bramble":
-				_flags.a1 = dist > 150.0 and dist < 600.0
-			"quill":
-				_flags.a1 = dist > 300.0 and dist < 900.0
-			"boulder":
-				_flags.a1 = dist > 200.0 and dist < 500.0 and (hero.carrying or _mode == Mode.ESCORT or randf() < 0.4)
-			"volt":
-				_flags.a1 = dist < 450.0
-			"shade":
-				_flags.a1 = hero.hp < hero.max_hp * 0.5 and dist < 320.0
-			"tide":
-				_flags.a1 = dist > 250.0 and dist < 600.0
-			"scout":
-				_flags.a1 = dist > 200.0 and dist < 700.0
-			"maestro":
-				_flags.a1 = dist < 500.0 and not arena.heroes_in_circle(pos, 240.0, hero.team).is_empty()
+	if randf() > ability_chance:
+		return
 
-	# Kyky 2
+	if hero.cd.a1 <= 0.0:
+		_flags.a1 = _want_a1(hero, arena, bb, dist, pos)
 	if hero.cd.a2 <= 0.0:
-		match hero.hero_id:
-			"bastion":
-				_flags.a2 = arena.heroes_in_circle(pos, 170.0, 1 - hero.team).size() >= 1
-			"ember":
-				_flags.a2 = dist < 210.0
-			"luma":
-				_flags.a2 = bb.lowest_ally != null \
-					and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.7
-			"blink":
-				_flags.a2 = dist < 400.0
-			"bramble":
-				_flags.a2 = dist < 150.0
-			"quill":
-				_flags.a2 = dist > 250.0 and dist < 500.0
-			"boulder":
-				_flags.a2 = arena.heroes_in_circle(pos, 190.0, 1 - hero.team).size() >= 1
-			"volt":
-				_flags.a2 = dist > 150.0 and dist < 450.0
-			"shade":
-				_flags.a2 = dist > 150.0 and dist < 450.0
-			"tide":
-				_flags.a2 = dist < 220.0
-			"scout":
-				_flags.a2 = dist < 500.0
-			"maestro":
-				_flags.a2 = dist < 200.0
+		_flags.a2 = _want_a2(hero, arena, bb, dist, pos)
+
+
+func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies: int) -> bool:
+	var pos: Vector2 = hero.global_position
+	match hero.hero_id:
+		"bastion":
+			return (hero.carrying and near_enemies >= 1) or near_enemies >= 2 \
+				or (bb.own_carrier != null and pos.distance_to(bb.own_carrier.global_position) < 250.0 and near_enemies >= 1)
+		"ember", "bramble":
+			return near_enemies >= 2
+		"blink":
+			return dist < 450.0 and hero.hp > hero.max_hp * 0.4
+		"luma":
+			var hurt := 0
+			for ally in arena.heroes_in_circle(pos, 300.0, hero.team):
+				if ally.hp < ally.max_hp * 0.6:
+					hurt += 1
+			return hurt >= 2 or (bb.own_carrier != null and bb.own_carrier.hp < bb.own_carrier.max_hp * 0.5)
+		"quill":
+			return dist < 700.0 and near_enemies >= 1
+		"boulder", "tide":
+			return near_enemies >= 2 or (hero.carrying and near_enemies >= 1)
+		"volt":
+			return near_enemies >= 2 or (dist < 400.0 and near_enemies >= 1)
+		"shade":
+			return dist < 350.0 and hero.hp > hero.max_hp * 0.35
+		"scout":
+			return arena.heroes_in_circle(pos, 640.0, 1 - hero.team).size() >= 2
+		"maestro":
+			var hurt_allies := 0
+			for ally in arena.heroes_in_circle(pos, 300.0, hero.team):
+				if ally.hp < ally.max_hp * 0.6:
+					hurt_allies += 1
+			return hurt_allies >= 2 or near_enemies >= 3
+	return near_enemies >= 2
+
+
+func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) -> bool:
+	match hero.hero_id:
+		"bastion":
+			return dist < 260.0
+		"ember":
+			return dist > 180.0 and dist < 620.0
+		"luma":
+			return bb.lowest_ally != null \
+				and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.75 \
+				and pos.distance_to(bb.lowest_ally.global_position) < 190.0
+		"blink":
+			return dist > 250.0 and dist < 500.0 and _mode in [Mode.FIGHT, Mode.ATTACK_CARRIER]
+		"bramble":
+			return dist > 150.0 and dist < 600.0
+		"quill":
+			return dist > 300.0 and dist < 900.0
+		"boulder":
+			return dist > 200.0 and dist < 500.0 and (hero.carrying or _mode == Mode.ESCORT or randf() < 0.4)
+		"volt":
+			return dist < 450.0
+		"shade":
+			return hero.hp < hero.max_hp * 0.5 and dist < 320.0
+		"tide":
+			return dist > 250.0 and dist < 600.0
+		"scout":
+			return dist > 200.0 and dist < 700.0
+		"maestro":
+			return dist < 500.0 and not arena.heroes_in_circle(pos, 240.0, hero.team).is_empty()
+	return false
+
+
+func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) -> bool:
+	match hero.hero_id:
+		"bastion":
+			return arena.heroes_in_circle(pos, 170.0, 1 - hero.team).size() >= 1
+		"ember":
+			return dist < 210.0
+		"luma":
+			return bb.lowest_ally != null and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.7
+		"blink":
+			return dist < 400.0
+		"bramble":
+			return dist < 150.0
+		"quill":
+			return dist > 250.0 and dist < 500.0
+		"boulder":
+			return arena.heroes_in_circle(pos, 190.0, 1 - hero.team).size() >= 1
+		"volt":
+			return dist > 150.0 and dist < 450.0
+		"shade":
+			return dist > 150.0 and dist < 450.0
+		"tide":
+			return dist < 220.0
+		"scout":
+			return dist < 500.0
+		"maestro":
+			return dist < 200.0
+	return false
 
 
 func _update_dodge(hero: Hero, arena, delta: float) -> void:
