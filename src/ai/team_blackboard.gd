@@ -12,6 +12,7 @@ var enemy_carrier: Hero = null     # vihollisen kantaja (jos on)
 var lowest_ally: Hero = null       # eniten kärsinyt elossa oleva liittolainen
 var frontline_ally: Hero = null    # lähimpänä vihollisia oleva liittolainen (johtaa rintamaa)
 var protect_ally: Hero = null      # tärkein suojeltava (kantaja > tuki > kärsinyt)
+var focus_target: Hero = null      # joukkueen keskitetyn tulen kohde (focus fire)
 var threat_center := Vector2.ZERO  # elossa olevien vihollisten painopiste
 var retreat_pos := Vector2.ZERO
 var alert_timer := 0.0             # hetkellinen hälytystila (reliikki vaihtoi omistajaa)
@@ -75,6 +76,30 @@ func update(delta: float) -> void:
 				break
 		if protect_ally == null:
 			protect_ally = lowest_ally
+
+	# Keskitetyn tulen kohde: vihollisen kantaja on aina focus; muuten
+	# tapettavin kohde lähellä liittolaisten painopistettä (matala hp + lähellä
+	# + arvokas takalinja). Botit iskevät tähän yhdessä.
+	var prev_focus: Hero = focus_target
+	focus_target = enemy_carrier
+	if focus_target == null and not enemies.is_empty() and not allies.is_empty():
+		var ally_center := Vector2.ZERO
+		for ally in allies:
+			ally_center += ally.global_position
+		ally_center /= allies.size()
+		var best_score := -1e20
+		for enemy in enemies:
+			var score: float = (1.0 - enemy.hp / enemy.max_hp) * 300.0
+			score -= enemy.global_position.distance_to(ally_center) * 0.22
+			if HeroDef.get_def(enemy.hero_id)["role"] in ["Tuki", "Ranger", "Mage"]:
+				score += 55.0
+			# Hystereesi: edellinen kohde saa bonuksen, jottei focus värise
+			# kahden lähes samanarvoisen vihollisen välillä (nollaisi reaktiot).
+			if enemy == prev_focus:
+				score += 90.0
+			if score > best_score:
+				best_score = score
+				focus_target = enemy
 
 
 func on_relic_taken(_hero) -> void:

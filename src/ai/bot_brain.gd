@@ -32,6 +32,7 @@ var prediction := 0.5
 var aggression := 1.0           # kuinka suuren osan ajasta botti oikeasti hyökkää
 var buff_focus := 0.5           # kuinka innokkaasti/kaukaa botti hakee buffeja
 var buff_deny := 0.0            # kuinka herkästi botti rikkoo vihollisen buffin
+var focus_fire := 0.0           # kuinka hyvin botti keskittää tulen joukkueen kohteeseen
 
 # Taso 6 (epäreilu) huijaa: nämä poikkeavat 1.0:sta vain kyseisellä tasolla.
 # Hero lukee kertoimet setup()issa ja soveltaa niitä.
@@ -91,6 +92,8 @@ func _init(p_level: int) -> void:
 	# ehtivät hoitaa buffit paremmin ja denyaavat vihollisen buffit.
 	var focuses := [0.05, 0.25, 0.5, 0.72, 0.9, 1.0]
 	var denies := [0.0, 0.0, 0.2, 0.45, 0.72, 0.95]
+	# Keskitetty tuli: ylemmät tasot iskevät yhdessä samaan kohteeseen.
+	var focus_fires := [0.0, 0.15, 0.45, 0.7, 0.9, 1.0]
 	reaction = reactions[level]
 	aim_error_deg = aims[level]
 	decision_interval = decisions[level]
@@ -100,6 +103,7 @@ func _init(p_level: int) -> void:
 	aggression = aggros[level]
 	buff_focus = focuses[level]
 	buff_deny = denies[level]
+	focus_fire = focus_fires[level]
 	# Ultimatet ovat arvokkaimpia — niitä käytetään kaikilla tasoilla,
 	# heikommilla vain hieman huonommalla ajoituksella.
 	ult_chance = clampf(ability_chance + 0.35, 0.0, 1.0)
@@ -270,7 +274,14 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 			if threat != null:
 				pick = threat
 		if pick == null:
-			pick = _nearest(enemies, pos)
+			# Keskitetty tuli: ylemmillä tasoilla iske samaan kohteeseen kuin
+			# muut joukkueen botit (kunhan se on järkevän matkan päässä).
+			if focus_fire >= 0.4 and bb.focus_target != null \
+					and is_instance_valid(bb.focus_target) and bb.focus_target.alive \
+					and pos.distance_to(bb.focus_target.global_position) < _pref_range + 380.0:
+				pick = bb.focus_target
+			else:
+				pick = _nearest(enemies, pos)
 
 	if pick != _target:
 		_target = pick
@@ -656,7 +667,9 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"prism":
 			return bb.lowest_ally != null and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.7
 		"rift":
-			return dist < 130.0
+			# Räjäytä vain jos kohteessa on pinoja (muuten hukkaan).
+			return dist < 130.0 and _target != null and is_instance_valid(_target) \
+				and _target.void_stacks >= 2
 		"titan":
 			return hero.hp < hero.max_hp * 0.55 and hero.res > 35.0
 	return false
