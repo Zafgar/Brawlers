@@ -127,7 +127,11 @@ func _physics_process(delta: float) -> void:
 	queue_redraw()
 
 
-func _on_wall_hit(_body: Node) -> void:
+func _on_wall_hit(body: Node) -> void:
+	# Tuhoutuvat esteet (esim. Boulderin kivimuuri) ottavat vahinkoa ammuksista.
+	var wall := body.get_parent()
+	if wall != null and wall.has_method("hit_by_projectile"):
+		wall.hit_by_projectile(dmg, team)
 	_expire()
 
 

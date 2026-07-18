@@ -566,7 +566,7 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 					hurt += 1
 			return hurt >= 2 or (bb.own_carrier != null and bb.own_carrier.hp < bb.own_carrier.max_hp * 0.5)
 		"quill":
-			return dist < 700.0 and near_enemies >= 1
+			return dist < 1000.0 and near_enemies >= 1
 		"boulder", "tide":
 			return near_enemies >= 2 or (hero.carrying and near_enemies >= 1)
 		"volt":
@@ -605,7 +605,7 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"bramble":
 			return dist > 150.0 and dist < 600.0
 		"quill":
-			return dist > 300.0 and dist < 900.0
+			return dist < 260.0
 		"boulder":
 			return dist > 200.0 and dist < 500.0 and (hero.carrying or _mode == Mode.ESCORT or randf() < 0.4)
 		"volt":

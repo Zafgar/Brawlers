@@ -118,10 +118,10 @@ const HEROES := {
 		"color_b": Color("1f6e52"),
 		"abilities": {
 			"basic": {"name": "Nuoli", "desc": "Pidä pohjassa ladataksesi. Paikallaan lataa nopeammin; täysi lataus lävistää.", "cd": 0.5},
-			"a1": {"name": "Tarkkuuslaukaus", "desc": "Pitkä, nopea ja lävistävä erikoisnuoli. Tähtää pitämällä nappia pohjassa.", "cd": 7.0},
+			"a1": {"name": "Väistösyöksy", "desc": "Loikkaa taaksepäin ja jättää lähtöpaikkaan piikkialueen, joka hidastaa ja vahingoittaa siihen astuvia.", "cd": 7.0},
 			"a2": {"name": "Nuolisade", "desc": "Nuolia sataa valitulle alueelle hetken päästä.", "cd": 8.0},
 			"dodge": {"name": "Kuperkeikka", "desc": "Nopea kieräys, joka lataa jousen heti valmiiksi.", "cd": 3.5},
-			"ult": {"name": "Myrskysarja", "desc": "Ampuu nopean sarjan nuolia tähtäyksen mukaan.", "cd": 0.0},
+			"ult": {"name": "Läpäisynuoli", "desc": "Tähtää pitämällä ulttinappi pohjassa (pitkä viiva) ja vapauta: todella nopea, pitkän kantaman nuoli joka lävistää kaiken ja tekee valtavaa vahinkoa.", "cd": 0.0},
 		},
 	},
 	"boulder": {
@@ -132,15 +132,15 @@ const HEROES := {
 		"speed": 285.0,
 		"ratings": {"kesto": 5, "liike": 1, "vahinko": 2, "tuki": 3},
 		"weapon": "Kivihansikkaat",
-		"desc": "Kävelevä kallio. Kerää raivoa taistelusta ja jyrää muureja ja tömistyksiä sitä tiheämmin.",
+		"desc": "Kävelevä kallio. Hallitsee aluetta kestävillä kivimuureilla ja piikkikartioilla; kerää raivoa taistelusta.",
 		"color": Color("9aa3ad"),
 		"color_b": Color("4f5a66"),
 		"abilities": {
 			"basic": {"name": "Murskaava isku", "desc": "Raskas lyönti, joka tönäisee kunnolla.", "cd": 0.7},
-			"a1": {"name": "Kivimuuri", "desc": "Nostaa väliaikaisen muurin, joka estää liikkeen ja ammukset. Tähtää pitämällä nappia pohjassa.", "cd": 10.0},
-			"a2": {"name": "Tömistys", "desc": "Isku maahan: työntää kaikki lähellä olevat kauas.", "cd": 8.0},
+			"a1": {"name": "Kivimuuri", "desc": "Nostaa kestävän muurin (oma kesto-hp), joka estää liikkeen ja ammukset. 3 latausta — voi pystyttää vaikka kaikki heti, lataukset palautuvat hitaasti. Tähtää pitämällä nappia pohjassa.", "cd": 0.3},
+			"a2": {"name": "Piikkikartio", "desc": "Iskee neljä piikkiaaltoa eteenpäin kartioon: aallot levenevät, työntävät kohteet poispäin ja juurruttavat hetkeksi. Kuluttaa raivoa.", "cd": 5.0},
 			"dodge": {"name": "Jyräys", "desc": "Raskas loikka eteenpäin.", "cd": 5.0},
-			"ult": {"name": "Vyöry", "desc": "Vyöryy eteenpäin kaataen kaikki tieltään.", "cd": 0.0},
+			"ult": {"name": "Vyöry", "desc": "Vyöryy voimalla tähtäyssuuntaan kaataen viholliset ja jättää kiviseinän matkan varrelle, joka murenee hetken päästä.", "cd": 0.0},
 		},
 	},
 	"volt": {

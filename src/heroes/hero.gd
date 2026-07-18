@@ -250,6 +250,13 @@ func _physics_process(delta: float) -> void:
 		# Ultimate: välitön (oletus) tai pidä-ja-vapauta (esim. Prisman alue).
 		if _ult_is_held() and not controller.is_bot():
 			if _ult_holding:
+				# Viivaesikatselu ultille (esim. Quillin tähdättävä supernuoli).
+				var ul: float = _ult_preview_line()
+				if ul > 0.0:
+					_aim_active = true
+					_aim_len = ul
+					_aim_color = Palette.glow(Palette.GOLD, 1.4)
+					_aim_charge = 1.0
 				if controller.ult_released():
 					if ult_charge >= 100.0:
 						_fire_ult()
@@ -528,6 +535,12 @@ func _ult_is_held() -> bool:
 
 ## Pidä-ja-vapauta-ultin esikatselualueen säde (AimGuide piirtää renkaan).
 func _ult_preview_radius() -> float:
+	return 0.0
+
+
+## Pidä-ja-vapauta-ultin tähtäysviivan pituus (0 = ei viivaa). Esim. Quillin
+## tähdättävä supernuoli näyttää viivan ennen laukaisua.
+func _ult_preview_line() -> float:
 	return 0.0
 
 

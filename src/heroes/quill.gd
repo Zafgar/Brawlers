@@ -5,6 +5,7 @@ extends Hero
 ## Passiivi: paikallaan seistessä jousi latautuu nopeammin.
 
 const CHARGE_TIME := 0.9
+const SUPER_ARROW_RANGE := 1500.0   # ultin tähdättävän supernuolen kantama
 
 var _charging := false
 var _charge := 0.0
@@ -22,18 +23,19 @@ func _setup_resource() -> void:
 	res_max = 100.0
 	res = 100.0
 	res_regen = 12.0
-	res_cost = {"basic": 0.0, "a1": 34.0, "a2": 40.0, "dodge": 0.0}
-	cd_max.a1 = 2.0
+	res_cost = {"basic": 0.0, "a1": 28.0, "a2": 40.0, "dodge": 0.0}
+	cd_max.a1 = 2.2
 	cd_max.a2 = 2.5
 
 
-## Tarkkuuslaukaus tähdätään: pidä R1 pohjassa (tähtäysviiva) ja vapauta.
-func _aimed_slots() -> Array:
-	return ["a1"]
+## Ulti tähdätään pitämällä ulttinappi pohjassa (näyttää pitkän viivan) ja
+## vapautetaan laukaisemaan supernuoli.
+func _ult_is_held() -> bool:
+	return true
 
 
-func _aim_range(_slot: String) -> float:
-	return 580.0
+func _ult_preview_line() -> float:
+	return SUPER_ARROW_RANGE
 
 
 ## Latautuva perushyökkäys korvaa oletuslogiikan.
@@ -87,22 +89,22 @@ func _fire_arrow(dir: Vector2) -> void:
 	})
 
 
-## Kyky 1: Tarkkuuslaukaus — pitkä, nopea ja lävistävä nuoli.
+## Kyky 1: Väistösyöksy — loikkaa taaksepäin (poispäin tähtäyksestä) ja jättää
+## piikkialueen lähtöpaikkaan, joka hidastaa ja vahingoittaa siihen astuvia.
+## Kiteyttää Quillin kiteytyspelin: pakene ja jätä ansa perään.
 func _ability1(dir: Vector2) -> void:
-	AudioMgr.play("bow_charged", 0.05, 3.0)
-	visual.attack_swing()
-	dash(-dir, 250.0, 0.08, false)
-	# Tarkkuusviiva korostaa laukauksen linjaa
-	Fx.beam(arena, global_position + dir * 30.0, global_position + dir * 500.0,
-		Palette.glow(hero_color(), 1.3), 4.0)
-	Projectile.launch(self, global_position + dir * 30.0, dir, {
-		"speed": 1400.0,
-		"dmg": 46.0,
-		"radius": 9.0,
-		"life": 1.1,
-		"kb": 220.0,
-		"pierce": 2,
-		"color": Palette.glow(hero_color(), 1.6),
+	AudioMgr.play("dash", 0.1, 2.0)
+	var origin := global_position
+	dash(-dir, 940.0, 0.18, true)     # syöksy taaksepäin, lyhyet suojaruudut
+	Fx.dust(arena, origin)
+	Fx.ring(arena, origin, Palette.glow(hero_color(), 1.4), 95.0, 0.4, 4.0)
+	Zone.spawn(self, origin, {
+		"type": "thorn",
+		"radius": 95.0,
+		"dur": 3.5,
+		"dps": 22.0,
+		"slow_f": 0.55,
+		"color": hero_color(),
 	})
 
 
@@ -144,24 +146,23 @@ func _dodge_action(dir: Vector2) -> void:
 	Fx.dust(arena, global_position)
 
 
-## Ultimate: Myrskysarja — nopea sarja nuolia tähtäyksen mukaan.
-func _ultimate(_dir: Vector2) -> void:
-	arena.popup(global_position + Vector2(0, -80), "MYRSKYSARJA!", Palette.glow(hero_color(), 1.5), 24)
-	_storm_volley()
-
-
-func _storm_volley() -> void:
-	for shot in range(8):
-		if not is_inside_tree() or not alive:
-			return
-		AudioMgr.play("bow", 0.2, -3.0)
-		visual.attack_swing()
-		Projectile.launch(self, global_position + aim * 28.0, aim, {
-			"speed": 1100.0,
-			"dmg": 12.0,
-			"radius": 8.0,
-			"life": 0.9,
-			"kb": 130.0,
-			"color": Palette.glow(hero_color(), 1.4),
-		})
-		await get_tree().create_timer(0.2).timeout
+## Ultimate: Läpäisynuoli — tähdätään pitämällä ulttinappi pohjassa (pitkä
+## viiva) ja vapautetaan. Todella nopea, pitkän kantaman nuoli, joka lävistää
+## kaiken tielleen ja tekee valtavaa vahinkoa.
+func _ultimate(dir: Vector2) -> void:
+	var d: Vector2 = dir if dir.length() > 0.1 else aim
+	arena.popup(global_position + Vector2(0, -80), "LÄPÄISYNUOLI!", Palette.glow(Palette.GOLD, 1.6), 26)
+	AudioMgr.play("bow_charged", 0.05, -3.0)
+	arena.shake(0.3)
+	visual.attack_swing()
+	Fx.beam(arena, global_position + d * 30.0, global_position + d * SUPER_ARROW_RANGE,
+		Palette.glow(Palette.GOLD, 1.6), 6.0)
+	Projectile.launch(self, global_position + d * 30.0, d, {
+		"speed": 3200.0,
+		"dmg": 120.0,
+		"radius": 14.0,
+		"life": 0.65,
+		"kb": 280.0,
+		"pierce": 99,
+		"color": Palette.glow(Palette.GOLD, 1.7),
+	})
