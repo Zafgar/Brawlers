@@ -29,6 +29,7 @@ var dodge_chance := 0.35
 var ability_chance := 0.6
 var ult_chance := 0.9
 var prediction := 0.5
+var aggression := 1.0           # kuinka suuren osan ajasta botti oikeasti hyökkää
 
 # Roolikohtaiset (asetetaan ensimmäisellä päivityksellä)
 var _role := ""
@@ -55,6 +56,8 @@ var _aim_err := 0.0
 var _aim_err_timer := 0.0
 var _dodge_check_timer := 0.0
 var _strafe_dir := 1.0
+var _atk_phase := 0.0            # hyökkäyksen jaksotus (aggression-vaihtelu)
+var _atk_firing := true
 
 # Quillin lataus-ammunta
 var _hold_timer := 0.0
@@ -64,26 +67,31 @@ var _hold_pause := 0.0
 func _init(p_level: int) -> void:
 	level = p_level
 	if level == Game.BotLevel.EASY:
-		reaction = 0.45
-		aim_error_deg = 16.0
-		decision_interval = 0.55
-		dodge_chance = 0.12
-		ability_chance = 0.45
-		prediction = 0.15
+		# Selvästi aloittelijaystävällinen: hidas reagointi, huono tähtäys,
+		# harvoin väistää tai käyttää kykyjä, ja taistelee vain osan ajasta.
+		reaction = 0.72
+		aim_error_deg = 27.0
+		decision_interval = 0.7
+		dodge_chance = 0.05
+		ability_chance = 0.3
+		prediction = 0.0
+		aggression = 0.5
 	elif level == Game.BotLevel.HARD:
-		reaction = 0.13
-		aim_error_deg = 4.0
-		decision_interval = 0.22
-		dodge_chance = 0.72
-		ability_chance = 0.9
-		prediction = 0.9
+		reaction = 0.12
+		aim_error_deg = 3.5
+		decision_interval = 0.2
+		dodge_chance = 0.78
+		ability_chance = 0.92
+		prediction = 0.92
+		aggression = 1.0
 	else:
-		reaction = 0.27
+		reaction = 0.26
 		aim_error_deg = 9.0
-		decision_interval = 0.38
-		dodge_chance = 0.38
-		ability_chance = 0.68
-		prediction = 0.5
+		decision_interval = 0.36
+		dodge_chance = 0.4
+		ability_chance = 0.7
+		prediction = 0.55
+		aggression = 0.85
 	# Ultimatet ovat arvokkaimpia — niitä käytetään kaikilla tasoilla,
 	# heikommilla vain hieman huonommalla ajoituksella.
 	ult_chance = clampf(ability_chance + 0.35, 0.0, 1.0)
@@ -429,7 +437,19 @@ func _update_attack(hero: Hero, delta: float) -> void:
 			_hold_pause = _hold_timer + 0.25
 			_attack = true
 	else:
-		_attack = true
+		_attack = _combat_engaged(delta)
+
+
+## Aggression-jaksotus: heikommat botit hyökkäävät vain osan ajasta, jolloin
+## niiden tehollinen vahinko laskee eikä pelaajaa tulita jatkuvasti.
+func _combat_engaged(delta: float) -> bool:
+	if aggression >= 0.999:
+		return true
+	_atk_phase -= delta
+	if _atk_phase <= 0.0:
+		_atk_phase = randf_range(0.5, 1.0)
+		_atk_firing = randf() < aggression
+	return _atk_firing
 
 
 ## Kyvyt harkitaan vain päätöstahdissa, portitettuna vaikeustasolla.

@@ -5,7 +5,7 @@ extends Node
 
 const RATE := 22050
 const POOL_SIZE := 12
-const MUSIC_VOL := -13.0
+const MUSIC_VOL := -8.0          # musiikin soittimien häivytystaso
 
 var _streams := {}
 var _players: Array = []
@@ -76,6 +76,18 @@ func play(sound_name: String, pitch_var := 0.08, volume_db := 0.0) -> void:
 
 func set_master_volume(v: float) -> void:
 	AudioServer.set_bus_volume_db(0, linear_to_db(clampf(v, 0.001, 1.0)))
+
+
+func set_sfx_volume(v: float) -> void:
+	var idx := AudioServer.get_bus_index("SFX")
+	if idx >= 0:
+		AudioServer.set_bus_volume_db(idx, linear_to_db(clampf(v, 0.0001, 1.0)))
+
+
+func set_music_volume(v: float) -> void:
+	var idx := AudioServer.get_bus_index("Music")
+	if idx >= 0:
+		AudioServer.set_bus_volume_db(idx, linear_to_db(clampf(v, 0.0001, 1.0)))
 
 
 ## Vaihtaa taustamusiikin (pehmeä ristihäivytys). Sama nimi = ei uudelleenaloitusta.

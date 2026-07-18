@@ -1,11 +1,12 @@
 class_name MapDust
 extends MapBase
 ## Dust Canyon — suuri avoin autiomaa-areena ja LIIKKUVAN VAARAN AREENA.
-## Identiteetti: iso avoin tila + pyyhkäisevä hiekkamyrsky.
+## Identiteetti: iso avoin tila + kentällä vaeltava pyörremyrsky.
 ##  - Selvästi suurin kartta -> pitkät näkölinjat, kaukotaistelu ja kierto
 ##  - Harvat isot kalliomesat suojana; keskikaista avoin (ampujien valtakunta)
-##  - HIEKKAMYRSKY pyyhkii kentän poikki edestakaisin: sisällä hidastaa ja
-##    työntää kulkusuuntaan -> pakottaa siirtämään taistelua, ei staattista
+##  - PYÖRREMYRSKY vaeltaa kentällä satunnaisen näköisesti: paikallinen
+##    pyörre joka pyörittää ja hidastaa sisällä olevia -> väistettävä vaara,
+##    ei koko kenttää pyyhkivä seinämä
 ##  - Myrsky ei tapa (ei ratkaise ottelua sattumalta), mutta kannattaa väistää
 ## Vastapari tiiviille Sparkringille.
 
@@ -17,11 +18,10 @@ const ROCK_LIGHT := Color("8f6c43")
 const DUST := Color("cbab78")
 const ACCENT := Color("e0a24a")
 
-const STORM_AMP := 1050.0
-const STORM_W := 0.285          # 2*PI / ~22 s
-const STORM_HALF := 220.0
-const STORM_SLOW := 0.72
-const STORM_PUSH := 110.0
+const TORNADO_R := 180.0        # pyörteen vaikutussäde
+const TORNADO_SLOW := 0.86      # lievä hidastus sisällä
+const TORNADO_SWIRL := 145.0    # kiertävä työntö (pyörii ympäri)
+const TORNADO_PULL := 26.0      # heikko sisäänveto — pääsee silti pois
 
 var _rocks: Array = []          # koristekivet {pos, size, rot}
 var _cacti: Array = []
@@ -65,26 +65,34 @@ func _setup() -> void:
 			"size": rng.randf_range(20.0, 34.0)})
 
 
-# --- Myrsky vaikuttaa liikkumiseen ---
+# --- Pyörremyrsky vaikuttaa liikkumiseen ---
 
-func _storm_x() -> float:
-	return STORM_AMP * sin(_time * STORM_W)
-
-
-func _storm_dir() -> float:
-	return signf(cos(_time * STORM_W))
+## Pyörteen sijainti vaeltaa kentällä orgaanisesti (usean eritaajuisen sinin
+## summa näyttää satunnaiselta muttei koskaan tarkalleen toistu). Deterministinen,
+## joten piirto ja fysiikka lukevat saman paikan.
+func _tornado_at() -> Vector2:
+	var t := _time
+	var x := 640.0 * sin(t * 0.19) + 360.0 * sin(t * 0.073 + 1.1)
+	var y := 300.0 * sin(t * 0.16 + 2.0) + 150.0 * sin(t * 0.101 + 0.5)
+	return Vector2(x, y)
 
 
 func terrain_mult(pos: Vector2) -> float:
-	if absf(pos.x - _storm_x()) < STORM_HALF:
-		return STORM_SLOW
+	if pos.distance_to(_tornado_at()) < TORNADO_R:
+		return TORNADO_SLOW
 	return 1.0
 
 
 func conveyor_push(pos: Vector2) -> Vector2:
-	if absf(pos.x - _storm_x()) < STORM_HALF:
-		return Vector2(_storm_dir() * STORM_PUSH, 0.0)
-	return Vector2.ZERO
+	var center := _tornado_at()
+	var to_center := center - pos
+	var d := to_center.length()
+	if d >= TORNADO_R or d < 1.0:
+		return Vector2.ZERO
+	var radial := to_center / d                       # kohti keskustaa
+	var tangent := Vector2(-radial.y, radial.x)       # kohtisuora -> kierto
+	var strength := 1.0 - d / TORNADO_R               # voimakkaampi keskellä
+	return tangent * TORNADO_SWIRL * (0.35 + 0.65 * strength) + radial * TORNADO_PULL * strength
 
 
 # --- Piirto ---
@@ -99,7 +107,7 @@ func _draw() -> void:
 	_draw_mesas()
 	_draw_center_pad()
 	_draw_rocks()
-	_draw_storm(half)
+	_draw_tornado()
 
 	_draw_sand_motes(20, DUST, 10.0, 8080)
 	_draw_vignette()
@@ -200,28 +208,35 @@ func _draw_cacti() -> void:
 			Color("3f7a45"), 6.0)
 
 
-func _draw_storm(half: Vector2) -> void:
-	var sx := _storm_x()
-	var dir := _storm_dir()
-	# Sumea seinämä
-	draw_rect(Rect2(sx - STORM_HALF, -half.y, STORM_HALF * 2.0, map_size.y),
-		Palette.with_alpha(DUST, 0.10))
-	draw_rect(Rect2(sx - STORM_HALF * 0.55, -half.y, STORM_HALF * 1.1, map_size.y),
-		Palette.with_alpha(DUST, 0.12))
-	# Tuuliviirut vierivät kulkusuuntaan
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 77
-	for i in range(46):
-		var sy := -half.y + rng.randf_range(0.0, map_size.y)
-		var scroll := fmod(_time * 700.0 * dir + i * 120.0, STORM_HALF * 2.0)
-		var lx := sx - STORM_HALF + fmod(scroll + STORM_HALF * 2.0, STORM_HALF * 2.0)
-		var len := rng.randf_range(30.0, 80.0)
-		draw_line(Vector2(lx, sy), Vector2(lx + dir * len, sy),
-			Palette.with_alpha(DUST, 0.25), 2.0)
-	# Etureuna korostuu (varoitus)
-	var edge_x := sx + dir * STORM_HALF
-	draw_line(Vector2(edge_x, -half.y), Vector2(edge_x, half.y),
-		Palette.with_alpha(Palette.glow(ACCENT, 1.3), 0.4), 3.0)
+func _draw_tornado() -> void:
+	var c := _tornado_at()
+	var spin := _time * 3.6
+	# Varjo maassa
+	draw_circle(c + Vector2(0, 18), TORNADO_R * 0.9, Palette.with_alpha(Color.BLACK, 0.18))
+	# Pehmeät pölykehät
+	draw_circle(c, TORNADO_R, Palette.with_alpha(DUST, 0.05))
+	draw_circle(c, TORNADO_R * 0.66, Palette.with_alpha(DUST, 0.07))
+	draw_circle(c, TORNADO_R * 0.34, Palette.with_alpha(DUST, 0.09))
+	# Pyörivät spiraalikädet (suppilo ylhäältä katsottuna)
+	for arm in range(3):
+		var pts := PackedVector2Array()
+		var base_a := spin + arm * TAU / 3.0
+		for i in range(26):
+			var f := float(i) / 25.0
+			var rad := TORNADO_R * (1.0 - f * 0.86)
+			var a := base_a + f * 6.5
+			pts.append(c + Vector2(cos(a), sin(a)) * rad)
+		draw_polyline(pts, Palette.with_alpha(DUST, 0.28), 3.0)
+	# Lentävä pöly
+	for i in range(16):
+		var pa := spin * 1.35 + i * TAU / 16.0
+		var prad := TORNADO_R * (0.25 + 0.62 * absf(sin(_time * 0.9 + i * 1.7)))
+		draw_circle(c + Vector2(cos(pa), sin(pa)) * prad, 3.0, Palette.with_alpha(DUST, 0.5))
+	# Hehkuva ydin
+	var pulse := 0.5 + 0.5 * sin(_time * 4.0)
+	draw_circle(c, 24.0 + pulse * 4.0, Palette.with_alpha(Palette.glow(ACCENT, 1.2), 0.4))
+	# Varoituskehä reunalle
+	draw_arc(c, TORNADO_R, 0.0, TAU, 44, Palette.with_alpha(Palette.glow(ACCENT, 1.3), 0.35), 2.0)
 
 
 func _draw_sand_motes(count: int, base_color: Color, rise_speed: float, seed_val: int) -> void:

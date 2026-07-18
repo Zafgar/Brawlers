@@ -160,7 +160,7 @@ func _physics_process(delta: float) -> void:
 			sudden_death = true
 			_sd_elapsed = 0.0
 			hud.show_banner("RATKAISUHETKI!", "Seuraava reliikin pito voittaa erän", 2.5)
-			AudioMgr.play("round_start")
+			AudioMgr.play("round_start", 0.05, -5.0)
 		else:
 			_round_over(0 if relic_points[0] > relic_points[1] else 1)
 
@@ -202,7 +202,7 @@ func _run_intro() -> void:
 	if not is_inside_tree():
 		return
 	hud.show_big_number("PELIIN!")
-	AudioMgr.play("count_go")
+	AudioMgr.play("count_go", 0.05, -4.0)
 	state = State.PLAY
 
 
@@ -217,7 +217,7 @@ func _round_over(winner_team: int) -> void:
 			hero.profile.add_score(50.0)
 	relic.drop_from_carrier(false)
 
-	AudioMgr.play("round_win")
+	AudioMgr.play("round_win", 0.05, -4.0)
 	shake(0.4)
 	Fx.ring(self, relic.global_position, Palette.glow(Palette.team(winner_team), 1.6), 240.0, 0.8)
 
@@ -231,7 +231,7 @@ func _round_over(winner_team: int) -> void:
 		Game.last_winner_team = winner_team
 		hud.show_banner("%s VOITTAA OTTELUN!" % winner_name,
 			"Erät %d – %d" % [blue_wins, orange_wins], 3.4)
-		AudioMgr.play("match_win")
+		AudioMgr.play("match_win", 0.05, -6.0)
 		await get_tree().create_timer(3.5).timeout
 		if is_inside_tree():
 			Game.match_finished()

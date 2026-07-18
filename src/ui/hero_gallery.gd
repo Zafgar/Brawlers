@@ -61,6 +61,12 @@ func _ready() -> void:
 			first_button = btn
 
 	list.add_child(UiKit.spacer(14))
+	var try_btn := UiKit.button("▶  Kokeile tätä sankaria", func(): Game.try_hero(_selected), 24)
+	try_btn.custom_minimum_size = Vector2(400, 0)
+	try_btn.add_theme_color_override("font_color", Palette.GOLD)
+	try_btn.add_theme_color_override("font_hover_color", Palette.glow(Palette.GOLD, 1.3))
+	try_btn.add_theme_color_override("font_focus_color", Palette.glow(Palette.GOLD, 1.3))
+	list.add_child(try_btn)
 	var back_btn := UiKit.button("Takaisin", func(): Game.go_menu(), 24)
 	back_btn.custom_minimum_size = Vector2(400, 0)
 	list.add_child(back_btn)

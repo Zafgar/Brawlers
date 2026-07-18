@@ -24,7 +24,9 @@ var orange_rounds := 0
 var last_winner_team := 0
 
 var options := {
-	"volume": 0.85,
+	"volume": 0.9,            # kokonaisäänenvoimakkuus (master)
+	"music_volume": 0.9,      # musiikin oma säädin
+	"sfx_volume": 0.7,        # ääniefektien oma säädin
 	"music": true,
 	"shake": true,
 	"fullscreen": true,
@@ -130,6 +132,45 @@ func go_gallery() -> void:
 	_swap(HeroGallery.new())
 
 
+## Pikakokeilu: hyppää suoraan harjoitusotteluun valitulla sankarilla (1v1 vs
+## helppo botti), jotta näkee mitä sankari tekee. Käyttää käytössä olevaa
+## ohjainta jos sellainen on kytketty, muuten näppäimistöä.
+func try_hero(hero_id: String) -> void:
+	practice = true
+	team_size = 1
+	rounds_to_win = 1
+	bot_level = BotLevel.EASY
+
+	var human := PlayerProfile.new()
+	human.index = 0
+	var pads := Input.get_connected_joypads()
+	human.device = pads[0] if not pads.is_empty() else -1
+	human.is_bot = false
+	human.team = 0
+	human.hero_id = hero_id
+	human.display_name = "Sinä"
+
+	var bot := PlayerProfile.new()
+	bot.index = 1
+	bot.device = -2
+	bot.is_bot = true
+	bot.team = 1
+	bot.hero_id = _random_other_hero(hero_id)
+	bot.display_name = "Harjoitusbotti"
+
+	roster = [human, bot]
+	start_match()
+
+
+func _random_other_hero(exclude: String) -> String:
+	var pool: Array = HeroDef.ORDER.duplicate()
+	pool.erase(exclude)
+	if pool.is_empty():
+		return exclude
+	var pick: String = pool[randi() % pool.size()]
+	return pick
+
+
 func start_match() -> void:
 	blue_rounds = 0
 	orange_rounds = 0
@@ -177,6 +218,8 @@ func load_options() -> void:
 	if cfg.load(OPTIONS_PATH) != OK:
 		return
 	options.volume = cfg.get_value("audio", "volume", options.volume)
+	options.music_volume = cfg.get_value("audio", "music_volume", options.music_volume)
+	options.sfx_volume = cfg.get_value("audio", "sfx_volume", options.sfx_volume)
 	options.music = cfg.get_value("audio", "music", options.music)
 	options.shake = cfg.get_value("video", "shake", options.shake)
 	options.fullscreen = cfg.get_value("video", "fullscreen", options.fullscreen)
@@ -185,6 +228,8 @@ func load_options() -> void:
 func save_options() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("audio", "volume", options.volume)
+	cfg.set_value("audio", "music_volume", options.music_volume)
+	cfg.set_value("audio", "sfx_volume", options.sfx_volume)
 	cfg.set_value("audio", "music", options.music)
 	cfg.set_value("video", "shake", options.shake)
 	cfg.set_value("video", "fullscreen", options.fullscreen)
@@ -193,5 +238,7 @@ func save_options() -> void:
 
 func apply_options() -> void:
 	AudioMgr.set_master_volume(options.volume)
+	AudioMgr.set_music_volume(options.music_volume)
+	AudioMgr.set_sfx_volume(options.sfx_volume)
 	AudioMgr.set_music_enabled(options.music)
 	_apply_fullscreen()

@@ -169,26 +169,29 @@ func _open_settings() -> void:
 	box.add_child(UiKit.title("ASETUKSET", 52))
 	box.add_child(UiKit.spacer(8))
 
-	box.add_child(UiKit.label("Äänenvoimakkuus", 24))
-	var slider := HSlider.new()
-	slider.min_value = 0.0
-	slider.max_value = 1.0
-	slider.step = 0.05
-	slider.value = Game.options.volume
-	slider.custom_minimum_size = Vector2(460, 32)
-	slider.value_changed.connect(func(v):
-		Game.options.volume = v
-		Game.apply_options())
-	box.add_child(slider)
+	box.add_child(UiKit.label("Musiikki", 24))
+	var music_slider := HSlider.new()
+	music_slider.min_value = 0.0
+	music_slider.max_value = 1.0
+	music_slider.step = 0.05
+	music_slider.value = Game.options.music_volume
+	music_slider.custom_minimum_size = Vector2(460, 32)
+	music_slider.value_changed.connect(func(v):
+		Game.options.music_volume = v
+		AudioMgr.set_music_volume(v))
+	box.add_child(music_slider)
 
-	var music_check := CheckButton.new()
-	music_check.text = "Musiikki"
-	music_check.button_pressed = Game.options.music
-	music_check.add_theme_font_size_override("font_size", 24)
-	music_check.toggled.connect(func(on):
-		Game.options.music = on
-		Game.apply_options())
-	box.add_child(music_check)
+	box.add_child(UiKit.label("Ääniefektit", 24))
+	var sfx_slider := HSlider.new()
+	sfx_slider.min_value = 0.0
+	sfx_slider.max_value = 1.0
+	sfx_slider.step = 0.05
+	sfx_slider.value = Game.options.sfx_volume
+	sfx_slider.custom_minimum_size = Vector2(460, 32)
+	sfx_slider.value_changed.connect(func(v):
+		Game.options.sfx_volume = v
+		AudioMgr.set_sfx_volume(v))
+	box.add_child(sfx_slider)
 
 	var shake_check := CheckButton.new()
 	shake_check.text = "Ruudun tärinä"
