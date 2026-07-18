@@ -231,6 +231,14 @@ func _synth_all() -> void:
 		_tone(0.3, 1320.0, 1320.0, "sine", 0.005, 0.25, 0.3),
 		_tone(0.3, 1980.0, 1980.0, "sine", 0.01, 0.25, 0.15), 0.03)
 	sounds["score"] = _tone(0.08, 1100.0, 1100.0, "sine", 0.003, 0.06, 0.3)
+	# Vaahtopallo: pehmeä thwip (Scoutin kivääri)
+	sounds["pop"] = _mix2(
+		_tone(0.06, 900.0, 400.0, "sine", 0.002, 0.04, 0.26),
+		_noise(0.03, 0.12, 0.6), 0.0)
+	# Merkintä: lukituspiippaus
+	sounds["mark"] = _mix2(
+		_tone(0.1, 1400.0, 1400.0, "square", 0.002, 0.06, 0.2),
+		_tone(0.08, 1900.0, 1900.0, "sine", 0.005, 0.05, 0.14), 0.03)
 
 	var result := {}
 	for key in sounds:

@@ -624,22 +624,41 @@ func _paint_tide(c1: Color, c2: Color) -> void:
 
 func _paint_scout(c1: Color, c2: Color) -> void:
 	_body_base(Vector2.ZERO, 17.0, c1, c2)
-	# Suojalasit
+
+	# Lippalakki lipan kanssa (osoittaa tähtäyssuuntaan)
+	draw_arc(Vector2(0, -8), 15.0, PI + 0.2, TAU - 0.2, 18, Palette.darker(c2, 0.7), 6.0)
+	var brim_perp: Vector2 = hero.aim.orthogonal() * 8.0
+	var brim := PackedVector2Array([
+		hero.aim * 10.0 + brim_perp, hero.aim * 20.0, hero.aim * 10.0 - brim_perp])
+	draw_colored_polygon(brim, Palette.darker(c2, 0.6))
+
+	# Suojalasit hehkuvin linssein
 	var perp: Vector2 = hero.aim.orthogonal().normalized() * 7.0
+	draw_line(Vector2(0, -6) - perp + hero.aim * 3.0, Vector2(0, -6) + perp + hero.aim * 3.0,
+		Palette.darker(c2, 0.6), 2.0)
 	for side in [-1.0, 1.0]:
 		var lens: Vector2 = Vector2(0, -6) + perp * side + hero.aim * 3.0
 		draw_circle(lens, 5.5, Palette.darker(c2, 0.6))
 		draw_circle(lens, 4.0, Palette.glow(Color("ffd76d"), 1.3))
-	draw_line(Vector2(0, -6) - perp + hero.aim * 3.0, Vector2(0, -6) + perp + hero.aim * 3.0,
-		Palette.darker(c2, 0.6), 2.0)
+		draw_circle(lens + Vector2(-1.2, -1.2), 1.5, Color(1, 1, 1, 0.7))
+
+	# Pallovarasto selässä
+	for i in range(3):
+		draw_circle(Vector2(-16.0 + i * 4.0, -2.0 + i * 3.0), 3.5,
+			Palette.with_alpha(Color("f2f5ff"), 0.85))
+
 	# Vaahtopallokivääri kaksin käsin
 	var barrel_start: Vector2 = hero.aim.rotated(0.5) * 12.0
-	var barrel_end: Vector2 = hero.aim * (26.0 + _attack_anim * 4.0)
+	var barrel_end: Vector2 = hero.aim * (28.0 + _attack_anim * 5.0)
 	_hold(barrel_start, c1, 17.0, 4.0)
 	_hold(hero.aim * 18.0, c1, 17.0, 4.0)
 	draw_line(barrel_start, barrel_end, c2, 5.0)
-	draw_circle(barrel_end, 5.0, Palette.darker(c2, 0.7))
-	draw_circle(barrel_end, 3.0, Color("f2f5ff"))
+	# Suppilo ja ladattu vaahtopallo
+	draw_circle(barrel_end, 5.5, Palette.darker(c2, 0.7))
+	draw_circle(barrel_end + hero.aim * 2.0, 3.5, Color("f2f5ff"))
+	# Pallosäiliö kiväärin päällä
+	draw_circle(hero.aim * 16.0 + hero.aim.orthogonal() * 6.0, 4.0,
+		Palette.with_alpha(Color("f2f5ff"), 0.7))
 
 
 func _paint_maestro(c1: Color, c2: Color) -> void:

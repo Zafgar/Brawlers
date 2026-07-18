@@ -33,6 +33,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_shade(ci, center, r)
 		"tide":
 			_tide(ci, center, r)
+		"scout":
+			_scout(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -267,6 +269,16 @@ static func _tide(ci: CanvasItem, center: Vector2, r: float) -> void:
 			center + Vector2(x * r, top - r * 0.14),
 			center + Vector2(x * r - r * 0.08, top),
 			center + Vector2(x * r + r * 0.08, top)]), INK)
+
+
+static func _scout(ci: CanvasItem, center: Vector2, r: float) -> void:
+	# Tähtäin: rengas, ristikkoviivat ja keskipiste.
+	ci.draw_arc(center + Vector2(0, r * 0.05), r * 0.8, 0.0, TAU, 28, SHADE, r * 0.15)
+	ci.draw_arc(center, r * 0.8, 0.0, TAU, 28, INK, r * 0.11)
+	for ang in [0.0, PI * 0.5, PI, PI * 1.5]:
+		var d := Vector2.RIGHT.rotated(ang)
+		ci.draw_line(center + d * r * 0.5, center + d * r * 1.0, INK, r * 0.1)
+	ci.draw_circle(center, r * 0.15, INK)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.

@@ -231,9 +231,9 @@ const HEROES := {
 		"color_b": Color("6b7a2f"),
 		"abilities": {
 			"basic": {"name": "Vaahtopurske", "desc": "Kolmen pallon nopea sarja.", "cd": 0.65},
-			"a1": {"name": "Merkkipanos", "desc": "Osuma merkitsee kohteen: se ottaa lisävahinkoa.", "cd": 7.0},
+			"a1": {"name": "Merkkipanos", "desc": "Osuma merkitsee kohteen: se ottaa 25 % lisävahinkoa kaikilta.", "cd": 7.0},
 			"a2": {"name": "Tainnutuspallo", "desc": "Tahmea pallo, joka tainnuttaa hetkeksi.", "cd": 9.0},
-			"dodge": {"name": "Kierähdys", "desc": "Nopea rullaus, joka lataa kiväärin.", "cd": 3.5},
+			"dodge": {"name": "Kierähdys", "desc": "Nopea rullaus, joka lataa kiväärin heti.", "cd": 3.5},
 			"ult": {"name": "Merkkisade", "desc": "Merkitsee kaikki lähiviholliset ja kiihdyttää joukkueen.", "cd": 0.0},
 		},
 	},
