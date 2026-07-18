@@ -656,7 +656,7 @@ func _paint_titan(c1: Color, c2: Color) -> void:
 	_eyes(Vector2(0, -8), 8.5, 3.8)
 	# Vihaiset kulmakarvat
 	for side in [-1.0, 1.0]:
-		var bx := 5.0 * side
+		var bx: float = 5.0 * side
 		draw_line(Vector2(bx - 3.5 * side, -14.0), Vector2(bx + 3.5 * side, -11.5),
 			Palette.darker(c2, 0.75), 2.5)
 
