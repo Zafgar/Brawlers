@@ -471,7 +471,7 @@ func _draw_hero_tile(rect: Rect2, tile_index: int) -> void:
 	draw_circle(med, 38.0, Palette.darker(def["color_b"], 0.55))
 	draw_circle(med, 34.0, def["color"])
 	draw_circle(med + Vector2(0, 12), 24.0, Palette.with_alpha(def["color_b"], 0.35))
-	UiKit.draw_text(self, med + Vector2(0, 2), def["name"].substr(0, 1), 34, Color.WHITE, true, 4)
+	HeroIcon.draw_symbol(self, hero_id, med, 22.0)
 
 	UiKit.draw_text(self, rect.position + Vector2(rect.size.x / 2.0, 126.0),
 		def["name"], 25, Palette.TEXT_MAIN, true, 4)

@@ -21,11 +21,11 @@ const HEROES := {
 		"color": Color("86ccd9"),
 		"color_b": Color("2e5f74"),
 		"abilities": {
-			"basic": {"name": "Nuijan heilautus", "desc": "Leveä isku eteen.", "cd": 0.6},
-			"a1": {"name": "Kilpivalli", "desc": "Torjuu edestä tulevat osumat 2,5 s ajan.", "cd": 9.0},
-			"a2": {"name": "Maanjäristys", "desc": "Maahan isku: vahinkoa ja hidastus ympärillä.", "cd": 8.0},
+			"basic": {"name": "Nuijan heilautus", "desc": "Leveä pyyhkäisy eteen.", "cd": 0.6},
+			"a1": {"name": "Kilpivalli", "desc": "Torjuu edestä tulevat osumat 2,6 s ajan.", "cd": 9.0},
+			"a2": {"name": "Maanjäristys", "desc": "Maahan isku: vahinkoa, työntö ja hidastus ympärillä.", "cd": 7.5},
 			"dodge": {"name": "Rynnäkkö", "desc": "Raskas syöksy, joka tönäisee vihollisia.", "cd": 5.0},
-			"ult": {"name": "Linnake", "desc": "Suuri kupoli, joka torjuu viholliset ammukset.", "cd": 0.0},
+			"ult": {"name": "Linnake", "desc": "Suuri kupoli, joka torjuu vihollisammukset ja kilpiää liittolaiset.", "cd": 0.0},
 		},
 	},
 	"ember": {

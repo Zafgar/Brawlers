@@ -55,8 +55,7 @@ func _draw() -> void:
 	var med := Vector2(med_r + 12.0, h / 2.0)
 	draw_circle(med, med_r + 3.0, Palette.darker(c2, 0.6))
 	draw_circle(med, med_r, Palette.with_alpha(c1, dim))
-	UiKit.draw_text(self, med + Vector2(0, 1), def["name"].substr(0, 1),
-		int(med_r * 1.1), Color.WHITE, true, 3)
+	HeroIcon.draw_symbol(self, profile.hero_id, med, med_r * 0.66)
 
 	# Pelaajanumero / BOT-merkki
 	if profile.is_human():

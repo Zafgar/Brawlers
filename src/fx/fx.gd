@@ -83,6 +83,18 @@ static func heal_sparkle(parent: Node, pos: Vector2) -> void:
 	p.finished.connect(p.queue_free)
 
 
+## Lähitaistelun sivallus: nopeasti pyyhkäisevä hehkuva kaari.
+static func slash(parent: Node, pos: Vector2, dir: Vector2, reach: float,
+		arc_deg: float, color: Color) -> void:
+	var node := SlashFx.new()
+	node.position = pos
+	node.center_angle = dir.angle()
+	node.reach = reach
+	node.half_arc = deg_to_rad(arc_deg)
+	node.color = color
+	parent.add_child(node)
+
+
 ## Salamakaari kahden pisteen välille (Voltin ketjusalamat).
 static func bolt(parent: Node, from: Vector2, to: Vector2, color: Color) -> void:
 	var node := BoltFx.new()
@@ -98,6 +110,47 @@ static func knockout_burst(parent: Node, pos: Vector2, color: Color) -> void:
 	ring(parent, pos, Palette.glow(Color.WHITE, 1.4), 90.0, 0.45, 7.0)
 	burst(parent, pos, Palette.glow(color, 1.8), 22, 420.0, 0.7, 7.0)
 	burst(parent, pos, Color(1, 1, 1, 0.9), 10, 300.0, 0.5, 4.0)
+
+
+class SlashFx:
+	extends Node2D
+	var center_angle := 0.0
+	var reach := 90.0
+	var half_arc := 0.6
+	var color := Color.WHITE
+	var _t := 0.0
+	const LIFE := 0.22
+
+	func _ready() -> void:
+		z_index = 22
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if _t >= LIFE:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var f: float = clampf(_t / LIFE, 0.0, 1.0)
+		# Kaari pyyhkäisee toisesta reunasta toiseen ja ohenee.
+		var sweep := lerpf(-half_arc, half_arc, f)
+		var lead := center_angle + sweep
+		var alpha := (1.0 - f)
+		# Terä
+		var pts := PackedVector2Array()
+		for i in range(8):
+			var t := i / 7.0
+			var a := lerpf(lead - 0.5, lead, t)
+			var rad := reach * (0.7 + 0.3 * t)
+			pts.append(Vector2(cos(a), sin(a)) * rad)
+		draw_polyline(pts, Palette.with_alpha(Palette.glow(color, 1.5), alpha), 6.0 * (1.0 - f * 0.5))
+		# Häntävana koko kaaren yli
+		var trail := PackedVector2Array()
+		for i in range(12):
+			var a := lerpf(center_angle - half_arc, lead, i / 11.0)
+			trail.append(Vector2(cos(a), sin(a)) * reach * 0.92)
+		draw_polyline(trail, Palette.with_alpha(color, alpha * 0.4), 3.0)
 
 
 class BoltFx:

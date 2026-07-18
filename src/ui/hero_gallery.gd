@@ -175,8 +175,7 @@ class Medallion:
 		draw_circle(center, r, def["color"])
 		draw_circle(center + Vector2(0, r * 0.35), r * 0.7,
 			Palette.with_alpha(def["color_b"], 0.35))
-		UiKit.draw_text(self, center + Vector2(0, 3), def["name"].substr(0, 1),
-			int(r * 1.1), Color.WHITE, true, 5)
+		HeroIcon.draw_symbol(self, hero_id, center, r * 0.62)
 
 
 ## Viisiportainen tilastopalkki.

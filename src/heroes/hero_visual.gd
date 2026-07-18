@@ -254,30 +254,62 @@ func _paint_generic(c1: Color, c2: Color) -> void:
 
 func _paint_bastion(c1: Color, c2: Color) -> void:
 	var a: float = hero.aim.angle()
-	# Nuija takakädessä
-	var mace_dir: Vector2 = hero.aim.rotated(2.4 - _attack_anim * 2.2)
+	var guarding: bool = hero.guard_timer > 0.0
+
+	# Piikkinuija takakädessä (heiluu iskiessä)
+	var mace_dir: Vector2 = hero.aim.rotated(2.4 - _attack_anim * 2.4)
 	var hand: Vector2 = mace_dir * 24.0
-	draw_line(Vector2.ZERO, hand + mace_dir * 12.0, Palette.darker(c2, 0.6), 5.0)
-	draw_circle(hand + mace_dir * 16.0, 9.0, c2)
+	var head: Vector2 = hand + mace_dir * 15.0
+	_limb(mace_dir * 12.0, hand, c1, 5.0)
+	draw_line(hand, head, Palette.darker(c2, 0.6), 6.0)
 	for i in range(6):
-		var spike: Vector2 = Vector2.RIGHT.rotated(TAU * i / 6.0) * 12.0
-		draw_line(hand + mace_dir * 16.0, hand + mace_dir * 16.0 + spike, c2, 3.0)
-	# Leveä runko
-	_body_base(Vector2.ZERO, 24.0, c1, c2)
-	# Visiiri (litistetty ellipsi polygonina, ettei transformia tarvitse vaihtaa)
+		var spike: Vector2 = Vector2.RIGHT.rotated(TAU * i / 6.0 + _time * 0.6) * 12.0
+		draw_line(head, head + spike, Palette.darker(c2, 0.7), 4.0)
+	draw_circle(head, 10.0, Palette.darker(c2, 0.5))
+	draw_circle(head, 7.5, c2)
+	draw_circle(head + Vector2(-2, -2), 3.0, Palette.with_alpha(Color.WHITE, 0.5))
+
+	# Hartiapanssarit rungon takana
+	for side in [-1.0, 1.0]:
+		draw_circle(Vector2(21.0 * side, -2), 12.0, Palette.darker(c2, 0.5))
+		draw_circle(Vector2(21.0 * side, -3), 8.5, Palette.darker(c1, 0.85))
+
+	# Järeä runko
+	_body_base(Vector2.ZERO, 25.0, c1, c2)
+	# Rintapanssarin V-saumat
+	draw_line(Vector2(-9, 3), Vector2(0, 13), Palette.darker(c2, 0.7), 3.0)
+	draw_line(Vector2(9, 3), Vector2(0, 13), Palette.darker(c2, 0.7), 3.0)
+
+	# Kypärän visiiri (litistetty ellipsi)
 	var visor := PackedVector2Array()
 	for i in range(20):
 		var ang := TAU * i / 20.0
-		visor.append(Vector2(0, -6) + Vector2(cos(ang) * 15.0, sin(ang) * 7.0))
+		visor.append(Vector2(0, -7) + Vector2(cos(ang) * 15.0, sin(ang) * 7.0))
 	draw_colored_polygon(visor, Palette.darker(c2, 0.7))
-	_eyes(Vector2(0, -6), 8.0, 3.5)
-	# Kilpikäsi
-	_hold(hero.aim * 16.0, c1, 24.0, 6.0)
-	# Kilpi etukädessä (kaari tähtäyksen suunnassa)
-	var guard_boost := 1.0 + (0.35 if hero.guard_timer > 0.0 else 0.0)
-	draw_arc(hero.aim * 20.0, 18.0 * guard_boost, a - 1.15, a + 1.15, 18, Palette.darker(c2, 0.55), 10.0)
-	draw_arc(hero.aim * 20.0, 18.0 * guard_boost, a - 1.05, a + 1.05, 18,
-		Palette.glow(c1, 1.25) if hero.guard_timer > 0.0 else c1, 6.0)
+	_eyes(Vector2(0, -7), 8.0, 3.5)
+
+	# Kilpikäsi ja kilpilevy tähtäyksen suunnassa
+	_hold(hero.aim * 15.0, c1, 25.0, 6.0)
+	var boost := 1.15 if guarding else 1.0
+	var perp: Vector2 = hero.aim.orthogonal().normalized()
+	var sc: Vector2 = hero.aim * 21.0
+	var w := 16.0 * boost
+	var plate := PackedVector2Array([
+		sc - hero.aim * 7.0 + perp * w,
+		sc + hero.aim * 5.0 + perp * w * 0.85,
+		sc + hero.aim * 12.0,
+		sc + hero.aim * 5.0 - perp * w * 0.85,
+		sc - hero.aim * 7.0 - perp * w,
+	])
+	draw_colored_polygon(plate, Palette.glow(c1, 1.2) if guarding else Palette.darker(c2, 0.5))
+	draw_polyline(plate + PackedVector2Array([plate[0]]),
+		c1 if guarding else Palette.darker(c2, 0.7), 3.0)
+	# Kilven pystyharja ja keskikohouma
+	draw_line(sc - hero.aim * 4.0, sc + hero.aim * 8.0, Palette.darker(c2, 0.7), 2.5)
+	draw_circle(sc, 5.0, c2)
+	draw_circle(sc + Vector2(-1, -1), 2.5, Palette.with_alpha(Color.WHITE, 0.6))
+	if guarding:
+		draw_arc(sc, 22.0 * boost, a - 1.2, a + 1.2, 22, Palette.glow(Palette.SHIELD, 1.5), 3.5)
 
 
 func _paint_ember(c1: Color, c2: Color) -> void:
