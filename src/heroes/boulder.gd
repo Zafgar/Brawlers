@@ -38,7 +38,7 @@ func _ability1(dir: Vector2) -> void:
 	AudioMgr.play("rock")
 	arena.shake(0.2)
 	var wall := RockWall.new()
-	var pos := arena.map.clamp_to_field(global_position + dir * 130.0, 60.0)
+	var pos: Vector2 = arena.map.clamp_to_field(global_position + dir * 130.0, 60.0)
 	wall.global_position = pos
 	wall.rotation = dir.angle() + PI / 2.0
 	arena.add_child(wall)

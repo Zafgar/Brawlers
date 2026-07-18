@@ -351,7 +351,7 @@ func _support_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vecto
 		pocket = bb.frontline_ally
 	if pocket == null or pocket == hero:
 		# Ei suojeltavaa: pysy lähellä keskustaa mutta poissa vihollisista.
-		var base := arena.relic.global_position
+		var base: Vector2 = arena.relic.global_position
 		if _target != null and is_instance_valid(_target) \
 				and _target.global_position.distance_to(pos) < 240.0:
 			return pos + (pos - _target.global_position).normalized() * 200.0

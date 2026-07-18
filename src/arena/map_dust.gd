@@ -101,7 +101,7 @@ func _draw() -> void:
 	_draw_rocks()
 	_draw_storm(half)
 
-	_draw_motes(20, DUST, 10.0, 8080)
+	_draw_sand_motes(20, DUST, 10.0, 8080)
 	_draw_vignette()
 	_draw_walls_frame(Color("b98a4e"))
 
@@ -224,7 +224,7 @@ func _draw_storm(half: Vector2) -> void:
 		Palette.with_alpha(Palette.glow(ACCENT, 1.3), 0.4), 3.0)
 
 
-func _draw_motes(count: int, base_color: Color, rise_speed: float, seed_val: int) -> void:
+func _draw_sand_motes(count: int, base_color: Color, rise_speed: float, seed_val: int) -> void:
 	# Autiomaassa hiukkaset ajelehtivat vaakasuunnassa (tuuli).
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_val
