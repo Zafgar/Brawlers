@@ -151,6 +151,17 @@ func _draw_shadow(bob: float) -> void:
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+func _res_color(t: String) -> Color:
+	match t:
+		"mana":
+			return Color("5b8cff")
+		"energy":
+			return Color("4ad4ff")
+		"rage":
+			return Color("ff6b3d")
+	return Color.WHITE
+
+
 func _draw_status(bob: float) -> void:
 	var top := Vector2(0, -52.0 - bob)
 	# Pieni kestopalkki pään yläpuolella
@@ -159,6 +170,11 @@ func _draw_status(bob: float) -> void:
 	draw_rect(Rect2(top + Vector2(-w / 2.0 - 1.0, -1.0), Vector2(w + 2.0, 7.0)), Color(0, 0, 0, 0.45))
 	var hp_color: Color = Palette.GOOD if frac > 0.35 else Palette.BAD
 	draw_rect(Rect2(top + Vector2(-w / 2.0, 0.0), Vector2(w * frac, 5.0)), hp_color)
+	# Resurssipalkki (mana/energy/rage) HP-palkin alla, jos sankarilla on resurssi.
+	if hero.res_type != "":
+		var rfrac: float = clampf(hero.res / hero.res_max, 0.0, 1.0)
+		draw_rect(Rect2(top + Vector2(-w / 2.0 - 1.0, 6.0), Vector2(w + 2.0, 5.0)), Color(0, 0, 0, 0.45))
+		draw_rect(Rect2(top + Vector2(-w / 2.0, 7.0), Vector2(w * rfrac, 3.0)), _res_color(hero.res_type))
 	if hero.shield_hp > 0.0:
 		var sfrac: float = clampf(hero.shield_hp / hero.max_hp, 0.0, 1.0)
 		draw_rect(Rect2(top + Vector2(-w / 2.0, -4.0), Vector2(w * sfrac, 3.0)), Palette.SHIELD)

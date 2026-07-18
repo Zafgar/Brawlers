@@ -13,6 +13,29 @@ func _init() -> void:
 	radius = 30.0
 
 
+## Energia: Kilpivalli (R1) kanavoidaan pitämällä nappi pohjassa. Kilpi torjuu
+## suurimman osan vahingosta ja kuluttaa energiaa sen mukaan paljonko otat
+## osumaa (+ pieni peruskulutus). Energia palautuu kun kilpi ei ole ylhäällä.
+## Botit käyttävät yhä kertakäyttöistä ajastettua kilpeä (_ability1).
+func _setup_resource() -> void:
+	res_type = "energy"
+	res_max = 100.0
+	res = 100.0
+	res_regen = 12.0
+
+
+func _channeled_slots() -> Array:
+	return ["a1"]
+
+
+func _channel_tick(_slot: String, delta: float) -> void:
+	# Ylläpidä vahva laaja kilpi niin kauan kuin energiaa riittää.
+	start_guard(0.15, 0.9, 150.0)
+	res = maxf(res - 8.0 * delta, 0.0)
+	if res <= 0.0:
+		guard_timer = 0.0   # energia loppui -> kilpi putoaa heti
+
+
 ## Perushyökkäys: leveä nuijan pyyhkäisy eteen.
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()

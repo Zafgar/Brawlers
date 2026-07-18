@@ -20,6 +20,18 @@ func _aim_range(_slot: String) -> float:
 	return 360.0
 
 
+## Mana: loitsut maksavat manaa mutta latautuvat lähes heti — voit späm­mätä
+## kykyjä kunnes mana loppuu, sitten se palautuu tasaisesti.
+func _setup_resource() -> void:
+	res_type = "mana"
+	res_max = 100.0
+	res = 100.0
+	res_regen = 15.0
+	res_cost = {"basic": 0.0, "a1": 32.0, "a2": 26.0, "dodge": 0.0}
+	cd_max.a1 = 0.6
+	cd_max.a2 = 0.5
+
+
 ## Perushyökkäys: tulipallo, joka jättää osuessaan jälkipolton.
 func _basic(dir: Vector2) -> void:
 	AudioMgr.play("fire", 0.12)

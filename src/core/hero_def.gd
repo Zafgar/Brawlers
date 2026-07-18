@@ -22,7 +22,7 @@ const HEROES := {
 		"color_b": Color("2e5f74"),
 		"abilities": {
 			"basic": {"name": "Nuijan heilautus", "desc": "Leveä pyyhkäisy eteen.", "cd": 0.6},
-			"a1": {"name": "Kilpivalli", "desc": "Torjuu edestä tulevat osumat 85 % ajan 2,8 s.", "cd": 9.0},
+			"a1": {"name": "Kilpivalli", "desc": "Pidä pohjassa nostaaksesi kilven: torjuu suurimman osan edestä tulevasta vahingosta ja kuluttaa energiaa saadun osuman mukaan.", "cd": 9.0},
 			"a2": {"name": "Maanjäristys", "desc": "Maahan isku: vahinkoa, työntö ja hidastus ympärillä.", "cd": 7.5},
 			"dodge": {"name": "Rynnäkkö", "desc": "Raskas syöksy, joka tönäisee vihollisia.", "cd": 5.0},
 			"ult": {"name": "Linnake", "desc": "Suuri kupoli, joka torjuu vihollisammukset ja kilpiää liittolaiset.", "cd": 0.0},
@@ -36,7 +36,7 @@ const HEROES := {
 		"speed": 320.0,
 		"ratings": {"kesto": 2, "liike": 3, "vahinko": 5, "tuki": 1},
 		"weapon": "Tulilyhty",
-		"desc": "Alueiden hallitsija. Sytyttää kentän palamaan ja pakottaa liikkeelle.",
+		"desc": "Alueiden hallitsija. Käyttää manaa — voi spämmätä loitsuja kunnes mana loppuu, sitten se palautuu.",
 		"color": Color("ff8a4a"),
 		"color_b": Color("b33b17"),
 		"abilities": {
@@ -93,7 +93,7 @@ const HEROES := {
 		"speed": 310.0,
 		"ratings": {"kesto": 4, "liike": 3, "vahinko": 3, "tuki": 2},
 		"weapon": "Köynnösruoska",
-		"desc": "Piikikäs lähitaistelija, joka sitoo viholliset paikoilleen.",
+		"desc": "Piikikäs lähitaistelija. Kerää raivoa taistelusta ja purkaa sen kykyihin.",
 		"color": Color("7ed957"),
 		"color_b": Color("2f7a33"),
 		"abilities": {

@@ -84,6 +84,17 @@ var dmg_out_mult := 1.0
 var dmg_in_mult := 1.0
 var ult_gain_mult := 1.0
 
+# Resurssijärjestelmä (valinnainen sankarikohtaisesti). res_type "" = ei
+# resurssia -> pelkkä jäähdytys kuten ennen. "mana"/"energy" palautuvat
+# ajan myötä, "rage" rakentuu taistelusta. Kyvyt voivat maksaa resurssia.
+var res_type := ""
+var res := 0.0
+var res_max := 100.0
+var res_regen := 0.0               # passiivinen palautuminen/s (mana, energy)
+var res_cost := {"basic": 0.0, "a1": 0.0, "a2": 0.0, "dodge": 0.0}
+var _channel_slot := ""            # kanavoitava kyky pohjassa (esim. kilpi)
+var _rage_idle := 0.0              # aika viime taistelutoiminnasta (rage-vaimeneminen)
+
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	arena = p_arena
@@ -98,6 +109,9 @@ func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	base_speed = def["speed"]
 	for slot in ["basic", "a1", "a2", "dodge"]:
 		cd_max[slot] = HeroDef.cooldown(hero_id, slot)
+
+	# Sankari voi määrittää resurssin (mana/energy/rage) ja säätää cd_max.
+	_setup_resource()
 
 	# Bottien vaikeustason kertoimet (taso 6 = epäreilu huijaa).
 	if controller != null and controller.is_bot():
@@ -131,10 +145,12 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		_aim_active = false
 		_aiming_slot = ""
+		_channel_slot = ""
 		return
 	if not alive:
 		_aim_active = false
 		_aiming_slot = ""
+		_channel_slot = ""
 		respawn_timer -= delta
 		if respawn_timer <= 0.0:
 			_respawn()
@@ -142,6 +158,7 @@ func _physics_process(delta: float) -> void:
 
 	controller.update(self, delta)
 	_tick_status(delta)
+	_tick_resource(delta)
 
 	# Tähtäys
 	var aim_input: Vector2 = controller.aim_vector()
@@ -186,8 +203,8 @@ func _physics_process(delta: float) -> void:
 			aim, delta)
 		# Kyvyt toimivat myös reliikkiä kannettaessa (kuten väistökin).
 		# Tähdättävät kyvyt (pito -> vapautus) hoidetaan _run_ability_slotissa.
-		_run_ability_slot("a1", 1)
-		_run_ability_slot("a2", 2)
+		_run_ability_slot("a1", 1, delta)
+		_run_ability_slot("a2", 2, delta)
 		if _buf.ult > 0.0 and ult_charge >= 100.0:
 			_buf.ult = 0.0
 			ult_charge = 0.0
@@ -256,11 +273,26 @@ func _buffer_inputs(delta: float) -> void:
 ## Käsittelee yhden kykypaikan. Tähdättävä kyky (pito -> vapautus) näyttää
 ## tähtäysviivan ja laukeaa vasta vapautettaessa; muut laukeavat heti
 ## syötepuskurin kautta. Botit käyttävät aina välitöntä laukaisua.
-func _run_ability_slot(slot: String, num: int) -> void:
-	var aimed: bool = not controller.is_bot() and slot in _aimed_slots()
-	if aimed:
-		var held: bool = controller.ability1_held() if num == 1 else controller.ability2_held()
-		var released: bool = controller.ability1_released() if num == 1 else controller.ability2_released()
+func _run_ability_slot(slot: String, num: int, delta: float) -> void:
+	var is_bot: bool = controller.is_bot()
+	var held: bool = controller.ability1_held() if num == 1 else controller.ability2_held()
+	var released: bool = controller.ability1_released() if num == 1 else controller.ability2_released()
+
+	# Kanavoitava kyky: pito ylläpitää vaikutusta (esim. Bastionin energiakilpi).
+	if not is_bot and slot in _channeled_slots():
+		if _channel_slot == slot:
+			if held and res > 0.0:
+				_channel_tick(slot, delta)
+			else:
+				_channel_slot = ""
+				_channel_end(slot)
+		elif _channel_slot == "" and held and cd[slot] <= 0.0 and res > 0.0:
+			_channel_slot = slot
+			_channel_tick(slot, delta)
+		return
+
+	# Tähdättävä kyky: pito tähtää, vapautus laukaisee.
+	if not is_bot and slot in _aimed_slots():
 		if _aiming_slot == slot:
 			_aim_active = true
 			_aim_len = _aim_range(slot)
@@ -268,14 +300,19 @@ func _run_ability_slot(slot: String, num: int) -> void:
 			_aim_charge = 1.0
 			if released:
 				_aiming_slot = ""
-				if cd[slot] <= 0.0:
+				if cd[slot] <= 0.0 and _can_afford(slot):
 					cd[slot] = cd_max[slot]
+					_spend(slot)
 					_cast_slot(slot)
-		elif _aiming_slot == "" and held and cd[slot] <= 0.0:
+		elif _aiming_slot == "" and held and cd[slot] <= 0.0 and _can_afford(slot):
 			_aiming_slot = slot
-	elif _buf[slot] > 0.0 and cd[slot] <= 0.0:
+		return
+
+	# Välitön (puskuroitu) laukaisu.
+	if _buf[slot] > 0.0 and cd[slot] <= 0.0 and _can_afford(slot):
 		_buf[slot] = 0.0
 		cd[slot] = cd_max[slot]
+		_spend(slot)
 		_cast_slot(slot)
 
 
@@ -295,6 +332,72 @@ func _aimed_slots() -> Array:
 ## Tähtäysviivan pituus kyvylle (ylikirjoitettavissa sankarikohtaisesti).
 func _aim_range(_slot: String) -> float:
 	return 420.0
+
+
+# --- Resurssit: mana / energy / rage ---
+
+## Ylikirjoita asettamaan resurssi: res_type, res_max, res, res_regen, res_cost
+## ja mahdollisesti cd_max-säädöt. Oletuksena ei resurssia (pelkkä jäähdytys).
+func _setup_resource() -> void:
+	pass
+
+
+func _tick_resource(delta: float) -> void:
+	if res_type == "mana":
+		res = minf(res + res_regen * delta, res_max)
+	elif res_type == "energy":
+		# Energia ei palaudu kanavoinnin aikana (kilpi kuluttaa sitä).
+		if _channel_slot == "":
+			res = minf(res + res_regen * delta, res_max)
+	elif res_type == "rage":
+		_rage_idle += delta
+		if _rage_idle > 3.5:
+			res = maxf(res - 6.0 * delta, 0.0)
+
+
+func _reset_resource() -> void:
+	_channel_slot = ""
+	_rage_idle = 0.0
+	if res_type == "rage":
+		res = 0.0
+	elif res_type != "":
+		res = res_max
+
+
+func _can_afford(slot: String) -> bool:
+	if res_type == "":
+		return true
+	return res >= float(res_cost.get(slot, 0.0))
+
+
+func _spend(slot: String) -> void:
+	if res_type == "":
+		return
+	res = maxf(res - float(res_cost.get(slot, 0.0)), 0.0)
+	if res_type == "rage":
+		_rage_idle = 0.0
+
+
+func gain_res(amount: float) -> void:
+	if res_type == "":
+		return
+	res = clampf(res + amount, 0.0, res_max)
+	if res_type == "rage":
+		_rage_idle = 0.0
+
+
+## Kanavoitavat kykypaikat (pito ylläpitää). Oletuksena ei mitään.
+func _channeled_slots() -> Array:
+	return []
+
+
+## Kutsutaan joka framessa kanavoinnin aikana. Ylikirjoita sankarissa.
+func _channel_tick(_slot: String, _delta: float) -> void:
+	pass
+
+
+func _channel_end(_slot: String) -> void:
+	pass
 
 
 ## Oletushyökkäyskontrolli: liipaisin pohjassa -> ammu aina kun cd sallii.
@@ -359,6 +462,8 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 		profile.stats.damage += dealt
 		profile.add_score(dealt * 0.1)
 		add_ult(dealt * 0.22)
+		if res_type == "rage":
+			gain_res(dealt * 0.4)
 	return dealt
 
 
@@ -384,6 +489,9 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 			amount -= absorbed
 			profile.stats.prevented += absorbed
 			profile.add_score(absorbed * 0.08)
+			# Energiakilpi (Bastion): torjuminen kuluttaa energiaa vahingon mukaan.
+			if res_type == "energy" and _channel_slot != "":
+				res = maxf(res - absorbed * 0.6, 0.0)
 			Fx.spark(arena, global_position + aim * radius, Palette.SHIELD)
 			AudioMgr.play("shield")
 
@@ -402,6 +510,8 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 
 	hp -= amount
 	since_damage = 0.0
+	if res_type == "rage":
+		gain_res(amount * 0.6)
 	if kb > 0.0 and kb_dir != Vector2.ZERO:
 		velocity += kb_dir.normalized() * kb * (1.0 - kb_resist)
 
@@ -531,6 +641,7 @@ func _knockout(source: Hero) -> void:
 
 func _respawn() -> void:
 	alive = true
+	_reset_resource()
 	hp = max_hp
 	iframes = 2.0
 	global_position = arena.map.spawn_point(team, profile.index)
@@ -550,6 +661,7 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	visible = true
 	_aiming_slot = ""
 	_aim_active = false
+	_reset_resource()
 	hp = max_hp
 	shield_hp = 0.0
 	carrying = false

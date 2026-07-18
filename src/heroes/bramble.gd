@@ -23,6 +23,18 @@ func _aim_range(_slot: String) -> float:
 	return 480.0
 
 
+## Raivo: kertyy vahingon antamisesta ja ottamisesta, vaimenee taistelun
+## ulkopuolella. Kyvyt maksavat raivoa ja latautuvat lähes heti — mitä
+## kovemmin taistelet, sitä useammin voit späm­mätä kykyjä.
+func _setup_resource() -> void:
+	res_type = "rage"
+	res_max = 100.0
+	res = 0.0
+	res_cost = {"basic": 0.0, "a1": 35.0, "a2": 45.0, "dodge": 0.0}
+	cd_max.a1 = 0.5
+	cd_max.a2 = 0.6
+
+
 ## Perushyökkäys: ruoskan pyyhkäisy kaaressa (imee elinvoimaa).
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()
