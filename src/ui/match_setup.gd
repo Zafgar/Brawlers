@@ -20,7 +20,7 @@ const DESCRIPTIONS := {
 	"size": "Montako pelaajaa kummassakin joukkueessa. Tyhjät paikat täytetään boteilla.",
 	"rounds": "Paras kolmesta = kaksi erävoittoa, paras viidestä = kolme.",
 	"bots": "Taso vaikuttaa bottien reaktioihin ja tarkkuuteen — ei niiden voimaan.",
-	"mode": "Relic Hold: pidä reliikkiä hallussa — 40 pistettä voittaa erän.",
+	"mode": "Relic Hold: kanna reliikkiä pisteisiin. Ydinvalta: hallitse siirtyvää ydinaluetta yksin joukkueellasi.",
 	"map": "Geargarden: mekaaninen puutarha, jossa on kuljetinhihnoja ja rattaita.",
 }
 
@@ -66,8 +66,9 @@ func _ready() -> void:
 	bots_row.desc_key = "bots"
 	_add_row(inner, bots_row)
 
-	var mode_row := OptionRow.new("Pelimuoto", ["Relic Hold  (lisää tulossa)"], 0, Callable())
-	mode_row.locked = true
+	var mode_start: int = 0 if Game.mode_id == "relic" else 1
+	var mode_row := OptionRow.new("Pelimuoto", ["Relic Hold", "Ydinvalta"], mode_start,
+		func(i): Game.mode_id = "relic" if i == 0 else "koth")
 	mode_row.desc_key = "mode"
 	_add_row(inner, mode_row)
 

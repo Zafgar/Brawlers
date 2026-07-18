@@ -143,7 +143,7 @@ class ScorePanel:
 		bg.set_border_width_all(2)
 		bg.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
 
-		var target: float = arena.ROUND_TARGET
+		var target: float = arena.score_target
 		var blue_frac: float = clampf(arena.team_points(0) / target, 0.0, 1.0)
 		var orange_frac: float = clampf(arena.team_points(1) / target, 0.0, 1.0)
 
@@ -155,11 +155,11 @@ class ScorePanel:
 		draw_rect(Rect2(w - 12 - bar_half, bar_y, bar_half, bar_h), Color(0, 0, 0, 0.5))
 		var blue_color := Palette.TEAM_BLUE
 		var orange_color := Palette.TEAM_ORANGE
-		if arena.relic.carrier != null and is_instance_valid(arena.relic.carrier):
-			if arena.relic.carrier.team == 0:
-				blue_color = Palette.glow(Palette.TEAM_BLUE, 1.3 + 0.2 * sin(_time * 8.0))
-			else:
-				orange_color = Palette.glow(Palette.TEAM_ORANGE, 1.3 + 0.2 * sin(_time * 8.0))
+		var holder: int = arena.holder_team()
+		if holder == 0:
+			blue_color = Palette.glow(Palette.TEAM_BLUE, 1.3 + 0.2 * sin(_time * 8.0))
+		elif holder == 1:
+			orange_color = Palette.glow(Palette.TEAM_ORANGE, 1.3 + 0.2 * sin(_time * 8.0))
 		draw_rect(Rect2(12, bar_y, bar_half * blue_frac, bar_h), blue_color)
 		draw_rect(Rect2(w - 12 - bar_half * orange_frac, bar_y, bar_half * orange_frac, bar_h),
 			orange_color)
@@ -197,8 +197,9 @@ class ScorePanel:
 		# Reliikin tila pieni timantti keskellä pippujen välissä
 		var gem_center := Vector2(w / 2.0, pip_y)
 		var gem_color := Palette.glow(Palette.GOLD, 1.5)
-		if arena.relic.carrier != null and is_instance_valid(arena.relic.carrier):
-			gem_color = Palette.glow(Palette.team(arena.relic.carrier.team), 1.5)
+		var gem_holder: int = arena.holder_team()
+		if gem_holder >= 0:
+			gem_color = Palette.glow(Palette.team(gem_holder), 1.5)
 		var pulse := 1.0 + 0.1 * sin(_time * 5.0)
 		var gem := PackedVector2Array([
 			gem_center + Vector2(0, -10) * pulse, gem_center + Vector2(8, 0) * pulse,

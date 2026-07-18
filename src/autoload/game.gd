@@ -140,6 +140,7 @@ func try_hero(hero_id: String) -> void:
 	team_size = 1
 	rounds_to_win = 1
 	bot_level = BotLevel.EASY
+	mode_id = "relic"
 
 	var human := PlayerProfile.new()
 	human.index = 0

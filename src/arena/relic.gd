@@ -10,6 +10,12 @@ const DROP_LOCK := 0.7
 var arena = null
 var carrier: Hero = null
 
+# Ydinvalta-tila: reliikkiä ei voi kantaa, se piirtyy valtausalueena ja
+# Arena laskee kumpi joukkue sitä hallitsee.
+var koth := false
+var control_team := -1              # -1 = kiistelty/tyhjä, 0/1 = hallitseva joukkue
+var zone_radius := 175.0
+
 var _time := 0.0
 var _drop_lock := 0.0
 var _home := Vector2.ZERO
@@ -39,7 +45,7 @@ func _physics_process(delta: float) -> void:
 			carrier = null
 		else:
 			global_position = carrier.global_position + Vector2(0, -74.0 + sin(_time * 4.0) * 4.0)
-	elif arena != null and arena.state == arena.State.PLAY and _drop_lock <= 0.0:
+	elif arena != null and arena.state == arena.State.PLAY and _drop_lock <= 0.0 and not koth:
 		for hero in arena.heroes:
 			if not is_instance_valid(hero) or not hero.alive or hero.iframes > 1.0:
 				continue
@@ -83,6 +89,9 @@ func is_free() -> bool:
 
 
 func _draw() -> void:
+	if koth:
+		_draw_control_zone()
+		return
 	var bob := sin(_time * 3.0) * 5.0 if carrier == null else 0.0
 	var center := Vector2(0, -14.0 + bob)
 	var pulse := 0.9 + 0.1 * sin(_time * 5.0)
@@ -113,3 +122,25 @@ func _draw() -> void:
 	var spark_angle := _time * 2.0
 	var spark_pos := center + Vector2(cos(spark_angle), sin(spark_angle)) * 14.0
 	draw_circle(spark_pos, 2.5, Color(1, 1, 1, 0.9))
+
+
+## Ydinvalta: piirtää valtausalueen, joka värittyy hallitsevan joukkueen väriin.
+func _draw_control_zone() -> void:
+	var pulse := 0.5 + 0.5 * sin(_time * 2.5)
+	var col: Color = Palette.GOLD
+	if control_team >= 0:
+		col = Palette.team(control_team)
+	# Alue ja hehkureunus
+	draw_circle(Vector2.ZERO, zone_radius, Palette.with_alpha(col, 0.10 + pulse * 0.05))
+	draw_arc(Vector2.ZERO, zone_radius, 0.0, TAU, 52,
+		Palette.with_alpha(Palette.glow(col, 1.3), 0.6), 4.0)
+	draw_arc(Vector2.ZERO, zone_radius * (0.45 + pulse * 0.12), 0.0, TAU, 44,
+		Palette.with_alpha(col, 0.4), 2.0)
+	# Pyörivät merkit kehällä
+	for i in range(8):
+		var a := _time * 0.6 + TAU * i / 8.0
+		draw_circle(Vector2(cos(a), sin(a)) * zone_radius, 5.0,
+			Palette.with_alpha(Palette.glow(col, 1.4), 0.7))
+	# Hohtava ydin keskellä
+	draw_circle(Vector2.ZERO, 18.0 + pulse * 4.0, Palette.with_alpha(Palette.glow(col, 1.6), 0.5))
+	draw_circle(Vector2.ZERO, 9.0, Palette.glow(Color.WHITE, 1.3))

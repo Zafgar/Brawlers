@@ -10,11 +10,22 @@ const ROUND_TIME := 150.0
 const SUDDEN_DEATH_HOLD := 1.5
 const SUDDEN_DEATH_MAX := 45.0
 
+# Ydinvalta-pelimuoto
+const KOTH_TARGET := 60.0         # sekuntia ydinalueen hallintaa
+const KOTH_RADIUS := 175.0
+const KOTH_RELOCATE := 20.0       # kuinka usein ydin siirtyy
+
+var mode := "relic"               # "relic" tai "koth"
+var score_target := ROUND_TARGET
+
 var state: int = State.INTRO
 var round_number := 1
 var time_left := ROUND_TIME
 var relic_points := [0.0, 0.0]
 var sudden_death := false
+
+var _koth_relocate_timer := 0.0
+var _koth_spots: Array = []
 
 var map: MapBase = null
 var relic: Relic = null
@@ -37,6 +48,10 @@ func _ready() -> void:
 	relic = Relic.new()
 	relic.setup(self, map.relic_home())
 	add_child(relic)
+
+	mode = Game.mode_id
+	if mode == "koth":
+		_setup_koth()
 
 	for profile in Game.roster:
 		var hero := _make_hero(profile.hero_id)
@@ -122,6 +137,10 @@ func _physics_process(delta: float) -> void:
 	if state != State.PLAY:
 		return
 
+	if mode == "koth":
+		_koth_physics(delta)
+		return
+
 	# Reliikin pisteet
 	if relic.carrier != null and is_instance_valid(relic.carrier):
 		var carrier := relic.carrier
@@ -164,6 +183,117 @@ func _physics_process(delta: float) -> void:
 			_round_over(0 if relic_points[0] > relic_points[1] else 1)
 
 
+# --- Ydinvalta-pelimuoto ---
+
+func _setup_koth() -> void:
+	score_target = KOTH_TARGET
+	relic.koth = true
+	relic.zone_radius = KOTH_RADIUS
+	relic.z_index = -2
+	var half: Vector2 = map.size() / 2.0
+	_koth_spots = [
+		Vector2.ZERO,
+		Vector2(-half.x * 0.45, -half.y * 0.4),
+		Vector2(half.x * 0.45, -half.y * 0.4),
+		Vector2(-half.x * 0.45, half.y * 0.4),
+		Vector2(half.x * 0.45, half.y * 0.4),
+	]
+	for i in range(_koth_spots.size()):
+		_koth_spots[i] = map.clamp_to_field(_koth_spots[i], KOTH_RADIUS + 40.0)
+	relic.global_position = _koth_spots[0]
+	_koth_relocate_timer = KOTH_RELOCATE
+
+
+## Kumpi joukkue hallitsee ydinaluetta: enemmistö alueella olevista sankareista
+## hallitsee. Tasapeli (myös 0–0) on kiistelty -> -1, kukaan ei kerää pisteitä.
+func _koth_control() -> int:
+	var core: Vector2 = relic.global_position
+	var blue: int = heroes_in_circle(core, KOTH_RADIUS, 0).size()
+	var orange: int = heroes_in_circle(core, KOTH_RADIUS, 1).size()
+	if blue > orange:
+		return 0
+	if orange > blue:
+		return 1
+	return -1
+
+
+func _koth_physics(delta: float) -> void:
+	var holder := _koth_control()
+	relic.control_team = holder
+	if holder >= 0:
+		_last_holder_team = holder
+		for hero in heroes_in_circle(relic.global_position, KOTH_RADIUS, holder):
+			hero.profile.stats.carry_time += delta
+			hero.profile.add_score(delta * 1.5)
+			hero.add_ult(delta * 2.0)
+
+	if sudden_death:
+		if holder >= 0:
+			_sd_hold += delta
+			if _sd_hold >= SUDDEN_DEATH_HOLD:
+				_round_over(holder)
+				return
+		else:
+			_sd_hold = 0.0
+		_sd_elapsed += delta
+		if _sd_elapsed >= SUDDEN_DEATH_MAX:
+			var leader := 0 if relic_points[0] >= relic_points[1] else 1
+			if _last_holder_team >= 0 and relic_points[0] == relic_points[1]:
+				leader = _last_holder_team
+			_round_over(leader)
+		return
+
+	if holder >= 0:
+		relic_points[holder] += delta
+		if relic_points[holder] >= score_target:
+			_round_over(holder)
+			return
+	else:
+		_sd_hold = 0.0
+
+	_koth_relocate_timer -= delta
+	if _koth_relocate_timer <= 0.0:
+		_koth_relocate()
+
+	time_left -= delta
+	if time_left <= 0.0:
+		time_left = 0.0
+		if absf(relic_points[0] - relic_points[1]) < 0.5:
+			sudden_death = true
+			_sd_elapsed = 0.0
+			hud.show_banner("RATKAISUHETKI!", "Seuraava ytimen valtaus voittaa erän", 2.5)
+			AudioMgr.play("round_start", 0.05, -5.0)
+		else:
+			_round_over(0 if relic_points[0] > relic_points[1] else 1)
+
+
+func _koth_relocate() -> void:
+	_koth_relocate_timer = KOTH_RELOCATE
+	if _koth_spots.is_empty():
+		return
+	var current: Vector2 = relic.global_position
+	var choice: Vector2 = current
+	for _try in range(6):
+		var spot: Vector2 = _koth_spots[randi() % _koth_spots.size()]
+		if spot.distance_to(current) > 60.0:
+			choice = spot
+			break
+	relic.global_position = choice
+	relic.control_team = -1
+	if hud != null:
+		hud.show_banner("YDIN SIIRTYY", "Valtaa uusi ydinalue", 1.6)
+	AudioMgr.play("round_start", 0.05, -7.0)
+	Fx.ring(self, choice, Palette.glow(Palette.GOLD, 1.5), KOTH_RADIUS, 0.8, 6.0)
+
+
+func holder_team() -> int:
+	if mode == "koth":
+		return relic.control_team
+	if relic.carrier != null and is_instance_valid(relic.carrier):
+		return relic.carrier.team
+	return -1
+
+
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause") and state == State.PLAY:
 		_toggle_pause()
@@ -179,6 +309,10 @@ func _start_round_intro() -> void:
 	_sd_hold = 0.0
 	_sd_elapsed = 0.0
 	relic.reset_to_home()
+	if mode == "koth":
+		relic.control_team = -1
+		relic.global_position = _koth_spots[0] if not _koth_spots.is_empty() else Vector2.ZERO
+		_koth_relocate_timer = KOTH_RELOCATE
 	for hero in heroes:
 		hero.reset_for_round()
 	_run_intro()
@@ -188,10 +322,14 @@ func _run_intro() -> void:
 	# Uusi taistelubiisi joka erälle -> vaihtelua erien välillä.
 	AudioMgr.play_music_pool("battle")
 	var wins_needed := Game.rounds_to_win
-	hud.show_banner("ERÄ %d" % round_number,
-		"Pidä reliikkiä — %d pistettä voittaa erän (voitot: %d/%d – %d/%d)" % [
-			int(ROUND_TARGET), Game.blue_rounds, wins_needed, Game.orange_rounds, wins_needed],
-		2.2)
+	var objective := ""
+	if mode == "koth":
+		objective = "Hallitse ydinaluetta — %d s hallintaa voittaa erän (voitot: %d/%d – %d/%d)" % [
+			int(KOTH_TARGET), Game.blue_rounds, wins_needed, Game.orange_rounds, wins_needed]
+	else:
+		objective = "Pidä reliikkiä — %d pistettä voittaa erän (voitot: %d/%d – %d/%d)" % [
+			int(ROUND_TARGET), Game.blue_rounds, wins_needed, Game.orange_rounds, wins_needed]
+	hud.show_banner("ERÄ %d" % round_number, objective, 2.2)
 	AudioMgr.play("round_start")
 	await get_tree().create_timer(2.2).timeout
 	for n in [3, 2, 1]:
