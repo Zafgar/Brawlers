@@ -16,6 +16,9 @@ const GRAB_ARC_DEG := 62.0
 const GRAB_DMG := 10.0
 const THROW_KB := 780.0
 const GRAB_STUN := 0.75
+const GRAB_HOLD_DIST := 54.0        # kuinka kaukana edessä kohdetta pidetään
+const GRAB_MAX_HOLD := 1.1          # pisin tähtäysaika ennen automaattista heittoa
+const GRAB_AIM_LEN := 250.0         # heiton tähtäysviivan pituus
 
 const RAGE_DRAIN := 18.0            # raivon kulutus/s suojaa kanavoitaessa
 const BRACE_HPS := 28.0            # elämän palautus/s suojan aikana
@@ -37,6 +40,8 @@ const BOT_BRACE_HEAL := 55.0
 
 var _berserk := 0.0                # berserk-tilan aika jäljellä (0 = ei)
 var _brace_fx := 0.0               # suojatehosteen ajastin
+var _held_target: Hero = null      # tartuttu kohde (pidetään edessä ennen heittoa)
+var _hold_time := 0.0              # kuinka kauan kohdetta on pidetty
 
 
 func _init() -> void:
@@ -103,31 +108,98 @@ func _basic(dir: Vector2) -> void:
 		Fx.spark(arena, global_position + dir * SWING_RANGE * 0.7, hero_color())
 
 
-## Kyky 1: Tartu ja heitä. Berserkissä muuttuu alueen ilmaanheitoksi.
+## Tartunta tähdätään: pidä R1 pohjassa (nappaa edessä olevan vihollisen),
+## käännä tähtäys ja vapauta heittääksesi. Berserkissä a1 ei tähtää.
+func _aimed_slots() -> Array:
+	return ["a1"]
+
+
+func _aim_range(_slot: String) -> float:
+	return GRAB_AIM_LEN
+
+
+## Tähtäyksen aloitus (R1 painettu): berserkissä välitön alueheitto; muuten
+## yritä napata edessä oleva kohde. Palauta false jos ei kohdetta -> ei tähtäystä.
+func _aim_begin(_slot: String) -> bool:
+	if _berserk > 0.0:
+		if cd.a1 <= 0.0:
+			cd.a1 = cd_max.a1
+			_aoe_launch()
+		return false
+	var t := _grab_target(aim)
+	if t == null:
+		return false
+	_held_target = t
+	_hold_time = 0.0
+	t.global_position = global_position + aim * GRAB_HOLD_DIST
+	t.velocity = Vector2.ZERO
+	t.apply_stun(0.3)
+	AudioMgr.play("slam", 0.1, -4.0)
+	visual.squash(1.15, 0.85)
+	Fx.ring(arena, t.global_position, Palette.glow(hero_color(), 1.4), 42.0, 0.3)
+	arena.popup(global_position + Vector2(0, -84), "TARTU!", Palette.glow(hero_color(), 1.3), 16)
+	return true
+
+
+## Tähtäyksen aikana: pidä kohde edessä tähtäyssuuntaan; heitä automaattisesti
+## jos aikaraja täyttyy tai berserk alkaa kesken tartunnan.
+func _aim_hold(_slot: String, delta: float) -> void:
+	if _berserk > 0.0:
+		_drop_target()
+		_aiming_slot = ""
+		return
+	if _held_target == null or not is_instance_valid(_held_target) or not _held_target.alive:
+		_held_target = null
+		_aiming_slot = ""
+		return
+	_hold_time += delta
+	_held_target.global_position = global_position + aim * GRAB_HOLD_DIST
+	_held_target.velocity = Vector2.ZERO
+	_held_target.apply_stun(0.2)
+	if _hold_time >= GRAB_MAX_HOLD:
+		cd.a1 = cd_max.a1
+		_throw_target(_held_target, aim)
+		_held_target = null
+		_aiming_slot = ""
+
+
+## Kyky 1 laukeaa: ihmisellä vapautuksesta (heitä pidelty kohde), botilla ja
+## berserkissä välittömästi.
 func _ability1(dir: Vector2) -> void:
 	if _berserk > 0.0:
 		_aoe_launch()
 		return
-
+	if _held_target != null and is_instance_valid(_held_target) and _held_target.alive:
+		_throw_target(_held_target, dir)
+		_held_target = null
+		return
+	# Botti / varapolku: välitön tartunta ja heitto.
 	var target := _grab_target(dir)
 	if target == null:
-		# Ei kohdetta -> lyhyt kurotus tyhjään.
 		AudioMgr.play("swing", 0.1, -8.0)
 		visual.attack_swing()
 		Fx.spark(arena, global_position + dir * GRAB_RANGE * 0.6,
 			Palette.with_alpha(hero_color(), 0.7))
 		return
+	_throw_target(target, dir)
 
-	AudioMgr.play("slam", 0.1, -2.0)
-	arena.shake(0.2)
-	visual.squash(1.2, 0.82)
-	# Heitto tähtäyssuuntaan: nakkaa vihollisen pois ja tainnuttaa.
+
+## Heittää kohteen annettuun suuntaan tainnutuksella.
+func _throw_target(target: Hero, dir: Vector2) -> void:
+	AudioMgr.play("slam", 0.1, -1.0)
+	arena.shake(0.25)
+	visual.squash(1.25, 0.8)
 	deal_damage_to(target, GRAB_DMG, THROW_KB, dir)
 	target.apply_stun(GRAB_STUN)
 	target.visual.squash(0.7, 1.4)
-	Fx.burst(arena, target.global_position, Palette.glow(hero_color(), 1.5), 14, 300.0, 0.4, 6.0)
+	Fx.burst(arena, target.global_position, Palette.glow(hero_color(), 1.5), 14, 320.0, 0.4, 6.0)
 	Fx.ring(arena, target.global_position, Palette.glow(hero_color(), 1.4), 46.0, 0.35)
 	arena.popup(target.global_position + Vector2(0, -70), "HEITTO!", Palette.glow(hero_color(), 1.4), 18)
+
+
+## Pudottaa pidellyn kohteen heittämättä (tähtäys keskeytyi).
+func _drop_target() -> void:
+	_held_target = null
 
 
 ## Berserkin alueheitto: kaikki lähiviholliset lentävät ilmaan.
@@ -214,14 +286,21 @@ func _attack_control(held: bool, _just_pressed: bool, _just_released: bool,
 func _passive_update(delta: float) -> void:
 	if _berserk > 0.0:
 		_berserk = maxf(_berserk - delta, 0.0)
+	# Jos tartunta oli käynnissä mutta tähtäys keskeytyi (tainnutus, tyrmäys,
+	# jäätyminen tms.) ilman heittoa, pudota kohde. Vapautus/heitto tyhjentää
+	# _held_targetin itse, joten tähän jää vain oikeat keskeytykset.
+	if _held_target != null and _aiming_slot != "a1":
+		_held_target = null
 
 
-## Berserk nollataan tyrmäyksestä ja erän vaihtuessa, jottei se jää päälle.
+## Berserk ja tartunta nollataan tyrmäyksestä ja erän vaihtuessa.
 func _respawn() -> void:
 	super()
 	_berserk = 0.0
+	_held_target = null
 
 
 func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	super(keep_ult_fraction)
 	_berserk = 0.0
+	_held_target = null

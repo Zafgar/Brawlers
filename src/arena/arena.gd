@@ -10,6 +10,15 @@ const ROUND_TIME := 150.0
 const SUDDEN_DEATH_HOLD := 1.5
 const SUDDEN_DEATH_MAX := 45.0
 
+# Lumipallo­efektin torjunta: jäljessä oleva joukkue kerää pisteitä nopeammin,
+# ja liian kauan yhtäjaksoisesti hallussa pidetty reliikki alkaa polttaa
+# kantajaansa -> pakottaa vaihtoja eikä johtoa voi vain lukita.
+const COMEBACK_MAX := 0.85        # jäljessä oleva kerää enintään +85 % nopeammin
+const HEAT_GRACE := 6.0           # armonaika ennen kuin reliikki alkaa polttaa
+const HEAT_TICK := 0.7            # kirousvahingon väli sekunteina
+const HEAT_BASE := 6.0            # kirouksen perusvahinko per tick
+const HEAT_RAMP := 1.6            # lisävahinko per sekunti armonajan jälkeen
+
 # Ydinvalta-pelimuoto
 const KOTH_TARGET := 60.0         # sekuntia ydinalueen hallintaa
 const KOTH_RADIUS := 175.0
@@ -45,6 +54,12 @@ var _sd_hold := 0.0
 var _sd_elapsed := 0.0
 var _last_holder_team := -1
 var _pause_layer: CanvasLayer = null
+
+# Reliikin "kuumeneminen": kuinka kauan sama joukkue on pitänyt yhtäjaksoisesti.
+var _hold_streak_team := -1
+var _hold_streak := 0.0
+var _heat_tick := 0.0
+var _heat_warned := false
 
 
 func _ready() -> void:
@@ -171,7 +186,9 @@ func _physics_process(delta: float) -> void:
 				_round_over(team)
 				return
 		else:
-			relic_points[team] += delta
+			# Takaa-ajobonus: jäljessä oleva joukkue kerää nopeammin.
+			relic_points[team] += _comeback_gain(team, delta)
+			_apply_carrier_heat(carrier, team, delta)
 		carrier.profile.stats.carry_time += delta
 		carrier.profile.add_score(delta * 2.0)
 		carrier.add_ult(delta * 3.0)
@@ -180,6 +197,7 @@ func _physics_process(delta: float) -> void:
 			return
 	else:
 		_sd_hold = 0.0
+		_cool_hold_streak(delta)
 
 	if sudden_death:
 		_sd_elapsed += delta
@@ -263,7 +281,7 @@ func _koth_physics(delta: float) -> void:
 		return
 
 	if holder >= 0:
-		relic_points[holder] += delta
+		relic_points[holder] += _comeback_gain(holder, delta)
 		if relic_points[holder] >= score_target:
 			_round_over(holder)
 			return
@@ -313,6 +331,57 @@ func holder_team() -> int:
 	return -1
 
 
+# --- Lumipallo­efektin torjunta ---
+
+## Pistekertymä takaa-ajobonuksella: mitä enemmän joukkue on jäljessä, sitä
+## nopeammin se kerää pisteitä pitäessään. Johtava joukkue kerää normaalisti.
+func _comeback_gain(team: int, base: float) -> float:
+	var behind: float = relic_points[1 - team] - relic_points[team]
+	if behind <= 0.0:
+		return base
+	return base * (1.0 + minf(behind / score_target, 1.0) * COMEBACK_MAX)
+
+
+## Reliikin kuumeneminen: kun sama joukkue pitää yhtäjaksoisesti liian kauan,
+## reliikki alkaa polttaa kantajaansa kiihtyvällä vahingolla -> pakottaa
+## vaihtoja. Kantajan vaihto omassa joukkueessa ei nollaa (koko joukkueen
+## hallussapito ratkaisee), vain reliikin menetys viholliselle/vapaaksi.
+func _apply_carrier_heat(carrier: Hero, team: int, delta: float) -> void:
+	if team != _hold_streak_team:
+		_hold_streak_team = team
+		_hold_streak = 0.0
+		_heat_tick = 0.0
+		_heat_warned = false
+	_hold_streak += delta
+	if _hold_streak < HEAT_GRACE:
+		return
+	if not _heat_warned:
+		_heat_warned = true
+		popup(carrier.global_position + Vector2(0, -100), "RELIIKKI POLTTAA!", Palette.BAD, 18)
+		if hud != null:
+			hud.show_banner("RELIIKKI POLTTAA",
+				"Liian pitkä yhtäjaksoinen pito vahingoittaa kantajaa — vaihtakaa hallintaa", 2.0)
+		AudioMgr.play("fire", 0.05, -2.0)
+	_heat_tick -= delta
+	if _heat_tick > 0.0:
+		return
+	_heat_tick = HEAT_TICK
+	var dmg: float = HEAT_BASE + (_hold_streak - HEAT_GRACE) * HEAT_RAMP
+	carrier.take_damage(dmg, null)
+	if is_instance_valid(carrier) and carrier.alive:
+		Fx.ring(self, carrier.global_position, Palette.glow(Palette.BAD, 1.3),
+			carrier.radius + 8.0, 0.28, 3.0)
+
+
+## Kun reliikki on vapaana, hallussapito­putki jäähtyy vähitellen (lyhyt pudotus
+## ei nollaa täysin, mutta pidempi vapaana­olo palauttaa reliikin viileäksi).
+func _cool_hold_streak(delta: float) -> void:
+	_hold_streak = maxf(_hold_streak - delta * 1.5, 0.0)
+	if _hold_streak <= 0.0:
+		_hold_streak_team = -1
+		_heat_warned = false
+
+
 # --- Kenttäbuffit ---
 
 func _spawn_buff_wave() -> void:
@@ -350,6 +419,10 @@ func _start_round_intro() -> void:
 	sudden_death = false
 	_sd_hold = 0.0
 	_sd_elapsed = 0.0
+	_hold_streak_team = -1
+	_hold_streak = 0.0
+	_heat_tick = 0.0
+	_heat_warned = false
 	_buff_timer = BUFF_FIRST
 	for child in get_children():
 		if child is FieldBuff:

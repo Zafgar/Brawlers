@@ -20,8 +20,10 @@ const DESCRIPTIONS := {
 	"size": "Montako pelaajaa kummassakin joukkueessa. Tyhjät paikat täytetään boteilla.",
 	"rounds": "Paras kolmesta = kaksi erävoittoa, paras viidestä = kolme.",
 	"bots": "Tasot 1–6. Ylempi taso reagoi nopeammin ja tähtää tarkemmin. Taso 6 on tahallaan epäreilu — se huijaa (kovempi vahinko, sitkeämpi, nopeammat kyvyt).",
-	"mode": "Relic Hold: kanna reliikkiä pisteisiin. Ydinvalta: hallitse siirtyvää ydinaluetta yksin joukkueellasi.",
+	"mode": "Relic Hold: kanna reliikkiä pisteisiin. Jäljessä oleva joukkue kerää nopeammin ja liian kauan pidetty reliikki polttaa kantajaa — johtoa ei voi vain lukita. Ydinvalta: hallitse siirtyvää ydinaluetta yksin joukkueellasi.",
 	"map": "Geargarden: mekaaninen puutarha, jossa on kuljetinhihnoja ja rattaita.",
+	"music_vol": "Taustamusiikin voimakkuus. Sama säätö löytyy myös päävalikon asetuksista.",
+	"sfx_vol": "Äänitehosteiden (iskut, kyvyt, valikkoäänet) voimakkuus. Laske tästä jos äänet ovat liian kovat.",
 }
 
 
@@ -85,6 +87,26 @@ func _ready() -> void:
 			_desc_label.text = MAP_DESC[Game.map_id])
 	_add_row(inner, map_row)
 
+	# Äänenvoimakkuudet suoraan tähän näkymään (sama säätö kuin päävalikossa),
+	# jotta ne on helppo löytää ja säätää myös ottelua aloitettaessa.
+	var music_vol_row := OptionRow.new("Musiikin voimakkuus", _pct_values(),
+		int(round(Game.options.music_volume * 10.0)),
+		func(i):
+			Game.options.music_volume = i / 10.0
+			AudioMgr.set_music_volume(Game.options.music_volume)
+			Game.save_options())
+	music_vol_row.desc_key = "music_vol"
+	_add_row(inner, music_vol_row)
+
+	var sfx_vol_row := OptionRow.new("Äänitehosteiden voimakkuus", _pct_values(),
+		int(round(Game.options.sfx_volume * 10.0)),
+		func(i):
+			Game.options.sfx_volume = i / 10.0
+			AudioMgr.set_sfx_volume(Game.options.sfx_volume)
+			Game.save_options())
+	sfx_vol_row.desc_key = "sfx_vol"
+	_add_row(inner, sfx_vol_row)
+
 	inner.add_child(UiKit.spacer(4))
 	_desc_label = UiKit.dim_label(DESCRIPTIONS["size"], 20)
 	_desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -109,6 +131,14 @@ func _ready() -> void:
 	box.add_child(hint)
 
 	size_row.call_deferred("grab_focus")
+
+
+## Prosenttiarvot 0–100 % kymmenen välein (äänenvoimakkuusrivit).
+func _pct_values() -> Array:
+	var vals: Array = []
+	for i in range(11):
+		vals.append("%d %%" % (i * 10))
+	return vals
 
 
 func _add_row(parent: Control, row: OptionRow) -> void:

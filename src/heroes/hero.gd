@@ -346,6 +346,7 @@ func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 			_aim_len = _aim_range(slot)
 			_aim_color = hero_color()
 			_aim_charge = 1.0
+			_aim_hold(slot, delta)
 			if released:
 				_aiming_slot = ""
 				if cd[slot] <= 0.0 and _can_afford(slot):
@@ -353,7 +354,10 @@ func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 					_spend(slot)
 					_cast_slot(slot)
 		elif _aiming_slot == "" and held and cd[slot] <= 0.0 and _can_afford(slot):
-			_aiming_slot = slot
+			# _aim_begin voi keskeyttää tähtäyksen aloituksen (palauttaa false),
+			# esim. Titaanin tartunta jos edessä ei ole kohdetta.
+			if _aim_begin(slot):
+				_aiming_slot = slot
 		return
 
 	# Välitön (puskuroitu) laukaisu.
@@ -380,6 +384,18 @@ func _aimed_slots() -> Array:
 ## Tähtäysviivan pituus kyvylle (ylikirjoitettavissa sankarikohtaisesti).
 func _aim_range(_slot: String) -> float:
 	return 420.0
+
+
+## Kutsutaan kun tähdättävän kyvyn tähtäys alkaa. Palauta false keskeyttääksesi
+## aloituksen (esim. Titaanin tartunta: ei kohdetta -> ei tähtäystä). Oletus true.
+func _aim_begin(_slot: String) -> bool:
+	return true
+
+
+## Kutsutaan joka framessa tähtäyksen aikana (ennen vapautuksen tarkistusta).
+## Ylikirjoita sankarissa (esim. Titaani pitää kohdetta edessään).
+func _aim_hold(_slot: String, _delta: float) -> void:
+	pass
 
 
 # --- Resurssit: mana / energy / rage ---

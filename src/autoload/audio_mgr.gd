@@ -192,7 +192,7 @@ func _synth_all() -> void:
 
 	# Tehosteet viimeisenä.
 	var sounds := {}
-	sounds["ui_move"] = _tone(0.05, 660.0, 880.0, "sine", 0.005, 0.03, 0.35)
+	sounds["ui_move"] = _tone(0.05, 660.0, 880.0, "sine", 0.005, 0.03, 0.22)
 	sounds["ui_ok"] = _seq([[0.06, 520.0, 520.0, "sine"], [0.09, 780.0, 780.0, "sine"]], 0.5)
 	sounds["ui_back"] = _tone(0.1, 520.0, 340.0, "sine", 0.005, 0.06, 0.4)
 	sounds["count_tick"] = _tone(0.06, 880.0, 880.0, "square", 0.002, 0.04, 0.25)
