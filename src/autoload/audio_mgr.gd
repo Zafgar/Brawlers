@@ -12,7 +12,8 @@ var _players: Array = []
 var _music_players: Array = []      # kaksi soitinta ristihäivytystä varten
 var _music_tracks := {}             # nimi -> AudioStreamWAV
 var _active_idx := 0
-var _current_track := ""
+var _current_track := ""             # haluttu biisi
+var _playing_track := ""             # tällä hetkellä soiva biisi
 var _music_tween: Tween = null
 var _music_enabled := true
 var _thread: Thread = null
@@ -78,12 +79,12 @@ func set_master_volume(v: float) -> void:
 
 
 ## Vaihtaa taustamusiikin (pehmeä ristihäivytys). Sama nimi = ei uudelleenaloitusta.
+## Jos biisiä ei ole vielä syntetisoitu, se käynnistyy heti kun se valmistuu.
 func play_music(track: String) -> void:
-	if track == _current_track and not _music_tracks.is_empty() \
-			and _music_players[_active_idx].playing:
-		return
 	_current_track = track
-	if _music_enabled and _music_tracks.has(track):
+	if not _music_enabled:
+		return
+	if _music_tracks.has(track) and _playing_track != track:
 		_crossfade_to(track)
 
 
@@ -100,6 +101,7 @@ func _crossfade_to(track: String) -> void:
 	_music_tween.parallel().tween_property(cur, "volume_db", -40.0, 0.9)
 	_music_tween.chain().tween_callback(cur.stop)
 	_active_idx = 1 - _active_idx
+	_playing_track = track
 
 
 func set_music_enabled(enabled: bool) -> void:
@@ -107,6 +109,7 @@ func set_music_enabled(enabled: bool) -> void:
 	if not enabled:
 		for mp in _music_players:
 			mp.stop()
+		_playing_track = ""
 	elif _current_track != "" and _music_tracks.has(_current_track):
 		_crossfade_to(_current_track)
 
@@ -114,6 +117,28 @@ func set_music_enabled(enabled: bool) -> void:
 # --- Synteesi ---
 
 func _synth_all() -> void:
+	# Musiikki syntetisoidaan ENSIN, ja päävalikon biisi toimitetaan heti
+	# omanaan — näin valikko soi lähes välittömästi eikä vasta sitten kun
+	# kaikki ~40 tehostetta on ehditty laskea taustasäikeessä.
+	# Menu: rauhallinen, lämmin (Am-F-C-G).
+	var menu_wav := _to_wav(_make_track(
+		[110.0, 87.31, 130.81, 98.0], [true, false, false, false], 2.6, "tri", 0.0, 0.9), true)
+	call_deferred("_music_ready", {"menu": menu_wav})
+
+	# Loput biisit heti perään.
+	var music := {}
+	# Lobby: reipas ja odottava (C-G-Am-F, kevyt rytmi).
+	music["lobby"] = _to_wav(_make_track(
+		[130.81, 98.0, 110.0, 87.31], [false, false, true, false], 2.0, "square", 0.45, 0.95), true)
+	# Taistelu 1: ajava ja jännittävä (Em-C-G-D).
+	music["battle"] = _to_wav(_make_track(
+		[82.41, 130.81, 98.0, 146.83], [true, false, false, false], 1.6, "saw", 1.0, 1.0), true)
+	# Taistelu 2: vaihtelua (Am-F-G-Em).
+	music["battle2"] = _to_wav(_make_track(
+		[110.0, 87.31, 98.0, 82.41], [true, false, false, true], 1.6, "saw", 1.0, 1.0), true)
+	call_deferred("_music_ready", music)
+
+	# Tehosteet viimeisenä.
 	var sounds := {}
 	sounds["ui_move"] = _tone(0.05, 660.0, 880.0, "sine", 0.005, 0.03, 0.35)
 	sounds["ui_ok"] = _seq([[0.06, 520.0, 520.0, "sine"], [0.09, 780.0, 780.0, "sine"]], 0.5)
@@ -277,32 +302,24 @@ func _synth_all() -> void:
 	var result := {}
 	for key in sounds:
 		result[key] = _to_wav(sounds[key], false)
-
-	# Useita erilaisia taustabiisejä eri näkymiin.
-	var music := {}
-	# Menu: rauhallinen, lämmin (Am-F-C-G).
-	music["menu"] = _to_wav(_make_track(
-		[110.0, 87.31, 130.81, 98.0], [true, false, false, false], 2.6, "tri", 0.0, 0.9), true)
-	# Lobby: reipas ja odottava (C-G-Am-F, kevyt rytmi).
-	music["lobby"] = _to_wav(_make_track(
-		[130.81, 98.0, 110.0, 87.31], [false, false, true, false], 2.0, "square", 0.45, 0.95), true)
-	# Taistelu 1: ajava ja jännittävä (Em-C-G-D).
-	music["battle"] = _to_wav(_make_track(
-		[82.41, 130.81, 98.0, 146.83], [true, false, false, false], 1.6, "saw", 1.0, 1.0), true)
-	# Taistelu 2: vaihtelua (Am-F-G-Em).
-	music["battle2"] = _to_wav(_make_track(
-		[110.0, 87.31, 98.0, 82.41], [true, false, false, true], 1.6, "saw", 1.0, 1.0), true)
-	call_deferred("_synth_done", result, music)
+	call_deferred("_sfx_ready", result)
 
 
-func _synth_done(streams: Dictionary, music: Dictionary) -> void:
+## Kutsutaan pääsäikeessä kun uusia biisejä valmistuu. Käynnistää halutun
+## biisin heti kun se on saatavilla (ei odota kaikkia).
+func _music_ready(tracks: Dictionary) -> void:
+	for key in tracks:
+		_music_tracks[key] = tracks[key]
+	if not _music_enabled:
+		return
+	if _current_track == "":
+		_current_track = "menu"
+	if _music_tracks.has(_current_track) and _playing_track != _current_track:
+		_crossfade_to(_current_track)
+
+
+func _sfx_ready(streams: Dictionary) -> void:
 	_streams = streams
-	_music_tracks = music
-	if _music_enabled:
-		if _current_track == "":
-			_current_track = "menu"
-		if _music_tracks.has(_current_track):
-			_crossfade_to(_current_track)
 
 
 ## Rakentaa luupattavan biisin: bassolinja + arpeggio + valinnainen rytmi.

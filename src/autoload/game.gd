@@ -27,6 +27,7 @@ var options := {
 	"volume": 0.85,
 	"music": true,
 	"shake": true,
+	"fullscreen": true,
 }
 
 var main: Node = null
@@ -43,15 +44,57 @@ func boot(root: Node) -> void:
 
 
 func _register_actions() -> void:
-	if InputMap.has_action("pause"):
-		return
-	InputMap.add_action("pause")
-	var key := InputEventKey.new()
-	key.physical_keycode = KEY_ESCAPE
-	InputMap.action_add_event("pause", key)
-	var btn := InputEventJoypadButton.new()
-	btn.button_index = JOY_BUTTON_START
-	InputMap.action_add_event("pause", btn)
+	if not InputMap.has_action("pause"):
+		InputMap.add_action("pause")
+		var key := InputEventKey.new()
+		key.physical_keycode = KEY_ESCAPE
+		InputMap.action_add_event("pause", key)
+		var btn := InputEventJoypadButton.new()
+		btn.button_index = JOY_BUTTON_START
+		InputMap.action_add_event("pause", btn)
+
+	# Varmista että peliohjaimella voi valita ja peruuttaa valikoissa.
+	# Godotin oletukset eivät kaikissa versioissa sisällä ohjaimen
+	# kasvopainikkeita, jolloin navigointi toimii mutta valinta ei.
+	_ensure_pad_button("ui_accept", JOY_BUTTON_A)     # Risti = valitse
+	_ensure_pad_button("ui_cancel", JOY_BUTTON_B)     # Ympyrä = takaisin
+
+	# Koko ruudun vaihto (F11).
+	if not InputMap.has_action("toggle_fullscreen"):
+		InputMap.add_action("toggle_fullscreen")
+		var f := InputEventKey.new()
+		f.physical_keycode = KEY_F11
+		InputMap.action_add_event("toggle_fullscreen", f)
+
+
+## Lisää ohjaimen painikkeen toimintoon vain jos sitä ei jo ole (ei tuplia).
+func _ensure_pad_button(action: String, button: int) -> void:
+	if not InputMap.has_action(action):
+		InputMap.add_action(action)
+	for ev in InputMap.action_get_events(action):
+		var jb := ev as InputEventJoypadButton
+		if jb != null and jb.button_index == button:
+			return
+	var b := InputEventJoypadButton.new()
+	b.button_index = button
+	InputMap.action_add_event(action, b)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_fullscreen"):
+		toggle_fullscreen()
+
+
+func toggle_fullscreen() -> void:
+	options.fullscreen = not options.fullscreen
+	_apply_fullscreen()
+	save_options()
+
+
+func _apply_fullscreen() -> void:
+	var mode: int = DisplayServer.WINDOW_MODE_FULLSCREEN if options.fullscreen \
+		else DisplayServer.WINDOW_MODE_WINDOWED
+	DisplayServer.window_set_mode(mode)
 
 
 func _swap(node: Node) -> void:
@@ -136,6 +179,7 @@ func load_options() -> void:
 	options.volume = cfg.get_value("audio", "volume", options.volume)
 	options.music = cfg.get_value("audio", "music", options.music)
 	options.shake = cfg.get_value("video", "shake", options.shake)
+	options.fullscreen = cfg.get_value("video", "fullscreen", options.fullscreen)
 
 
 func save_options() -> void:
@@ -143,9 +187,11 @@ func save_options() -> void:
 	cfg.set_value("audio", "volume", options.volume)
 	cfg.set_value("audio", "music", options.music)
 	cfg.set_value("video", "shake", options.shake)
+	cfg.set_value("video", "fullscreen", options.fullscreen)
 	cfg.save(OPTIONS_PATH)
 
 
 func apply_options() -> void:
 	AudioMgr.set_master_volume(options.volume)
 	AudioMgr.set_music_enabled(options.music)
+	_apply_fullscreen()

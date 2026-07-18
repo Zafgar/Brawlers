@@ -198,6 +198,15 @@ func _open_settings() -> void:
 		Game.options.shake = on)
 	box.add_child(shake_check)
 
+	var fs_check := CheckButton.new()
+	fs_check.text = "Koko ruutu  (F11)"
+	fs_check.button_pressed = Game.options.fullscreen
+	fs_check.add_theme_font_size_override("font_size", 24)
+	fs_check.toggled.connect(func(on):
+		Game.options.fullscreen = on
+		Game.apply_options())
+	box.add_child(fs_check)
+
 	box.add_child(UiKit.spacer(10))
 	var done_btn := UiKit.button("Valmis", func(): _close_settings())
 	box.add_child(done_btn)

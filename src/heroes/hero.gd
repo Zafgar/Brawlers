@@ -16,6 +16,7 @@ const REGEN_PER_SEC := 14.0
 const RESPAWN_TIME := 4.5
 const CARRY_SPEED_MULT := 0.82
 const ASSIST_WINDOW := 5.0
+const INPUT_BUFFER := 0.15           # syötepuskuri: kyky laukeaa vaikka nappi painettiin hieman etuajassa
 
 var arena = null                    # Arena, asetetaan ennen add_childia
 var profile: PlayerProfile = null
@@ -66,6 +67,7 @@ var dash_velocity := Vector2.ZERO
 var visual: HeroVisual = null
 var _recent_damagers: Array = []    # [{hero, time}]
 var _ult_ready_announced := false
+var _buf := {"a1": 0.0, "a2": 0.0, "ult": 0.0, "dodge": 0.0}  # syötepuskurin ajastimet
 
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
@@ -137,6 +139,11 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	move_dir = mv
 
+	# Syötepuskurit: painallukset jäävät hetkeksi muistiin, joten kyky laukeaa
+	# heti kun jäähdytys sallii vaikka nappi painettiin hiukan etuajassa tai
+	# tainnutuksen aikana. Tämä tekee ohjaimesta paljon luotettavamman.
+	_buffer_inputs(delta)
+
 	# Toiminnot
 	if stun_timer <= 0.0:
 		_attack_control(
@@ -144,20 +151,24 @@ func _physics_process(delta: float) -> void:
 			controller.attack_just_pressed(),
 			controller.attack_just_released(),
 			aim, delta)
-		if not carrying:
-			if controller.ability1_just() and cd.a1 <= 0.0:
-				cd.a1 = cd_max.a1
-				_ability1(aim)
-			if controller.ability2_just() and cd.a2 <= 0.0:
-				cd.a2 = cd_max.a2
-				_ability2(aim)
-			if controller.ult_just() and ult_charge >= 100.0:
-				ult_charge = 0.0
-				_ult_ready_announced = false
-				AudioMgr.play("ult")
-				arena.shake(0.35)
-				_ultimate(aim)
-		if controller.dodge_just() and cd.dodge <= 0.0:
+		# Kyvyt toimivat myös reliikkiä kannettaessa (kuten väistökin).
+		if _buf.a1 > 0.0 and cd.a1 <= 0.0:
+			_buf.a1 = 0.0
+			cd.a1 = cd_max.a1
+			_ability1(aim)
+		if _buf.a2 > 0.0 and cd.a2 <= 0.0:
+			_buf.a2 = 0.0
+			cd.a2 = cd_max.a2
+			_ability2(aim)
+		if _buf.ult > 0.0 and ult_charge >= 100.0:
+			_buf.ult = 0.0
+			ult_charge = 0.0
+			_ult_ready_announced = false
+			AudioMgr.play("ult")
+			arena.shake(0.35)
+			_ultimate(aim)
+		if _buf.dodge > 0.0 and cd.dodge <= 0.0:
+			_buf.dodge = 0.0
 			cd.dodge = cd_max.dodge * (1.5 if carrying else 1.0)
 			var dodge_dir := mv if mv.length() > 0.2 else aim
 			_dodge_action(dodge_dir.normalized())
@@ -193,6 +204,23 @@ func _tick_status(delta: float) -> void:
 	shield_timer -= delta
 	if shield_timer <= 0.0:
 		shield_hp = 0.0
+
+
+## Lukee ohjaimen kykypainallukset puskuriin ja vanhentaa vanhat painallukset.
+## Painallus säilyy INPUT_BUFFER-sekuntia, joten se ei huku framejen välissä.
+func _buffer_inputs(delta: float) -> void:
+	_buf.a1 = maxf(float(_buf.a1) - delta, 0.0)
+	_buf.a2 = maxf(float(_buf.a2) - delta, 0.0)
+	_buf.ult = maxf(float(_buf.ult) - delta, 0.0)
+	_buf.dodge = maxf(float(_buf.dodge) - delta, 0.0)
+	if controller.ability1_just():
+		_buf.a1 = INPUT_BUFFER
+	if controller.ability2_just():
+		_buf.a2 = INPUT_BUFFER
+	if controller.ult_just():
+		_buf.ult = INPUT_BUFFER
+	if controller.dodge_just():
+		_buf.dodge = INPUT_BUFFER
 
 
 ## Oletushyökkäyskontrolli: liipaisin pohjassa -> ammu aina kun cd sallii.
