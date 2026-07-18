@@ -12,6 +12,17 @@ func _init() -> void:
 	kb_resist = 0.2
 
 
+## Raivo: kertyy taistelusta ja purkautuu vesikykyihin. Mitä kovemmin
+## taistelet, sitä useammin voit syöksyä ja lyödä aaltoja.
+func _setup_resource() -> void:
+	res_type = "rage"
+	res_max = 100.0
+	res = 0.0
+	res_cost = {"basic": 0.0, "a1": 30.0, "a2": 40.0, "dodge": 0.0}
+	cd_max.a1 = 0.5
+	cd_max.a2 = 0.6
+
+
 ## Perushyökkäys: pitkä kapea keihäspisto.
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()

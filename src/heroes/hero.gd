@@ -489,6 +489,8 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 		add_ult(dealt * 0.22)
 		if res_type == "rage":
 			gain_res(dealt * 0.4)
+		elif res_type == "energy":
+			gain_res(dealt * 0.2)   # energia kertyy myös hyökkäämisestä (assassinit)
 	return dealt
 
 

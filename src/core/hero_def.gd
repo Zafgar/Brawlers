@@ -74,7 +74,7 @@ const HEROES := {
 		"speed": 360.0,
 		"ratings": {"kesto": 1, "liike": 5, "vahinko": 5, "tuki": 1},
 		"weapon": "Kaksi valomiekkaa",
-		"desc": "Välähdys pimeässä. Iskee, katoaa ja iskee taas.",
+		"desc": "Välähdys pimeässä. Energia ruokkii teleportteja — hyökkääminen antaa lisää liikkuvuutta.",
 		"color": Color("b48aff"),
 		"color_b": Color("5b2f9e"),
 		"abilities": {
@@ -131,7 +131,7 @@ const HEROES := {
 		"speed": 285.0,
 		"ratings": {"kesto": 5, "liike": 1, "vahinko": 2, "tuki": 3},
 		"weapon": "Kivihansikkaat",
-		"desc": "Kävelevä kallio. Rakentaa muureja ja jyrää esteet.",
+		"desc": "Kävelevä kallio. Kerää raivoa taistelusta ja jyrää muureja ja tömistyksiä sitä tiheämmin.",
 		"color": Color("9aa3ad"),
 		"color_b": Color("4f5a66"),
 		"abilities": {
@@ -150,7 +150,7 @@ const HEROES := {
 		"speed": 325.0,
 		"ratings": {"kesto": 2, "liike": 3, "vahinko": 5, "tuki": 1},
 		"weapon": "Sähkökelat",
-		"desc": "Elävä ukkospilvi. Salamat hyppivät vihollisesta toiseen.",
+		"desc": "Elävä ukkospilvi. Käyttää manaa — salamoi tiheään kunnes mana loppuu.",
 		"color": Color("ffe14a"),
 		"color_b": Color("8f7600"),
 		"abilities": {
@@ -188,7 +188,7 @@ const HEROES := {
 		"speed": 350.0,
 		"ratings": {"kesto": 1, "liike": 5, "vahinko": 5, "tuki": 1},
 		"weapon": "Varjokiekot",
-		"desc": "Savuun katoava kiusankappale. Jättää jälkeensä vain harhakuvan.",
+		"desc": "Savuun katoava kiusankappale. Energia ruokkii naamioitumisen ja paluukiekot.",
 		"color": Color("9089b8"),
 		"color_b": Color("3f3a63"),
 		"abilities": {
@@ -207,7 +207,7 @@ const HEROES := {
 		"speed": 315.0,
 		"ratings": {"kesto": 4, "liike": 4, "vahinko": 3, "tuki": 2},
 		"weapon": "Vesikeihäs",
-		"desc": "Virtaava taistelija. Liukuu vesivanoja pitkin taisteluun.",
+		"desc": "Virtaava taistelija. Kerää raivoa taistelusta ja purkaa sen vesikykyihin.",
 		"color": Color("4ad4ff"),
 		"color_b": Color("176d94"),
 		"abilities": {

@@ -12,6 +12,19 @@ func _init() -> void:
 	radius = 22.0
 
 
+## Energia: kyvyt maksavat energiaa, joka palautuu tasaisesti JA kertyy
+## osumista. Voit teleporttailla ja viuhkoa aggressiivisesti niin kauan kuin
+## energiaa riittää — hyökkääminen ruokkii lisää liikkuvuutta.
+func _setup_resource() -> void:
+	res_type = "energy"
+	res_max = 100.0
+	res = 100.0
+	res_regen = 16.0
+	res_cost = {"basic": 0.0, "a1": 42.0, "a2": 30.0, "dodge": 0.0}
+	cd_max.a1 = 0.6
+	cd_max.a2 = 0.5
+
+
 ## Perushyökkäys: nopea valoviilto. Selkäänisku tekee lisävahinkoa.
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()

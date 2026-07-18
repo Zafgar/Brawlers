@@ -24,6 +24,18 @@ func _aim_range(_slot: String) -> float:
 	return 150.0
 
 
+## Raivo: kertyy taistelusta (myös osumia ottaessa, koska tankki). Purkautuu
+## muureihin ja tömistyksiin — vihainen kallio jyrää sitä useammin mitä
+## kovemmin taistelu käy.
+func _setup_resource() -> void:
+	res_type = "rage"
+	res_max = 100.0
+	res = 0.0
+	res_cost = {"basic": 0.0, "a1": 45.0, "a2": 35.0, "dodge": 0.0}
+	cd_max.a1 = 1.0
+	cd_max.a2 = 0.7
+
+
 ## Perushyökkäys: raskas murskaava isku.
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()

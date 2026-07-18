@@ -7,6 +7,18 @@ func _init() -> void:
 	radius = 23.0
 
 
+## Mana: salamat maksavat manaa mutta latautuvat lähes heti — voit spämmätä
+## ketjusalamoja ja kenttiä kunnes mana loppuu. Kipinä (perus) on ilmainen.
+func _setup_resource() -> void:
+	res_type = "mana"
+	res_max = 100.0
+	res = 100.0
+	res_regen = 15.0
+	res_cost = {"basic": 0.0, "a1": 30.0, "a2": 34.0, "dodge": 0.0}
+	cd_max.a1 = 0.6
+	cd_max.a2 = 0.6
+
+
 ## Perushyökkäys: kipinä, joka hyppää lähimpään toiseen viholliseen.
 func _basic(dir: Vector2) -> void:
 	AudioMgr.play("zap", 0.15, -3.0)
