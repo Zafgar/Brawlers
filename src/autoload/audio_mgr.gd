@@ -231,6 +231,10 @@ func _synth_all() -> void:
 		_tone(0.3, 1320.0, 1320.0, "sine", 0.005, 0.25, 0.3),
 		_tone(0.3, 1980.0, 1980.0, "sine", 0.01, 0.25, 0.15), 0.03)
 	sounds["score"] = _tone(0.08, 1100.0, 1100.0, "sine", 0.003, 0.06, 0.3)
+	# Kimmoke: pomppiva boing (Sparkringin bumperit)
+	sounds["bump"] = _mix2(
+		_tone(0.14, 260.0, 760.0, "sine", 0.004, 0.1, 0.4),
+		_tone(0.1, 760.0, 380.0, "tri", 0.004, 0.08, 0.18), 0.05)
 	# Vaahtopallo: pehmeä thwip (Scoutin kivääri)
 	sounds["pop"] = _mix2(
 		_tone(0.06, 900.0, 400.0, "sine", 0.002, 0.04, 0.26),

@@ -77,6 +77,8 @@ func _make_map() -> MapBase:
 			return MapMoon.new()
 		"splashport":
 			return MapSplash.new()
+		"sparkring":
+			return MapSpark.new()
 		_:
 			return MapGear.new()
 
