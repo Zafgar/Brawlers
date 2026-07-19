@@ -13,6 +13,9 @@ const LEAF := Color("3f8f4e")
 const LANE := Color("3a3324")
 const LANE_EDGE := Color("54492f")
 const RIVER := Color("1e4a5c")
+const GOLD := Color("e0c23c")
+const CLAW := Color("e08a3c")
+const BOSS_COL := Color("b64ad6")
 
 # Viidakko (yläpuoli)
 var _boss := Vector2(0, -800)
@@ -128,6 +131,9 @@ func _draw() -> void:
 	draw_rect(Rect2(-half - Vector2(600, 600), map_size + Vector2(1200, 1200)), CANOPY)
 	draw_rect(Rect2(-half, map_size), FLOOR)
 
+	# Joukkuepuolten kevyt aluevari (sininen vasen, oranssi oikea).
+	_draw_side_tint(half)
+
 	# Viidakon laikutus (yläpuoli).
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 81724
@@ -135,28 +141,35 @@ func _draw() -> void:
 		var p := Vector2(rng.randf_range(-half.x, half.x), rng.randf_range(-half.y, 120.0))
 		draw_circle(p, rng.randf_range(60.0, 200.0), Palette.with_alpha(FLOOR_ALT, 0.5))
 
-	# Jokivyö erottaa viidakon ja linjan (n. y=200).
+	# Koristepensaat viidakkoon (ei törmäystä).
+	_draw_foliage(half)
+
+	# Jokivyö erottaa viidakon ja linjan (n. y=210), ylityskivet gank-kohdissa.
 	_draw_river(half)
 
-	# LINJA alapuolelle: leveä päällystetty kaista tukikohtien välillä.
+	# LINJA alapuolelle: leveä päällystetty kaista, reunukset ja suuntachevronit.
 	_draw_lane()
 
-	# Nexus-alustat ja tornipohjat (rakennukset itse piirtyvät entiteetteinä).
-	_platform(_nexus_blue, 150.0, Palette.team(0))
-	_platform(_nexus_orange, 150.0, Palette.team(1))
-	for t in _tower_blue:
-		_platform(t, 78.0, Palette.team(0))
-	for t in _tower_orange:
-		_platform(t, 78.0, Palette.team(1))
+	# Roihut linjan varrella (tunnelmaa).
+	_draw_braziers()
 
-	# Viidakon leirimerkit ja pomomonttu (yläpuoli).
-	_camp_marker(_dmg_left, Color("e08a3c"))
-	_camp_marker(_dmg_right, Color("e08a3c"))
-	_camp_marker(_points, Color("e0c23c"))
+	# Nexus-alustat ja tornipohjat (rakennukset itse piirtyvät entiteetteinä).
+	_platform(_nexus_blue, 150.0, Palette.team(0), true)
+	_platform(_nexus_orange, 150.0, Palette.team(1), true)
+	for t in _tower_blue:
+		_platform(t, 78.0, Palette.team(0), false)
+	for t in _tower_orange:
+		_platform(t, 78.0, Palette.team(1), false)
+
+	# Viidakon leirimerkit (tyyppikohtainen ikoni) ja pomomonttu.
+	_camp_marker(_dmg_left, CLAW, "dmg")
+	_camp_marker(_dmg_right, CLAW, "dmg")
+	_camp_marker(_points, GOLD, "points")
 	_boss_pit(_boss)
 
-	# Sisaseinat (kivi + lehtiharja) esteiden ja latvuston alle.
+	# Sisaseinat (kivi + lehtiharja) ja gank-aukkojen hehkumerkit.
 	_draw_moba_walls()
+	_draw_gank_markers()
 
 	# Latvuston lehtiläikät esteiden päällä.
 	for pillar in pillars:
@@ -170,52 +183,181 @@ func _draw() -> void:
 	_draw_motes(80, Color("bfe6a0"), 14.0, 4343)
 
 
+## Kevyt joukkueväri kummallekin puolelle + hehku tukikohdista (luettavuus).
+func _draw_side_tint(half: Vector2) -> void:
+	var bt: Color = Palette.team(0)
+	var ot: Color = Palette.team(1)
+	draw_rect(Rect2(-half.x, -half.y, half.x, map_size.y), Palette.with_alpha(bt, 0.045))
+	draw_rect(Rect2(0.0, -half.y, half.x, map_size.y), Palette.with_alpha(ot, 0.045))
+	for k in range(3):
+		var rr: float = 1000.0 - float(k) * 240.0
+		draw_circle(_nexus_blue, rr, Palette.with_alpha(bt, 0.03))
+		draw_circle(_nexus_orange, rr, Palette.with_alpha(ot, 0.03))
+
+
+## Koristepensaat viidakkoon (vain yläpuoli, ei törmäystä).
+func _draw_foliage(half: Vector2) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 559
+	for i in range(26):
+		var p := Vector2(rng.randf_range(-half.x + 220.0, half.x - 220.0),
+			rng.randf_range(-half.y + 200.0, 60.0))
+		var s := rng.randf_range(14.0, 30.0)
+		draw_circle(p + Vector2(0, 5), s + 3.0, Color(0.03, 0.09, 0.05, 0.5))
+		draw_circle(p, s, Palette.darker(LEAF, 0.55))
+		draw_circle(p + Vector2(-s * 0.3, -s * 0.3), s * 0.5, Palette.with_alpha(LEAF, 0.4))
+
+
 func _draw_river(half: Vector2) -> void:
 	var y := 210.0
-	var band := 90.0
-	draw_rect(Rect2(-half.x, y - band * 0.5, map_size.x, band), Palette.with_alpha(RIVER, 0.5))
+	var band := 110.0
+	# Tummat rannat.
+	draw_rect(Rect2(-half.x, y - band * 0.5 - 10.0, map_size.x, 10.0),
+		Palette.with_alpha(Palette.darker(RIVER, 0.5), 0.6))
+	draw_rect(Rect2(-half.x, y + band * 0.5, map_size.x, 10.0),
+		Palette.with_alpha(Palette.darker(RIVER, 0.5), 0.6))
+	# Vesi.
+	draw_rect(Rect2(-half.x, y - band * 0.5, map_size.x, band), Palette.with_alpha(RIVER, 0.55))
+	# Virtausviivat (animoitu vaakadash).
 	for i in range(3):
-		var yy := y - band * 0.5 + band * (float(i) + 0.5) / 3.0
-		draw_line(Vector2(-half.x, yy), Vector2(half.x, yy),
-			Palette.with_alpha(Palette.glow(RIVER, 1.3), 0.3), 2.0)
+		var yy: float = y - band * 0.3 + band * 0.3 * float(i)
+		var scroll: float = fmod(_time * 60.0 + float(i) * 90.0, 300.0)
+		var x: float = -half.x + scroll
+		while x < half.x:
+			draw_line(Vector2(x, yy), Vector2(x + 90.0, yy),
+				Palette.with_alpha(Palette.glow(RIVER, 1.4), 0.22), 2.0)
+			x += 300.0
+	# Ylityskivet gank-kohdissa (yhdistavat viidakkopuolet joen yli).
+	for gx in [-1150.0, 0.0, 1150.0]:
+		for s in [-1.0, 0.0, 1.0]:
+			var sp: Vector2 = Vector2(gx + s * 40.0, y + s * 6.0)
+			draw_circle(sp, 17.0, Palette.darker(Color("6b5a3a"), 0.2))
+			draw_circle(sp + Vector2(-4, -4), 8.0, Palette.with_alpha(Color("8a774f"), 0.7))
 
 
 func _draw_lane() -> void:
 	var pts := lane_path()
-	for i in range(pts.size() - 1):
-		draw_line(pts[i], pts[i + 1], LANE_EDGE, 150.0)
-		draw_line(pts[i], pts[i + 1], LANE, 128.0)
-	# Keskiviivan katkoviiva.
+	# Leveä tumma reunus + tie kahtena sävynä.
 	for i in range(pts.size() - 1):
 		var a: Vector2 = pts[i]
 		var b: Vector2 = pts[i + 1]
+		draw_line(a, b, Palette.darker(LANE, 0.5), 168.0)
+		draw_line(a, b, LANE_EDGE, 150.0)
+		draw_line(a, b, LANE, 128.0)
+	# Keskiviivan katkoviiva.
+	for i in range(pts.size() - 1):
+		var a2: Vector2 = pts[i]
+		var b2: Vector2 = pts[i + 1]
 		var segs := 6
 		for s in range(segs):
 			if s % 2 == 0:
-				var p0: Vector2 = a.lerp(b, float(s) / segs)
-				var p1: Vector2 = a.lerp(b, float(s + 1) / segs)
+				var p0: Vector2 = a2.lerp(b2, float(s) / segs)
+				var p1: Vector2 = a2.lerp(b2, float(s + 1) / segs)
 				draw_line(p0, p1, Palette.with_alpha(LANE_EDGE, 0.6), 3.0)
+	# Suuntachevronit: sininen tyontaa oikealle, oranssi vasemmalle.
+	_lane_chevrons(pts)
+	# Keskikohdan tunnus (kohtaamispiste).
+	var mid := Vector2(0, 680)
+	draw_arc(mid, 46.0, 0.0, TAU, 28, Palette.with_alpha(Color("cdbb7a"), 0.4), 3.0)
+	draw_arc(mid, 30.0, _time * 0.6, _time * 0.6 + TAU * 0.75, 22,
+		Palette.with_alpha(Color("e8d79a"), 0.4), 2.0)
+
+
+func _lane_chevrons(pts: Array) -> void:
+	for i in range(pts.size() - 1):
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var seg: Vector2 = b - a
+		var count: int = maxi(int(seg.length() / 160.0), 1)
+		for j in range(count):
+			var tt: float = (float(j) + 0.5) / float(count)
+			var p: Vector2 = a.lerp(b, tt)
+			var right_side: bool = p.x >= 0.0
+			var arrow: Vector2 = Vector2.LEFT if right_side else Vector2.RIGHT
+			var col: Color = Palette.team(1) if right_side else Palette.team(0)
+			_chevron(p, arrow, 24.0, Palette.with_alpha(col, 0.22))
+
+
+func _chevron(p: Vector2, dir: Vector2, size: float, col: Color) -> void:
+	var perp: Vector2 = dir.orthogonal()
+	var tip: Vector2 = p + dir * size
+	var l: Vector2 = p - dir * size * 0.4 + perp * size
+	var r: Vector2 = p - dir * size * 0.4 - perp * size
+	draw_line(l, tip, col, 5.0)
+	draw_line(r, tip, col, 5.0)
+
+
+## Roihut linjan varrella tornien kohdilla (tunnelmaa, ei törmäystä).
+func _draw_braziers() -> void:
+	var spots := [Vector2(-760, 560), Vector2(-1480, 620),
+		Vector2(760, 560), Vector2(1480, 620)]
+	for sp in spots:
+		var p: Vector2 = sp
+		var f: float = 0.6 + 0.4 * sin(_time * 8.0 + p.x * 0.05)
+		draw_circle(p, 11.0, Color("241a12"))
+		draw_circle(p + Vector2(0, -6), 8.0 * f, Palette.with_alpha(Color("ff9a3c"), 0.7))
+		draw_circle(p + Vector2(0, -9), 4.0 * f, Palette.with_alpha(Color("ffe08a"), 0.85))
 
 
 ## Rakennuksen alusta (tornit/nexus piirtyvät päälle entiteetteinä).
-func _platform(pos: Vector2, r: float, team_col: Color) -> void:
-	draw_circle(pos, r, Palette.with_alpha(Color("22201a"), 0.9))
-	draw_arc(pos, r, 0.0, TAU, 40, Palette.with_alpha(team_col, 0.5), 4.0)
-	draw_circle(pos, r * 0.7, Palette.with_alpha(team_col, 0.08))
+func _platform(pos: Vector2, r: float, team_col: Color, is_nexus: bool) -> void:
+	draw_circle(pos, r * 1.15, Palette.with_alpha(team_col, 0.06))
+	draw_circle(pos, r, Palette.with_alpha(Color("22201a"), 0.92))
+	draw_circle(pos, r * 0.9, Palette.with_alpha(Palette.darker(team_col, 0.6), 0.16))
+	# Riimutikut kehalla.
+	var ticks := 16 if is_nexus else 10
+	for i in range(ticks):
+		var a: float = TAU * float(i) / float(ticks)
+		var d := Vector2(cos(a), sin(a))
+		draw_line(pos + d * (r * 0.82), pos + d * (r * 0.96),
+			Palette.with_alpha(team_col, 0.35), 2.0)
+	draw_arc(pos, r, 0.0, TAU, 48, Palette.with_alpha(team_col, 0.6), 4.0)
+	draw_arc(pos, r * 0.72, 0.0, TAU, 40, Palette.with_alpha(team_col, 0.28), 2.0)
+	if is_nexus:
+		draw_arc(pos, r * 0.5, _time * 0.5, _time * 0.5 + TAU * 0.7, 30,
+			Palette.with_alpha(Palette.glow(team_col, 1.3), 0.4), 3.0)
+	draw_circle(pos, r * 0.12, Palette.with_alpha(team_col, 0.22))
 
 
-func _camp_marker(pos: Vector2, color: Color) -> void:
+func _camp_marker(pos: Vector2, color: Color, kind: String) -> void:
 	draw_circle(pos, 116.0, Palette.with_alpha(color, 0.08))
 	draw_arc(pos, 106.0, 0.0, TAU, 40, Palette.with_alpha(color, 0.5), 3.0)
 	draw_arc(pos, 90.0, _time * 0.5, _time * 0.5 + TAU * 0.7, 30,
 		Palette.with_alpha(Palette.glow(color, 1.3), 0.5), 2.0)
+	if kind == "points":
+		# Timantti + kolikkorengas (pistereiri).
+		var g: Color = Palette.glow(color, 1.2)
+		draw_colored_polygon(PackedVector2Array([
+			pos + Vector2(0, -34), pos + Vector2(24, 0),
+			pos + Vector2(0, 34), pos + Vector2(-24, 0)]), Palette.with_alpha(g, 0.5))
+		draw_arc(pos, 18.0, 0.0, TAU, 18, Palette.with_alpha(Color("fff2c0"), 0.6), 2.0)
+	else:
+		# Kynsimerkit (vahinkoleiri).
+		for s in [-1.0, 0.0, 1.0]:
+			var off := Vector2(s * 26.0, -2.0)
+			draw_line(pos + off + Vector2(-11, -22), pos + off + Vector2(6, 24),
+				Palette.with_alpha(Palette.glow(color, 1.2), 0.55), 4.0)
 
 
 func _boss_pit(pos: Vector2) -> void:
-	draw_circle(pos, 200.0, Palette.with_alpha(Color("2a1030"), 0.55))
-	draw_arc(pos, 190.0, 0.0, TAU, 52, Palette.with_alpha(Color("b64ad6"), 0.55), 4.0)
-	draw_arc(pos, 165.0, -_time * 0.4, -_time * 0.4 + TAU, 52,
-		Palette.with_alpha(Palette.glow(Color("b64ad6"), 1.2), 0.35), 2.0)
+	# Tumma vortex.
+	draw_circle(pos, 210.0, Palette.with_alpha(Color("2a1030"), 0.6))
+	draw_circle(pos, 150.0, Palette.with_alpha(Color("140720"), 0.5))
+	# Piikikas riimurengas (hitaasti pyorien).
+	var ring := PackedVector2Array()
+	var spikes := 16
+	for i in range(spikes * 2):
+		var a: float = TAU * float(i) / float(spikes * 2) - _time * 0.25
+		var rr: float = 200.0 if i % 2 == 0 else 168.0
+		ring.append(pos + Vector2(cos(a), sin(a)) * rr)
+	if ring.size() > 1:
+		draw_polyline(ring, Palette.with_alpha(BOSS_COL, 0.5), 3.0)
+		draw_line(ring[ring.size() - 1], ring[0], Palette.with_alpha(BOSS_COL, 0.5), 3.0)
+	draw_arc(pos, 130.0, _time * 0.4, _time * 0.4 + TAU * 0.8, 40,
+		Palette.with_alpha(Palette.glow(BOSS_COL, 1.3), 0.4), 2.0)
+	# Hehkuva silma keskella (syke).
+	var pulse: float = 0.5 + 0.5 * sin(_time * 2.0)
+	draw_circle(pos, 26.0 + 6.0 * pulse, Palette.with_alpha(Palette.glow(BOSS_COL, 1.5), 0.22 + 0.22 * pulse))
 
 
 ## Piirtaa sisaseinat kivisena harjanteena joukkuevarittomana + lehtiharja.
@@ -229,3 +371,15 @@ func _draw_moba_walls() -> void:
 		# Lehtiharja yläreunaan.
 		draw_rect(Rect2(w.position - Vector2(0, 7), Vector2(w.size.x, 12)),
 			Palette.with_alpha(CANOPY, 0.85))
+
+
+## Hehkumerkit viidakko/linja-seinan gank-aukkojen kohdalle (nakyva kulkuaukko).
+func _draw_gank_markers() -> void:
+	var y := 320.0
+	var c: Color = Palette.glow(LEAF, 1.2)
+	for gx in [-1150.0, 0.0, 1150.0]:
+		draw_arc(Vector2(gx, y + 6.0), 150.0, PI, TAU, 24, Palette.with_alpha(c, 0.26), 3.0)
+		for s in [-1.0, 1.0]:
+			var px: float = gx + s * 150.0
+			draw_circle(Vector2(px, y), 15.0, Palette.darker(FLOOR, 0.35))
+			draw_circle(Vector2(px, y), 8.0, Palette.with_alpha(c, 0.5))
