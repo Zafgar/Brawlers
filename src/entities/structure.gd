@@ -112,7 +112,10 @@ func _passive_update(delta: float) -> void:
 		"kb": 40.0,
 		"color": _color,
 	})
-	AudioMgr.play("light", 0.1, -4.0)
+	# Hiljaisempi + hajautunut viritys, ettei 4 tornia soi kimeästi unisonossa
+	# ~4×/s. Ei soi simulaatiossa (jatkuva tuli sotkisi nopean ajon).
+	if not Game.simulating:
+		AudioMgr.play("light", 0.2, -9.0)
 
 
 ## Lukitun kohteen validointi: pidä lukittu kohde jos se on yhä elossa ja
@@ -195,10 +198,12 @@ func _knockout(source: Hero) -> void:
 	Fx.knockout_burst(arena, global_position, _color)
 	Fx.ring(arena, global_position, Palette.glow(_color, 1.6), radius + 60.0, 0.9, 12.0)
 	Fx.flash(arena, global_position, Palette.glow(_color, 1.5), radius + 40.0, 0.6)
-	# Rakennuksen romahdus: kivinen jyrähdys + tyrmäys. Nexus isompi.
+	# Rakennuksen romahdus: kivinen jyrähdys + tyrmäys. Nexus isompi (+ ukkonen).
 	AudioMgr.play("rock", 0.05, 1.0 if kind == Kind.NEXUS else -3.0)
 	AudioMgr.play("quake", 0.05, -1.0 if kind == Kind.NEXUS else -5.0)
 	AudioMgr.play("ko", 0.1, -6.0)
+	if kind == Kind.NEXUS:
+		AudioMgr.play("thunder", 0.05, -2.0)   # ottelun ratkaiseva isku isommaksi
 	arena.shake(0.5)
 	if arena.has_method("on_structure_destroyed"):
 		arena.on_structure_destroyed(self, source)
@@ -329,10 +334,27 @@ class StructureVisual:
 
 	func _paint_nexus(s: Structure, r: float, col: Color, dark: Color) -> void:
 		var vuln: bool = not s._invuln
+		var glow: Color = Palette.glow(col, 1.45)
+		var pulse: float = 0.6 + 0.4 * sin(_time * (6.0 if vuln else 3.0))
+		# Iso jalusta-hehku (voiton kohde erottuu sivutavoitteista).
+		draw_circle(Vector2.ZERO, r * 1.7, Palette.with_alpha(col, 0.07 + (0.05 if vuln else 0.0) * pulse))
+		# Valopatsas kun haavoittuvainen -> "tuhoa tämä" näkyy kaukaa.
+		if vuln:
+			var beam_a: float = 0.10 + 0.07 * pulse
+			for bw in [r * 1.15, r * 0.62, r * 0.28]:
+				draw_rect(Rect2(-bw * 0.5, -r * 6.5, bw, r * 6.5), Palette.with_alpha(glow, beam_a))
+		# Pyörivä ulkorengas.
 		var spin: float = _time * (1.3 if vuln else 0.4)
 		var ring_col: Color = Palette.glow(col, 1.5) if vuln else Palette.with_alpha(col, 0.6)
-		draw_arc(Vector2.ZERO, r + 14.0, spin, spin + TAU * 0.82, 46, ring_col, 4.0)
-		var pulse: float = 0.6 + 0.4 * sin(_time * (6.0 if vuln else 3.0))
+		draw_arc(Vector2.ZERO, r + 16.0, spin, spin + TAU * 0.82, 48, ring_col, 4.0)
+		# Kiertävät kristallisirut (kolme).
+		for i in range(3):
+			var ang: float = _time * (1.1 if vuln else 0.5) + TAU * float(i) / 3.0
+			var sp: Vector2 = Vector2(cos(ang), sin(ang) * 0.62) * (r + 30.0)
+			var shard := PackedVector2Array([
+				sp + Vector2(0, -13), sp + Vector2(9, 0), sp + Vector2(0, 13), sp + Vector2(-9, 0)])
+			draw_colored_polygon(shard, Palette.with_alpha(glow, 0.45 + 0.3 * pulse))
+		# Ydinkristalli (timanttikerrokset).
 		for layer in [1.3, 1.0, 0.55]:
 			var sc: float = layer
 			var a: float = 0.9 if sc < 0.6 else (0.45 if sc < 1.05 else 0.22)
@@ -340,6 +362,9 @@ class StructureVisual:
 				Vector2(0, -r * sc), Vector2(r * 0.7 * sc, 0),
 				Vector2(0, r * sc), Vector2(-r * 0.7 * sc, 0)])
 			draw_colored_polygon(dia, Palette.with_alpha(Palette.glow(col, 1.3), a * (0.7 + 0.3 * pulse)))
+		# Kirkas ydin.
+		draw_circle(Vector2.ZERO, r * 0.3 * (0.9 + 0.2 * pulse),
+			Palette.with_alpha(Color.WHITE, (0.55 if vuln else 0.3) + 0.25 * pulse))
 		if s._invuln:
 			draw_arc(Vector2.ZERO, r + 6.0, 0.0, TAU, 44,
 				Palette.with_alpha(Palette.SHIELD, 0.4 + 0.2 * pulse), 3.0)

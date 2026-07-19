@@ -78,7 +78,7 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 			attack_kb = 250.0
 			respawn_delay = 22.0
 			kb_resist = 0.6
-			_color = Color("e0803a")
+			_color = Color("d9662a")   # puna-oranssi: erottuu joukkue-oranssista
 			_windup_time = 0.24
 			brain.aggro_radius = 250.0
 			brain.attack_range = 74.0

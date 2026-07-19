@@ -14,7 +14,7 @@ const LANE := Color("3a3324")
 const LANE_EDGE := Color("54492f")
 const RIVER := Color("1e4a5c")
 const GOLD := Color("e0c23c")
-const CLAW := Color("e08a3c")
+const CLAW := Color("d9662a")   # puna-oranssi: ei sekoitu joukkue-oranssiin
 const BOSS_COL := Color("b64ad6")
 
 # Viidakko (yläpuoli)
@@ -28,6 +28,11 @@ var _nexus_blue := Vector2(-2000, 780)
 var _nexus_orange := Vector2(2000, 780)
 var _tower_blue := [Vector2(-760, 660), Vector2(-1480, 720)]    # [ulompi (keskelle), sisempi (basea suojaava)]
 var _tower_orange := [Vector2(760, 660), Vector2(1480, 720)]
+
+# Esilasketut koristeet (ei RandomNumberGeneratoria joka ruutu). Laikut on
+# sävytetty joukkuepuolen mukaan, jotta sininen/oranssi puoli erottuu.
+var _patches: Array = []   # [{pos, r, col}]
+var _foliage: Array = []   # [{pos, s}]
 
 
 func _setup() -> void:
@@ -70,6 +75,26 @@ func _setup() -> void:
 			pillars.append({"pos": p, "radius": rng.randf_range(46.0, 76.0)})
 
 	_setup_walls()
+	_setup_decor(half)
+
+
+## Esilaskee viidakkopohjan laikut (joukkuepuolen mukaan sävytetyt) ja
+## koristepensaat kerran, jottei _draw luo RNG:tä joka ruutu.
+func _setup_decor(half: Vector2) -> void:
+	var drng := RandomNumberGenerator.new()
+	drng.seed = 81724
+	for i in range(70):
+		var p := Vector2(drng.randf_range(-half.x, half.x), drng.randf_range(-half.y, 120.0))
+		var pr := drng.randf_range(60.0, 200.0)
+		var team_col: Color = Palette.team(0) if p.x < 0.0 else Palette.team(1)
+		var col: Color = FLOOR_ALT.lerp(team_col, 0.22)
+		_patches.append({"pos": p, "r": pr, "col": col})
+	drng.seed = 559
+	for i in range(26):
+		var fp := Vector2(drng.randf_range(-half.x + 220.0, half.x - 220.0),
+			drng.randf_range(-half.y + 200.0, 60.0))
+		var s := drng.randf_range(14.0, 30.0)
+		_foliage.append({"pos": fp, "s": s})
 
 
 ## Sisaseinat (rect_walls): viidakon ja linjan erottava seina gank-aukoin,
@@ -134,15 +159,12 @@ func _draw() -> void:
 	# Joukkuepuolten kevyt aluevari (sininen vasen, oranssi oikea).
 	_draw_side_tint(half)
 
-	# Viidakon laikutus (yläpuoli).
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 81724
-	for i in range(70):
-		var p := Vector2(rng.randf_range(-half.x, half.x), rng.randf_range(-half.y, 120.0))
-		draw_circle(p, rng.randf_range(60.0, 200.0), Palette.with_alpha(FLOOR_ALT, 0.5))
+	# Viidakon laikutus (yläpuoli), esilaskettu ja joukkuepuolen mukaan sävytetty.
+	for patch in _patches:
+		draw_circle(patch.pos, patch.r, Palette.with_alpha(patch.col, 0.5))
 
 	# Koristepensaat viidakkoon (ei törmäystä).
-	_draw_foliage(half)
+	_draw_foliage()
 
 	# Jokivyö erottaa viidakon ja linjan (n. y=210), ylityskivet gank-kohdissa.
 	_draw_river(half)
@@ -187,30 +209,30 @@ func _draw() -> void:
 func _draw_side_tint(half: Vector2) -> void:
 	var bt: Color = Palette.team(0)
 	var ot: Color = Palette.team(1)
-	draw_rect(Rect2(-half.x, -half.y, half.x, map_size.y), Palette.with_alpha(bt, 0.045))
-	draw_rect(Rect2(0.0, -half.y, half.x, map_size.y), Palette.with_alpha(ot, 0.045))
-	for k in range(3):
-		var rr: float = 1000.0 - float(k) * 240.0
-		draw_circle(_nexus_blue, rr, Palette.with_alpha(bt, 0.03))
-		draw_circle(_nexus_orange, rr, Palette.with_alpha(ot, 0.03))
+	draw_rect(Rect2(-half.x, -half.y, half.x, map_size.y), Palette.with_alpha(bt, 0.05))
+	draw_rect(Rect2(0.0, -half.y, half.x, map_size.y), Palette.with_alpha(ot, 0.05))
+	# Vahvempi hehku tukikohdista -> selkeä "kenen puoli" (laikut kantavat lopun).
+	for k in range(4):
+		var rr: float = 1250.0 - float(k) * 260.0
+		draw_circle(_nexus_blue, rr, Palette.with_alpha(bt, 0.05))
+		draw_circle(_nexus_orange, rr, Palette.with_alpha(ot, 0.05))
 
 
-## Koristepensaat viidakkoon (vain yläpuoli, ei törmäystä).
-func _draw_foliage(half: Vector2) -> void:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 559
-	for i in range(26):
-		var p := Vector2(rng.randf_range(-half.x + 220.0, half.x - 220.0),
-			rng.randf_range(-half.y + 200.0, 60.0))
-		var s := rng.randf_range(14.0, 30.0)
+## Koristepensaat viidakkoon (vain yläpuoli, ei törmäystä), esilaskettu.
+func _draw_foliage() -> void:
+	for f in _foliage:
+		var p: Vector2 = f.pos
+		var s: float = f.s
 		draw_circle(p + Vector2(0, 5), s + 3.0, Color(0.03, 0.09, 0.05, 0.5))
 		draw_circle(p, s, Palette.darker(LEAF, 0.55))
 		draw_circle(p + Vector2(-s * 0.3, -s * 0.3), s * 0.5, Palette.with_alpha(LEAF, 0.4))
 
 
 func _draw_river(half: Vector2) -> void:
-	var y := 210.0
-	var band := 110.0
+	# Joki ulottuu alas seinaan (y~288) asti, jotta viidakon ja linjan raja lukee
+	# yhtena esteena. Ylityskivet ovat gank-aukoissa (x = -1150/0/+1150).
+	var y := 225.0
+	var band := 130.0
 	# Tummat rannat.
 	draw_rect(Rect2(-half.x, y - band * 0.5 - 10.0, map_size.x, 10.0),
 		Palette.with_alpha(Palette.darker(RIVER, 0.5), 0.6))
@@ -227,12 +249,13 @@ func _draw_river(half: Vector2) -> void:
 			draw_line(Vector2(x, yy), Vector2(x + 90.0, yy),
 				Palette.with_alpha(Palette.glow(RIVER, 1.4), 0.22), 2.0)
 			x += 300.0
-	# Ylityskivet gank-kohdissa (yhdistavat viidakkopuolet joen yli).
+	# Ylityskivet: pystyketju joesta seinan aukon lapi kummassakin gank-kohdassa.
 	for gx in [-1150.0, 0.0, 1150.0]:
-		for s in [-1.0, 0.0, 1.0]:
-			var sp: Vector2 = Vector2(gx + s * 40.0, y + s * 6.0)
-			draw_circle(sp, 17.0, Palette.darker(Color("6b5a3a"), 0.2))
-			draw_circle(sp + Vector2(-4, -4), 8.0, Palette.with_alpha(Color("8a774f"), 0.7))
+		for j in range(4):
+			var sy: float = 235.0 + float(j) * 30.0
+			var sp := Vector2(gx, sy)
+			draw_circle(sp, 16.0, Palette.darker(Color("6b5a3a"), 0.2))
+			draw_circle(sp + Vector2(-4, -4), 8.0, Palette.with_alpha(Color("8a774f"), 0.75))
 
 
 func _draw_lane() -> void:
@@ -377,9 +400,13 @@ func _draw_moba_walls() -> void:
 func _draw_gank_markers() -> void:
 	var y := 320.0
 	var c: Color = Palette.glow(LEAF, 1.2)
+	var pulse: float = 0.5 + 0.5 * sin(_time * 2.2)
 	for gx in [-1150.0, 0.0, 1150.0]:
-		draw_arc(Vector2(gx, y + 6.0), 150.0, PI, TAU, 24, Palette.with_alpha(c, 0.26), 3.0)
+		# Kirkkaampi hehkukaari aukon yli (selkeä "kuljetaan tästä").
+		draw_arc(Vector2(gx, y + 6.0), 150.0, PI, TAU, 24, Palette.with_alpha(c, 0.4 + 0.15 * pulse), 4.0)
+		draw_arc(Vector2(gx, y + 6.0), 132.0, PI, TAU, 22, Palette.with_alpha(c, 0.18), 2.0)
 		for s in [-1.0, 1.0]:
 			var px: float = gx + s * 150.0
-			draw_circle(Vector2(px, y), 15.0, Palette.darker(FLOOR, 0.35))
-			draw_circle(Vector2(px, y), 8.0, Palette.with_alpha(c, 0.5))
+			draw_circle(Vector2(px, y), 16.0, Palette.darker(FLOOR, 0.4))
+			draw_circle(Vector2(px, y), 10.0, Palette.with_alpha(c, 0.75))
+			draw_circle(Vector2(px, y - 2.0), 4.0, Palette.with_alpha(Color.WHITE, 0.5))

@@ -484,12 +484,14 @@ func on_critter_ko(critter, source) -> void:
 			popup(critter.global_position + Vector2(0, -90),
 				"VAHINKOBUFFI!", Palette.glow(Color("e08a3c"), 1.4), 20)
 			hud.ko_feed("%s kaatoi vahinkoleirin (+%d)" % [Game.team_name(team), int(DMG_CAMP_POINTS)])
+			AudioMgr.play("blessing", 0.05, -4.0)   # positiivinen vahvistus buffista
 		Critter.Kind.POINTS_CAMP:
 			relic_points[team] += POINTS_CAMP_POINTS
 			_last_point_team = team
 			popup(critter.global_position + Vector2(0, -90),
 				"+%d PISTETTÄ" % int(POINTS_CAMP_POINTS), Palette.glow(Color("e0c23c"), 1.4), 20)
 			hud.ko_feed("%s kaatoi pistereirin (+%d)" % [Game.team_name(team), int(POINTS_CAMP_POINTS)])
+			AudioMgr.play("pickup", 0.05, -3.0)   # pistekilahdus
 		Critter.Kind.BOSS:
 			relic_points[team] += BOSS_POINTS
 			_last_point_team = team
@@ -677,7 +679,11 @@ func on_structure_destroyed(structure, source) -> void:
 				nx.set_vulnerable()
 			hud.show_banner("NEXUS AVOINNA!",
 				"%s nexus on nyt haavoittuvainen" % Game.team_name(s.team), 2.6)
-			AudioMgr.play("dome_up", 0.05, -3.0)
+			# Uhkaava "portti murtui" (ei suojaava dome_up), + musiikki kiihtyy.
+			AudioMgr.play("thunder", 0.05, -4.0)
+			AudioMgr.play("rock", 0.05, -6.0)
+			if not Game.simulating:
+				AudioMgr.play_music("battle4")   # raju huipennus loppupeliin
 			_sim_event("%s nexus avattu" % Game.team_name(s.team))
 	else:
 		_end_reason = "nexus tuhottu"
@@ -1031,6 +1037,10 @@ func on_hero_ko(hero: Hero, source: Hero) -> void:
 		hud.ko_feed("%s tyrmäsi %s" % [source.profile.display_name, hero.profile.display_name])
 		if not _first_blood:
 			_first_blood = true
+			hud.show_banner("ENSIVERI!",
+				"%s avasi tyrmäystilin" % source.profile.display_name, 1.8)
+			if not Game.simulating:
+				AudioMgr.play("crescendo", 0.05, -5.0)
 			_sim_event("Ensiveri: %s (%s) tyrmäsi %s (%s)" % [
 				Game.team_name(source.team), source.hero_id,
 				Game.team_name(hero.team), hero.hero_id])
