@@ -298,8 +298,26 @@ const HEROES := {
 }
 
 
+# Neutraali oletusmääritys tuntemattomille tunnuksille (esim. viidakko-olennot,
+# joita ei ole sankarilistassa). Näin get_def ei kaadu vaikka sitä kutsuttaisiin
+# ei-sankarilla (bottien roolihaku alive_enemies-listasta osuu myös olentoihin).
+const DEFAULT_DEF := {
+	"name": "?",
+	"role": "Tankki",          # neutraali -> ei kohtele "takalinjana"
+	"difficulty": 1,
+	"hp": 200.0,
+	"speed": 300.0,
+	"ratings": {"kesto": 3, "liike": 3, "vahinko": 3, "tuki": 3},
+	"weapon": "",
+	"desc": "",
+	"color": Color("8f9aa8"),
+	"color_b": Color("4a505c"),
+	"abilities": {},
+}
+
+
 static func get_def(id: String) -> Dictionary:
-	return HEROES[id]
+	return HEROES.get(id, DEFAULT_DEF)
 
 
 static func ability(id: String, slot: String) -> Dictionary:
