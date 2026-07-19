@@ -4,10 +4,12 @@ extends Camera2D
 ## zoomaa pehmeästi ja tärähtää osumista (jos asetuksissa sallittu).
 
 const MARGIN := 260.0
-# Zoomin uloin raja: 0.5 riittää mahtuttamaan koko ison viidakkokartan
-# (3400x1900) näkyviin, joten pelaajat eivät katoa reunojen taakse. Pienillä
-# kartoilla tähän ei koskaan päädytä (pelaajat ovat lähekkäin -> lähempi zoom).
-const MIN_ZOOM := 0.5
+# Zoomin uloin raja: 0.34 mahduttaa koko suurimman kartan (MOBA 4400x2600 +
+# marginaali) näkyviin myös 1080p:llä, joten pelaajat eivät katoa reunojen
+# taakse edes kun he ovat hajallaan tukikohdasta tukikohtaan. Raja puree vain
+# ääritilanteessa: normaalisti pelaajat ovat lähekkäin (taistelu/linja) ->
+# kamera zoomaa lähemmäs. Pienillä kartoilla tähän ei koskaan päädytä.
+const MIN_ZOOM := 0.34
 const MAX_ZOOM := 1.05
 const FOLLOW_SPEED := 3.5
 const ZOOM_SPEED := 2.5
