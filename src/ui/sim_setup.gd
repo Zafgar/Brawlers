@@ -4,7 +4,7 @@ extends Control
 ## telemetria tekoälyn ja tasapainon kehitykseen. Käyttää MatchSetupin
 ## OptionRow-rivejä.
 
-var _team_size := 3
+var _team_size := 4       # 3v3 ja 4v4 ovat tärkeimmät; 4v4 oletuksena
 var _blue_level := 2
 var _orange_level := 4
 var _comp := 0            # 0 = satunnainen, 1 = peilattu
@@ -35,8 +35,8 @@ func _ready() -> void:
 	var inner := UiKit.vbox(12)
 	panel.add_child(inner)
 
-	_add(inner, MatchSetup.OptionRow.new("Joukkuekoko", ["1v1", "2v2", "3v3", "4v4"],
-		_team_size - 1, func(i): _team_size = i + 1))
+	_add(inner, MatchSetup.OptionRow.new("Joukkuekoko (3v3/4v4 tärkeimmät)",
+		["1v1", "2v2", "3v3", "4v4"], _team_size - 1, func(i): _team_size = i + 1))
 	_add(inner, MatchSetup.OptionRow.new("Sininen taso", Game.BOT_LEVEL_NAMES,
 		_blue_level, func(i): _blue_level = i))
 	_add(inner, MatchSetup.OptionRow.new("Oranssi taso", Game.BOT_LEVEL_NAMES,

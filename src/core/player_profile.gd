@@ -24,9 +24,10 @@ func reset_stats() -> void:
 		"kos": 0,             # tyrmäykset
 		"assists": 0,         # avustukset
 		"deaths": 0,          # omat tyrmäytymiset
-		"damage": 0.0,        # aiheutettu vahinko
-		"taken": 0.0,         # otettu vahinko (simulaatiotelemetria)
+		"damage": 0.0,        # aiheutettu vahinko (sankareihin/yksiköihin)
+		"taken": 0.0,         # otettu vahinko
 		"structure_damage": 0.0,  # vahinko rakennuksiin (tornit/nexus)
+		"jungle_damage": 0.0, # vahinko viidakko-olentoihin (leirit/pomo)
 		"minion_kills": 0,    # kaadetut minionit (CS)
 		"healing": 0.0,       # parannettu määrä
 		"prevented": 0.0,     # estetty vahinko (kilvet, torjunnat, kuplat)

@@ -634,6 +634,8 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 		profile.stats.damage += dealt
 		if target is Structure:
 			profile.stats.structure_damage += dealt
+		elif target is Critter:
+			profile.stats.jungle_damage += dealt
 		profile.add_score(dealt * 0.1)
 		add_ult(dealt * 0.22)
 		if res_type == "rage":

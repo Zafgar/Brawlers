@@ -48,6 +48,7 @@ var arena = null
 # Simulaatio: bot vs bot -ajot telemetriaa varten (tekoälyn/tasapainon kehitys).
 var simulating := false
 var sim_runner = null
+var last_report := ""     # viimeisimmän ottelun raportti (pelaaja voi antaa sen)
 
 
 func boot(root: Node) -> void:
@@ -206,11 +207,35 @@ func match_finished() -> void:
 	if simulating and sim_runner != null:
 		sim_runner.on_match_done()
 		return
+	# Pelaajien ottelu: tuota raportti, jonka pelaaja voi antaa kehittäjälle.
+	_capture_report()
 	_swap(Results.new())
+
+
+## Tallentaa juuri päättyneen ottelun raportin (luetaan areenasta ennen vaihtoa).
+func _capture_report() -> void:
+	last_report = ""
+	if arena == null or not is_instance_valid(arena):
+		return
+	if not arena.has_method("sim_snapshot"):
+		return
+	var snap: Dictionary = arena.sim_snapshot()
+	var intro := [
+		"=== OTTELUN RAPORTTI ===",
+		"Pelimuoto: %s | %dv%d" % [mode_id, team_size, team_size]]
+	last_report = MatchReport.build([snap], intro)
 
 
 func go_sim() -> void:
 	_swap(SimSetup.new())
+
+
+func go_report() -> void:
+	if last_report == "":
+		return
+	var r := SimResults.new()
+	r.report_text = last_report
+	_swap(r)
 
 
 func rematch() -> void:

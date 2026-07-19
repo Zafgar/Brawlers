@@ -97,14 +97,18 @@ func _build_confetti() -> void:
 
 
 func _build_buttons() -> void:
-	var buttons := UiKit.hbox(24)
-	buttons.position = Vector2(960 - 312.0, 902.0)
+	var buttons := UiKit.hbox(20)
+	buttons.position = Vector2(960 - 480.0, 902.0)
 	add_child(buttons)
 	var rematch_btn := UiKit.button("Uusinta", func(): Game.rematch())
-	rematch_btn.custom_minimum_size = Vector2(300, 58)
+	rematch_btn.custom_minimum_size = Vector2(280, 58)
 	buttons.add_child(rematch_btn)
+	if Game.last_report != "":
+		var report_btn := UiKit.button("Ottelun raportti", func(): Game.go_report())
+		report_btn.custom_minimum_size = Vector2(300, 58)
+		buttons.add_child(report_btn)
 	var menu_btn := UiKit.button("Päävalikkoon", func(): Game.go_menu())
-	menu_btn.custom_minimum_size = Vector2(300, 58)
+	menu_btn.custom_minimum_size = Vector2(280, 58)
 	buttons.add_child(menu_btn)
 	rematch_btn.call_deferred("grab_focus")
 

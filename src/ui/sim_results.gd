@@ -29,7 +29,7 @@ func _ready() -> void:
 	root.add_theme_constant_override("separation", 10)
 	add_child(root)
 
-	root.add_child(UiKit.title("SIMULAATIORAPORTTI", 44))
+	root.add_child(UiKit.title("RAPORTTI", 44))
 	var saved := UiKit.dim_label(
 		"Tallennettu: %s  ·  myös Godotin konsolissa. Kopioi ja liitä kehittäjälle." % SAVE_PATH, 16)
 	saved.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

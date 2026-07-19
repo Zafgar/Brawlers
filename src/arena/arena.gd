@@ -716,10 +716,10 @@ func _end_moba(winner: int) -> void:
 		Game.match_finished()
 
 
-## Simulaatiotelemetria: kirjaa tapahtuma aikaleiman kanssa.
+## Telemetria: kirjaa tapahtuma aikaleiman kanssa (sekä simulaatiossa että
+## pelaajien otteluissa, jotta raportin voi tuottaa molemmista).
 func _sim_event(text: String) -> void:
-	if Game.simulating:
-		sim_events.append({"t": match_elapsed, "text": text})
+	sim_events.append({"t": match_elapsed, "text": text})
 
 
 ## Ottelun tilannekuva simulaatioraporttiin (kutsutaan ennen seuraavaa ottelua).
@@ -734,10 +734,13 @@ func sim_snapshot() -> Dictionary:
 			lvl = int(h.controller.level)
 		heroes_data.append({
 			"hero_id": h.hero_id, "team": h.team, "level": lvl,
+			"human": h.profile.is_human(),
 			"kos": int(p.stats.kos), "deaths": int(p.stats.deaths),
 			"assists": int(p.stats.assists), "damage": float(p.stats.damage),
 			"taken": float(p.stats.taken),
 			"structure_damage": float(p.stats.structure_damage),
+			"jungle_damage": float(p.stats.jungle_damage),
+			"mitigated": float(p.stats.prevented),
 			"minion_kills": int(p.stats.minion_kills), "healing": float(p.stats.healing),
 		})
 	return {
