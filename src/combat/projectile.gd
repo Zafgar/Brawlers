@@ -24,6 +24,7 @@ var on_expire := Callable()
 var spin := false
 
 var direction := Vector2.RIGHT
+var _slot := ""                # mikä kykypaikka ampui tämän (telemetria)
 var _hit_heroes: Array = []
 var _trail_points := PackedVector2Array()
 var _time := 0.0
@@ -32,6 +33,7 @@ var _time := 0.0
 static func launch(src: Hero, pos: Vector2, dir: Vector2, cfg := {}) -> Projectile:
 	var p := Projectile.new()
 	p.source = src
+	p._slot = src._cast_context   # ampuva kyky (asetettu dispatch-kontekstissa)
 	p.team = src.team
 	p.global_position = pos
 	p.direction = dir.normalized()
@@ -106,17 +108,25 @@ func _physics_process(delta: float) -> void:
 		var dist: float = global_position.distance_to(hero.global_position)
 		if dist > hit_radius + hero.radius:
 			continue
+		var have_src: bool = source != null and is_instance_valid(source)
 		if hero.team == team:
 			if heal_allies > 0.0 and hero != source and hero.hp < hero.max_hp:
 				_hit_heroes.append(hero)
+				if have_src:
+					source._act(_slot)
 				hero.heal_hp(heal_allies, source)
+				if have_src:
+					source._act_end()
 			continue
-		# Vihollisosuma
+		# Vihollisosuma: aseta ampuvan kyvyn konteksti vahingon + on_hit-CC:n ajaksi.
 		_hit_heroes.append(hero)
-		if source != null and is_instance_valid(source):
+		if have_src:
+			source._act(_slot)
 			source.deal_damage_to(hero, dmg, kb, direction)
 		if on_hit.is_valid():
 			on_hit.call(hero, self)
+		if have_src:
+			source._act_end()
 		Fx.spark(arena, global_position, color)
 		if pierce > 0:
 			pierce -= 1

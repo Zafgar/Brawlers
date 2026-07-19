@@ -112,6 +112,7 @@ var res_regen := 0.0               # passiivinen palautuminen/s (mana, energy)
 var res_cost := {"basic": 0.0, "a1": 0.0, "a2": 0.0, "dodge": 0.0}
 var _channel_slot := ""            # kanavoitava kyky pohjassa (esim. kilpi)
 var _channel_locked := ""          # resurssi loppui kesken pidon -> lukossa napin vapautukseen asti
+var _cast_context := ""            # mikä kykypaikka juuri suorittaa (telemetria)
 var _rage_idle := 0.0              # aika viime taistelutoiminnasta (rage-vaimeneminen)
 
 # Kenttäbuffit (blue/red). blue = resurssin nopea palautuminen, red = +vahinko
@@ -257,11 +258,14 @@ func _physics_process(delta: float) -> void:
 
 	# Toiminnot
 	if stun_timer <= 0.0:
+		# Perushyökkäyksen konteksti telemetriaan (osumat/vahinko slotille "basic").
+		_act("basic")
 		_attack_control(
 			controller.attack_held(),
 			controller.attack_just_pressed(),
 			controller.attack_just_released(),
 			aim, delta)
+		_act_end()
 		# Kyvyt toimivat myös reliikkiä kannettaessa (kuten väistökin).
 		# Tähdättävät kyvyt (pito -> vapautus) hoidetaan _run_ability_slotissa.
 		_run_ability_slot("a1", 1, delta)
@@ -289,7 +293,10 @@ func _physics_process(delta: float) -> void:
 			_buf.dodge = 0.0
 			cd.dodge = cd_max.dodge * (1.5 if carrying else 1.0)
 			var dodge_dir := mv if mv.length() > 0.2 else aim
+			_act("dodge")
+			_log_cast("dodge")
 			_dodge_action(dodge_dir.normalized())
+			_act_end()
 		if carrying and controller.drop_just():
 			arena.relic.drop_from_carrier(false)
 	else:
@@ -366,7 +373,9 @@ func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 	if not is_bot and slot in _channeled_slots():
 		if _channel_slot == slot:
 			if held and res > 0.0:
+				_act(slot)
 				_channel_tick(slot, delta)
+				_act_end()
 			else:
 				_channel_slot = ""
 				_channel_end(slot)
@@ -378,7 +387,10 @@ func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 			if _channel_slot == "" and held and cd[slot] <= 0.0 \
 					and res > 0.0 and _channel_locked != slot:
 				_channel_slot = slot
+				_log_cast(slot)
+				_act(slot)
 				_channel_tick(slot, delta)
+				_act_end()
 		return
 
 	# Tähdättävä kyky: pito tähtää, vapautus laukaisee.
@@ -411,10 +423,13 @@ func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 
 
 func _cast_slot(slot: String) -> void:
+	_act(slot)
+	_log_cast(slot)
 	if slot == "a1":
 		_ability1(aim)
 	else:
 		_ability2(aim)
+	_act_end()
 
 
 ## Ylikirjoita palauttamaan kykypaikat ("a1"/"a2") jotka tähdätään pitämällä
@@ -552,7 +567,10 @@ func _fire_ult() -> void:
 	_ult_holding = false
 	AudioMgr.play("ult")
 	arena.shake(0.35)
+	_act("ult")
+	_log_cast("ult")
 	_ultimate(aim)
+	_act_end()
 
 
 ## Ylikirjoita palauttamaan true jos ultimate pidetään pohjassa (esikatselu) ja
@@ -622,6 +640,52 @@ func dash(dir: Vector2, speed: float, duration: float, with_iframes := false) ->
 	visual.squash(0.75, 1.25)
 
 
+# --- Kykytelemetria (kuka/mikä kykypaikka juuri toimii) ---
+# Kohteen apply_stun/apply_slow/apply_root ja heal_hp lukevat arena._act_hero/
+# _act_slot tietääkseen kenelle vaikutus kirjataan. Ammukset ja alueet asettavat
+# kontekstin osuman/tickin ajaksi, lähikyvyt kyvyn suorituksen ajaksi.
+
+func _act(slot: String) -> void:
+	_cast_context = slot
+	if arena != null:
+		arena._act_hero = self
+		arena._act_slot = slot
+
+
+func _act_end() -> void:
+	_cast_context = ""
+	if arena != null:
+		arena._act_hero = null
+		arena._act_slot = ""
+
+
+## Hakee (tai luo) kykypaikan telemetriatietueen tälle sankarille.
+func _slot_rec(slot: String) -> Dictionary:
+	if not profile.stats.slots.has(slot):
+		profile.stats.slots[slot] = {"casts": 0, "hits": 0, "damage": 0.0,
+			"heal": 0.0, "stun": 0.0, "slow": 0.0, "root": 0.0, "kb": 0}
+	return profile.stats.slots[slot]
+
+
+## Kirjaa yhden kykypaikan käyttökerran (kutsutaan dispatchissa kun kyky lähtee).
+func _log_cast(slot: String) -> void:
+	_slot_rec(slot)["casts"] += 1
+
+
+## Kirjaa CC-vaikutus (stun/slow/root) sekunteina toimijalle. Kutsutaan kohteen
+## apply_*-funktiosta: toimija ja slot luetaan arenan aktiivikontekstista.
+func _record_cc(kind: String, duration: float) -> void:
+	if arena == null:
+		return
+	var actor: Hero = arena._act_hero
+	if actor == null or not is_instance_valid(actor):
+		return
+	var slot: String = arena._act_slot
+	if slot == "":
+		return
+	actor._slot_rec(slot)[kind] += duration
+
+
 func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZERO) -> float:
 	if target == null or not is_instance_valid(target) or not target.alive:
 		return 0.0
@@ -636,6 +700,13 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 			profile.stats.structure_damage += dealt
 		elif target is Critter:
 			profile.stats.jungle_damage += dealt
+		# Per-kykypaikka: vahinko + osumat (+ töytäisyt) telemetriaan.
+		if _cast_context != "":
+			var rec := _slot_rec(_cast_context)
+			rec["hits"] += 1
+			rec["damage"] += dealt
+			if kb > 0.0:
+				rec["kb"] += 1
 		profile.add_score(dealt * 0.1)
 		add_ult(dealt * 0.22)
 		if res_type == "rage":
@@ -721,6 +792,9 @@ func heal_hp(amount: float, source: Hero) -> float:
 		source.profile.stats.healing += healed
 		source.profile.add_score(healed * 0.12)
 		source.add_ult(healed * 0.15)
+		# Per-kykypaikka parannus toimijalle (arenan aktiivikonteksti).
+		if arena != null and arena._act_hero == source and arena._act_slot != "":
+			source._slot_rec(arena._act_slot)["heal"] += healed
 	arena.popup(global_position + Vector2(0, -46), "+%d" % int(healed), Palette.HEAL, 18)
 	Fx.heal_sparkle(arena, global_position)
 	return healed
@@ -749,6 +823,7 @@ func apply_slow(factor: float, duration: float) -> void:
 	if factor < slow_factor or slow_timer <= 0.0:
 		slow_factor = factor
 	slow_timer = maxf(slow_timer, duration)
+	_record_cc("slow", duration)
 
 
 func apply_haste(factor: float, duration: float) -> void:
@@ -760,10 +835,12 @@ func apply_root(duration: float) -> void:
 	root_timer = maxf(root_timer, duration)
 	arena.popup(global_position + Vector2(0, -60), "JUURTUNUT", Palette.BAD, 16)
 	AudioMgr.play("root")
+	_record_cc("root", duration)
 
 
 func apply_stun(duration: float) -> void:
 	stun_timer = maxf(stun_timer, duration)
+	_record_cc("stun", duration)
 
 
 func apply_mark(duration: float, amp := 1.25) -> void:

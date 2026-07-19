@@ -35,6 +35,10 @@ func reset_stats() -> void:
 		"pickups": 0,         # reliikin poiminnat
 		"carrier_stops": 0,   # viholliskantajan pysäytykset
 		"saves": 0,           # joukkuetoverin pelastukset
+		# Kykytelemetria: slot ("basic"/"a1"/"a2"/"ult"/"dodge") -> {casts, hits,
+		# damage, heal, stun, slow, root, kb}. stun/slow/root ovat kokonais-
+		# sekunnit joita kyky aiheutti. Täytetään laiskasti Hero._slot_rec:ssä.
+		"slots": {},
 	}
 
 

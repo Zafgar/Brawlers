@@ -43,6 +43,7 @@ static func build(snapshots: Array, intro: Array) -> String:
 	lines.append("Keskimääräinen kesto: %s   (* = ihmispelaaja)" % _fmt(total_time / float(count)))
 	lines.append("")
 	_hero_table(lines, agg, avg_min)
+	_ability_table(lines, agg)
 	return "\n".join(PackedStringArray(lines))
 
 
@@ -112,6 +113,7 @@ static func build_sweep(results: Array, intro: Array) -> String:
 
 	lines.append("")
 	_hero_table(lines, agg, avg_min)
+	_ability_table(lines, agg)
 	return "\n".join(PackedStringArray(lines))
 
 
@@ -143,6 +145,52 @@ static func _hero_table(lines: Array, agg: Dictionary, avg_min: float) -> void:
 			int(float(a["jungle_damage"]) / g), int(float(a["healing"]) / g),
 			int(float(a["mitigated"]) / g), float(a["minion_kills"]) / g,
 			int(round(100.0 * float(a["wins"]) / g))])
+
+
+## Kykykohtainen taulukko: per sankari per slot käytöt/osumat/vahinko/parannus ja
+## CC-sekunnit (stun/slow/root). Näyttää perus- ja kaikkien kykyjen toiminnan ja
+## kuinka kauan mikäkin vaikutus teki -> rikkinäiset kyvyt erottuvat.
+static func _ability_table(lines: Array, agg: Dictionary) -> void:
+	lines.append("")
+	lines.append("=== KYVYT JA VAIKUTUKSET (per sankari, koko otanta; aika = sekunteja) ===")
+	lines.append("  slotit: perus=perushyökkäys, a1/a2=kyvyt, ult=ultti, väis=väistö")
+	lines.append("  sankari  slot | käytöt osumat |  vahinko | paran | stun s | slow s | root s | töyt")
+	var order := ["basic", "a1", "a2", "ult", "dodge"]
+	var names := {"basic": "perus", "a1": "a1", "a2": "a2", "ult": "ult", "dodge": "väis"}
+	var suspects: Array = []
+	var ids: Array = agg.keys()
+	ids.sort()
+	for id in ids:
+		var a: Dictionary = agg[id]
+		if not a.has("agg_slots"):
+			continue
+		var slots: Dictionary = a["agg_slots"]
+		for sname in order:
+			if not slots.has(sname):
+				continue
+			var s: Dictionary = slots[sname]
+			var casts: float = float(s["casts"])
+			var hits: float = float(s["hits"])
+			var dmg: float = float(s["damage"])
+			var heal: float = float(s["heal"])
+			var stun: float = float(s["stun"])
+			var slow: float = float(s["slow"])
+			var root: float = float(s["root"])
+			var kbn: float = float(s["kb"])
+			var used: bool = casts > 2.0 or hits > 2.0
+			var effect: bool = dmg > 1.0 or heal > 1.0 or stun > 0.05 or slow > 0.05 or root > 0.05 or kbn > 0.0
+			var flag: String = "*" if used and not effect else " "
+			if used and not effect:
+				suspects.append("%s/%s" % [id, str(names.get(sname, sname))])
+			lines.append("%s %-8s %-4s | %5d  %5d  | %8d | %5d | %6.1f | %6.1f | %6.1f | %4d" % [
+				flag, id, str(names.get(sname, sname)),
+				int(casts), int(hits), int(dmg), int(heal), stun, slow, root, int(kbn)])
+	lines.append("")
+	if suspects.is_empty():
+		lines.append("  Kaikki käytetyt kyvyt tuottivat mitattavaa vaikutusta.")
+	else:
+		lines.append("  * = käytetty >=3 kertaa mutta EI mitattavaa vahinkoa/CC/parannusta")
+		lines.append("      (rikki TAI puhdas liikkumis-/asemointikyky): " + ", ".join(PackedStringArray(suspects)))
 
 
 static func _mean_dpm(agg: Dictionary, avg_min: float) -> float:
@@ -186,6 +234,19 @@ static func _accumulate(agg: Dictionary, h: Dictionary, winner: int) -> void:
 	a["mitigated"] += float(h.get("mitigated", 0))
 	a["minion_kills"] += float(h["minion_kills"])
 	a["healing"] += float(h["healing"])
+	# Kykytelemetria per slot (basic/a1/a2/ult/dodge).
+	if h.has("slots"):
+		if not a.has("agg_slots"):
+			a["agg_slots"] = {}
+		var asl: Dictionary = a["agg_slots"]
+		for sname in h["slots"]:
+			var sr: Dictionary = h["slots"][sname]
+			if not asl.has(sname):
+				asl[sname] = {"casts": 0.0, "hits": 0.0, "damage": 0.0,
+					"heal": 0.0, "stun": 0.0, "slow": 0.0, "root": 0.0, "kb": 0.0}
+			var dst: Dictionary = asl[sname]
+			for key in ["casts", "hits", "damage", "heal", "stun", "slow", "root", "kb"]:
+				dst[key] += float(sr.get(key, 0))
 	if int(h["team"]) == winner:
 		a["wins"] += 1
 

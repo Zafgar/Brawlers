@@ -22,11 +22,13 @@ var color := Color.WHITE
 var _age := 0.0
 var _tick_timer := 0.0
 var _seed := 0.0
+var _slot := ""                # mikä kykypaikka loi tämän alueen (telemetria)
 
 
 static func spawn(src: Hero, pos: Vector2, cfg := {}) -> Zone:
 	var z := Zone.new()
 	z.source = src
+	z._slot = src._cast_context   # luoneen kyvyn slot (asetettu dispatchissa)
 	z.team = src.team
 	z.global_position = pos
 	z.type = cfg.get("type", "fire")
@@ -83,6 +85,11 @@ func _physics_process(delta: float) -> void:
 	if do_tick:
 		_tick_timer = tick_interval
 
+	# Aseta luoneen kyvyn konteksti alueen vaikutusten ajaksi (telemetria:
+	# alueen slow/vahinko/paranukset kirjautuvat oikealle kykypaikalle).
+	var acting: bool = source != null and is_instance_valid(source)
+	if acting:
+		source._act(_slot)
 	for hero in arena.heroes:
 		if not is_instance_valid(hero) or not hero.alive:
 			continue
@@ -117,6 +124,8 @@ func _physics_process(delta: float) -> void:
 					hero.apply_haste(haste_f, 0.3)
 			"dome":
 				pass  # kupolin torjunta hoidetaan Projectile-luokassa
+	if acting:
+		source._act_end()
 
 	queue_redraw()
 

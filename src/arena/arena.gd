@@ -66,6 +66,11 @@ var sim_events: Array = []
 var _end_reason := ""
 var _first_blood := false
 
+# Kykytelemetrian aktiivikonteksti: kuka/mikä kykypaikka juuri aiheuttaa
+# vahinkoa/CC:tä/parannusta. Hero._act asettaa, kohteen apply_*/heal_hp lukevat.
+var _act_hero = null
+var _act_slot := ""
+
 var state: int = State.INTRO
 var round_number := 1
 var time_left := ROUND_TIME
@@ -783,6 +788,7 @@ func sim_snapshot() -> Dictionary:
 			"jungle_damage": float(p.stats.jungle_damage),
 			"mitigated": float(p.stats.prevented),
 			"minion_kills": int(p.stats.minion_kills), "healing": float(p.stats.healing),
+			"slots": p.stats.slots.duplicate(true),
 		})
 	return {
 		"elapsed": match_elapsed, "winner": Game.last_winner_team,
