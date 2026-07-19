@@ -33,6 +33,8 @@ var aggression := 1.0           # kuinka suuren osan ajasta botti oikeasti hyök
 var buff_focus := 0.5           # kuinka innokkaasti/kaukaa botti hakee buffeja
 var buff_deny := 0.0            # kuinka herkästi botti rikkoo vihollisen buffin
 var focus_fire := 0.0           # kuinka hyvin botti keskittää tulen joukkueen kohteeseen
+var patience := 0.0             # assassiinin kärsivällisyys (odottaa hyvää avausta)
+var self_preserve := 0.0        # kuinka herkästi botti pakenee kyvyillä vaarassa
 
 # Taso 6 (epäreilu) huijaa: nämä poikkeavat 1.0:sta vain kyseisellä tasolla.
 # Hero lukee kertoimet setup()issa ja soveltaa niitä.
@@ -70,6 +72,7 @@ var _dodge_check_timer := 0.0
 var _strafe_dir := 1.0
 var _atk_phase := 0.0            # hyökkäyksen jaksotus (aggression-vaihtelu)
 var _atk_firing := true
+var _lurk := false              # assassin väijyy (odottaa avausta) sen sijaan että syöksyy
 
 # Quillin lataus-ammunta
 var _hold_timer := 0.0
@@ -94,6 +97,10 @@ func _init(p_level: int) -> void:
 	var denies := [0.0, 0.0, 0.2, 0.45, 0.72, 0.95]
 	# Keskitetty tuli: ylemmät tasot iskevät yhdessä samaan kohteeseen.
 	var focus_fires := [0.0, 0.15, 0.45, 0.7, 0.9, 1.0]
+	# Assassiinin malttavuus (odottaa eristettyä/heikkoa kohdetta) ja
+	# itsesuojelu (pakenee kyvyillä hädässä) — ylemmät tasot osaavat molemmat.
+	var patiences := [0.0, 0.1, 0.35, 0.6, 0.82, 1.0]
+	var preserves := [0.0, 0.12, 0.35, 0.6, 0.85, 1.0]
 	reaction = reactions[level]
 	aim_error_deg = aims[level]
 	decision_interval = decisions[level]
@@ -104,6 +111,8 @@ func _init(p_level: int) -> void:
 	buff_focus = focuses[level]
 	buff_deny = denies[level]
 	focus_fire = focus_fires[level]
+	patience = patiences[level]
+	self_preserve = preserves[level]
 	# Ultimatet ovat arvokkaimpia — niitä käytetään kaikilla tasoilla,
 	# heikommilla vain hieman huonommalla ajoituksella.
 	ult_chance = clampf(ability_chance + 0.35, 0.0, 1.0)
@@ -167,6 +176,8 @@ func update(hero: Hero, delta: float) -> void:
 		decided = true
 
 	_update_target(hero, arena, bb)
+	if decided:
+		_update_lurk(hero, arena)
 	_update_movement(hero, arena, bb, delta)
 	_update_aim(hero)
 	_update_attack(hero, delta)
@@ -174,8 +185,31 @@ func update(hero: Hero, delta: float) -> void:
 	_update_dodge(hero, arena, delta)
 
 
+## Assassiinin malttavuus: neutraalissa taistelussa väijy jos kohde ei ole
+## tapettavissa (matala hp) tai eristyksissä. Ylemmät tasot odottavat avausta,
+## alemmat syöksyvät heti (patience skaalaa).
+func _update_lurk(hero: Hero, arena) -> void:
+	if not _is_assassin or _mode != Mode.FIGHT or patience < 0.05:
+		return
+	if _assassin_should_dive(hero, arena):
+		return
+	if randf() < patience:
+		_lurk = true
+
+
+func _assassin_should_dive(hero: Hero, arena) -> bool:
+	if _target == null or not is_instance_valid(_target) or not _target.alive:
+		return true
+	if _target.hp < _target.max_hp * 0.45:
+		return true                     # tapettavissa -> syöksy kannattaa
+	# Eristetty kohde (vain se itse lähellä) -> hyvä avaus.
+	var guards: int = arena.heroes_in_circle(_target.global_position, 220.0, 1 - hero.team).size()
+	return guards <= 1
+
+
 ## Valitsee toimintatilan roolin ja tilanteen mukaan.
 func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
+	_lurk = false
 	if hero.carrying:
 		_mode = Mode.CARRY
 		return
@@ -476,6 +510,14 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 
 	var dist: float = pos.distance_to(_target.global_position)
 	var to_target: Vector2 = (_target.global_position - pos).normalized()
+	if _lurk:
+		# Väijy keskietäisyydeltä: älä syöksy sisään ennen avausta (assassin).
+		var lurk_range := 360.0
+		if dist < lurk_range - 60.0:
+			return pos - to_target * 160.0
+		elif dist > lurk_range + 140.0:
+			return _target.global_position - to_target * lurk_range
+		return pos
 	if dist > _pref_range + 40.0:
 		return _target.global_position - to_target * _pref_range
 	elif dist < _pref_range - 60.0:
@@ -501,6 +543,8 @@ func _update_attack(hero: Hero, delta: float) -> void:
 		return
 	if _reaction_left > 0.0 or _mode == Mode.RETREAT:
 		return
+	if _lurk:
+		return                          # väijyvä assassin ei tulita, odottaa avausta
 	var dist: float = hero.global_position.distance_to(_target.global_position)
 	var attack_range := _pref_range + 120.0
 	if _is_tank or _role == "Fighter" or _is_assassin:
@@ -551,6 +595,15 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 			_flags.ult = true
 			return
 
+	# Itsesuojelu: hädässä (matala hp tai monta vihollista lähellä) pakene
+	# liikkumiskyvyllä tai väistöllä. Ylemmät tasot reagoivat, alemmat eivät.
+	if self_preserve > 0.05 and _in_danger(hero, arena) and randf() < self_preserve:
+		if _try_escape(hero, bb):
+			return
+
+	if _lurk:
+		return                          # väijyessä ei käytetä engage-kykyjä (a1/a2)
+
 	if randf() > ability_chance:
 		return
 
@@ -558,6 +611,56 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 		_flags.a1 = _want_a1(hero, arena, bb, dist, pos)
 	if hero.cd.a2 <= 0.0:
 		_flags.a2 = _want_a2(hero, arena, bb, dist, pos)
+
+
+## Onko botti hädässä. Hauraat roolit (assassin/tuki/kaukotaistelu) pakenevat
+## herkemmin ja myös piiritettynä; tankit ja fighterit pitävät linjan ja
+## pakenevat vain kriittisen matalalla — ne eivät hylkää etulinjaa.
+func _in_danger(hero: Hero, arena) -> bool:
+	var frail: bool = not _is_tank and _role != "Fighter"
+	var hp_thresh: float = 0.4 if frail else 0.25
+	if hero.hp < hero.max_hp * hp_thresh:
+		return true
+	if frail and arena.heroes_in_circle(hero.global_position, 180.0, 1 - hero.team).size() >= 2:
+		return true
+	return false
+
+
+## Yritä paeta vaarasta: liikkumiskyvyllä (Blink/Shade/Tide) poispäin, muuten
+## väistöllä. Kääntää tähtäyksen pois, jotta syöksy/teleportti vie turvaan.
+func _try_escape(hero: Hero, bb: TeamBlackboard) -> bool:
+	var away := _escape_dir(hero, bb)
+	if away == Vector2.ZERO:
+		return false
+	match hero.hero_id:
+		"blink", "shade":
+			if hero.cd.a1 <= 0.0 and hero._can_afford("a1"):
+				_aim = away
+				_flags.a1 = true
+				return true
+		"tide":
+			if hero.cd.a1 <= 0.0 and hero.ammo > 0:
+				_aim = away
+				_flags.a1 = true
+				return true
+	if hero.cd.dodge <= 0.0:
+		_move = away.limit_length(1.0)
+		_flags.dodge = true
+		return true
+	return false
+
+
+func _escape_dir(hero: Hero, bb: TeamBlackboard) -> Vector2:
+	var pos: Vector2 = hero.global_position
+	if bb.threat_center != Vector2.ZERO:
+		var d: Vector2 = pos - bb.threat_center
+		if d.length() > 1.0:
+			return d.normalized()
+	if _target != null and is_instance_valid(_target):
+		var d2: Vector2 = pos - _target.global_position
+		if d2.length() > 1.0:
+			return d2.normalized()
+	return Vector2.ZERO
 
 
 func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies: int) -> bool:
