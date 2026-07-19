@@ -24,6 +24,7 @@ const DESCRIPTIONS := {
 	"map": "Geargarden: mekaaninen puutarha, jossa on kuljetinhihnoja ja rattaita.",
 	"music_vol": "Taustamusiikin voimakkuus. Sama säätö löytyy myös päävalikon asetuksista.",
 	"sfx_vol": "Äänitehosteiden (iskut, kyvyt, valikkoäänet) voimakkuus. Laske tästä jos äänet ovat liian kovat.",
+	"split": "Jaettu ruutu (koeversio): kun pelaajat leviävät kauas toisistaan, näyttö jakautuu kahtia ja seuraa molempia ryhmiä. Sopii isoille kartoille ja paikalliseen co-opiin (max 4 pelaajaa). Pois päältä = klassinen yhteinen kamera.",
 }
 
 
@@ -86,6 +87,14 @@ func _ready() -> void:
 		if _desc_label != null:
 			_desc_label.text = MAP_DESC[Game.map_id])
 	_add_row(inner, map_row)
+
+	var split_row := OptionRow.new("Jaettu ruutu", ["Pois", "Päällä"],
+		1 if Game.options.split_screen else 0,
+		func(i):
+			Game.options.split_screen = i == 1
+			Game.save_options())
+	split_row.desc_key = "split"
+	_add_row(inner, split_row)
 
 	# Äänenvoimakkuudet suoraan tähän näkymään (sama säätö kuin päävalikossa),
 	# jotta ne on helppo löytää ja säätää myös ottelua aloitettaessa.

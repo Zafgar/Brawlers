@@ -125,7 +125,10 @@ func _handle_join_input(device: int, edge: Dictionary) -> void:
 
 	if edge.accept:
 		if entry.is_empty():
-			if players.size() < Game.team_size * 2:
+			# Paikallisia ihmispelaajia korkeintaan MAX_LOCAL_PLAYERS (jaettu
+			# ruutu kestää neljä). Loput paikat täyttyvät boteilla.
+			var join_cap: int = mini(Game.team_size * 2, Game.MAX_LOCAL_PLAYERS)
+			if players.size() < join_cap:
 				_join(device)
 		else:
 			entry.ready = not entry.ready

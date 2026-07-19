@@ -56,6 +56,11 @@ var _sd_elapsed := 0.0
 var _last_holder_team := -1
 var _pause_layer: CanvasLayer = null
 
+# Jaettu ruutu: kun SplitView isännöi areenaa, se luo kamerat ja HUDin itse
+# (areena ei tee omaa GameCameraa/HUDia). Tärinä reititetään sinne.
+var hosted := false
+var split_view = null
+
 # Reliikin "kuumeneminen": kuinka kauan sama joukkue on pitänyt yhtäjaksoisesti.
 var _hold_streak_team := -1
 var _hold_streak := 0.0
@@ -91,19 +96,23 @@ func _ready() -> void:
 	blackboards[0].setup(self, 0)
 	blackboards[1].setup(self, 1)
 
-	camera = GameCamera.new()
-	camera.arena = self
-	# Kamera ei koskaan näytä areenan ulkopuolista tyhjää.
-	var map_half: Vector2 = map.size() / 2.0
-	camera.limit_left = int(-map_half.x - MapBase.WALL_THICKNESS)
-	camera.limit_right = int(map_half.x + MapBase.WALL_THICKNESS)
-	camera.limit_top = int(-map_half.y - MapBase.WALL_THICKNESS)
-	camera.limit_bottom = int(map_half.y + MapBase.WALL_THICKNESS)
-	add_child(camera)
+	# Jaetussa ruudussa SplitView luo kamerat ja HUDin. Muuten oma GameCamera.
+	if not hosted:
+		camera = GameCamera.new()
+		camera.arena = self
+		# Kamera ei koskaan näytä areenan ulkopuolista tyhjää.
+		var map_half: Vector2 = map.size() / 2.0
+		camera.limit_left = int(-map_half.x - MapBase.WALL_THICKNESS)
+		camera.limit_right = int(map_half.x + MapBase.WALL_THICKNESS)
+		camera.limit_top = int(-map_half.y - MapBase.WALL_THICKNESS)
+		camera.limit_bottom = int(map_half.y + MapBase.WALL_THICKNESS)
+		add_child(camera)
 
-	hud = HudLayer.new()
-	hud.setup(self)
-	add_child(hud)
+		hud = HudLayer.new()
+		hud.setup(self)
+		add_child(hud)
+	elif split_view != null:
+		split_view.on_arena_ready()
 
 	_start_round_intro()
 
@@ -594,6 +603,8 @@ func popup(pos: Vector2, text: String, color: Color, size := 20) -> void:
 func shake(amount: float) -> void:
 	if camera != null:
 		camera.add_shake(amount)
+	if split_view != null:
+		split_view.add_shake(amount)
 
 
 func blackboard(team: int) -> TeamBlackboard:

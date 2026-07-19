@@ -28,6 +28,10 @@ var blue_rounds := 0
 var orange_rounds := 0
 var last_winner_team := 0
 
+# Paikallisen co-opin pelaajakatto (loput täytetään boteilla). Verkkopeliä
+# varten (myöhemmin) määrää voi nostaa.
+const MAX_LOCAL_PLAYERS := 4
+
 var options := {
 	"volume": 0.9,            # kokonaisäänenvoimakkuus (master)
 	"music_volume": 0.9,      # musiikin oma säädin
@@ -35,6 +39,7 @@ var options := {
 	"music": true,
 	"shake": true,
 	"fullscreen": true,
+	"split_screen": false,    # jaettu ruutu isolla kartalla (koeversio)
 }
 
 var main: Node = null
@@ -183,7 +188,13 @@ func start_match() -> void:
 	for profile in roster:
 		profile.reset_stats()
 	var new_arena := Arena.new()
-	_swap(new_arena)
+	if options.split_screen:
+		# Jaettu ruutu: areena renderöidään SplitViewin SubViewporteihin.
+		var host := SplitView.new()
+		host.setup(new_arena)
+		_swap(host)
+	else:
+		_swap(new_arena)
 	arena = new_arena
 
 
@@ -229,6 +240,7 @@ func load_options() -> void:
 	options.music = cfg.get_value("audio", "music", options.music)
 	options.shake = cfg.get_value("video", "shake", options.shake)
 	options.fullscreen = cfg.get_value("video", "fullscreen", options.fullscreen)
+	options.split_screen = cfg.get_value("video", "split_screen", options.split_screen)
 
 
 func save_options() -> void:
@@ -239,6 +251,7 @@ func save_options() -> void:
 	cfg.set_value("audio", "music", options.music)
 	cfg.set_value("video", "shake", options.shake)
 	cfg.set_value("video", "fullscreen", options.fullscreen)
+	cfg.set_value("video", "split_screen", options.split_screen)
 	cfg.save(OPTIONS_PATH)
 
 
