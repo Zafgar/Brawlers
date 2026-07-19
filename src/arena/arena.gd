@@ -648,7 +648,7 @@ func _spawn_wave(team: int) -> void:
 	var base: Vector2 = path[0] if not path.is_empty() else Vector2.ZERO
 	for i in range(WAVE_SIZE):
 		var m := Minion.new()
-		var offset := Vector2(0.0, -60.0 + i * 30.0)
+		var offset := Vector2(0.0, 8.0 + i * 26.0)   # etelään, ei nexuksen alustan päälle
 		m.setup_minion(self, team, base + offset, path)
 		add_child(m)
 		heroes.append(m)

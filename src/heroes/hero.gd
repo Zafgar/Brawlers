@@ -899,6 +899,15 @@ func release_grabbed() -> void:
 
 # --- Tyrmäys ja paluu ---
 
+## Paluuaika. MOBASSA se kasvaa otteluajan myötä (kuten oikeassa MOBASSA):
+## alkupelin kuolema on halpa, myöhemmin kallis -> voitettu taistelu muuttuu
+## piiritykseksi ja ottelut ratkeavat nexuksen tuhoon aikakaton sijaan.
+func _respawn_delay() -> float:
+	if arena != null and arena.mode == "moba":
+		return clampf(6.0 + arena.match_elapsed / 28.0, 6.0, 26.0)
+	return RESPAWN_TIME
+
+
 func _knockout(source: Hero) -> void:
 	alive = false
 	_aiming_slot = ""
@@ -914,7 +923,7 @@ func _knockout(source: Hero) -> void:
 	void_stack_timer = 0.0
 	void_stacker = null
 	frozen = 0.0
-	respawn_timer = RESPAWN_TIME
+	respawn_timer = _respawn_delay()
 	profile.stats.deaths += 1
 	velocity = Vector2.ZERO
 	shield_hp = 0.0

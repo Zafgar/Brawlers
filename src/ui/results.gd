@@ -131,7 +131,8 @@ func _card(rect: Rect2, bg: Color, border: Color, bw: float, radius: float) -> v
 
 func _draw() -> void:
 	var winner: int = Game.last_winner_team
-	var wc: Color = Game.team_color(winner)
+	var is_draw: bool = winner < 0
+	var wc: Color = Palette.GOLD if is_draw else Game.team_color(winner)
 
 	# Voittajahehku otsikon taakse
 	var pulse := 0.5 + 0.5 * sin(_time * 1.5)
@@ -141,7 +142,8 @@ func _draw() -> void:
 		draw_line(Vector2(960, 110), Vector2(960, 110) + Vector2(cos(ang), sin(ang)) * 320.0,
 			Palette.with_alpha(wc, 0.03), 3.0)
 
-	UiKit.draw_text(self, Vector2(960, 100), "%s VOITTAA!" % Game.team_name(winner), 80,
+	var title: String = "TASAPELI!" if is_draw else "%s VOITTAA!" % Game.team_name(winner)
+	UiKit.draw_text(self, Vector2(960, 100), title, 80,
 		Palette.glow(wc, 1.2), true, 9)
 	UiKit.draw_text(self, Vector2(960, 168),
 		"Erät:  sininen %d – %d oranssi" % [Game.blue_rounds, Game.orange_rounds], 26,

@@ -66,8 +66,10 @@ func update(hero, delta: float) -> void:
 		else:
 			_attack = true
 	elif to_home.length() > 46.0:
-		# Ei kohdetta -> ajaudu takaisin kotileirille.
-		_mv = to_home.normalized()
+		# Ei kohdetta -> ajaudu takaisin kotileirille vuorottelevalla sivuliikkeellä
+		# (ei juutu leirialkovin seinän kulmaan matkalla kotiin).
+		var hdir: Vector2 = to_home.normalized()
+		_mv = (hdir + hdir.orthogonal() * 0.3 * _strafe).normalized()
 
 
 ## Kohdevalinta: 1) tuorein vahingoittaja (kosto), 2) lähin pelaaja aggro-
