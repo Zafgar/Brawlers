@@ -72,6 +72,7 @@ var _aim_err := 0.0
 var _aim_err_timer := 0.0
 var _dodge_check_timer := 0.0
 var _strafe_dir := 1.0
+var _avoid_turn := 0.0          # seinänseurannan kiertosuunta (-1 vasen, +1 oikea)
 var _atk_phase := 0.0            # hyökkäyksen jaksotus (aggression-vaihtelu)
 var _atk_firing := true
 var _lurk := false              # assassin väijyy (odottaa avausta) sen sijaan että syöksyy
@@ -645,15 +646,10 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> v
 		var to_t: Vector2 = (_target.global_position - pos).normalized()
 		desired += to_t.orthogonal() * sin(_time * 2.5) * 0.5 * _strafe_dir
 
-	# Esteenväistö: säde eteenpäin, käännä jos seinä.
+	# Esteenväistö: seinänseuranta viuhkasäteillä (osaa liukua pitkää seinää
+	# pitkin lähimmälle aukolle, esim. MOBA-kartan viidakko/linja-jaon gankit).
 	if desired.length() > 0.1:
-		var space := hero.get_world_2d().direct_space_state
-		var check := PhysicsRayQueryParameters2D.create(pos, pos + desired * 160.0, 1)
-		if not space.intersect_ray(check).is_empty():
-			var left: Vector2 = desired.rotated(-0.8)
-			var right: Vector2 = desired.rotated(0.8)
-			var left_check := PhysicsRayQueryParameters2D.create(pos, pos + left * 160.0, 1)
-			desired = left if space.intersect_ray(left_check).is_empty() else right
+		desired = _steer_around(hero, pos, desired)
 
 	# Erottelu: ei tungeta liittolaisen päälle.
 	for ally in arena.alive_allies(hero.team):
@@ -664,6 +660,51 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> v
 			desired += diff.normalized() * 0.6
 
 	_move = desired.limit_length(1.0)
+
+
+## Seinänseuranta: jos eteenpäin on este, valitse kiertosuunta (avoimempi puoli,
+## hystereesillä ettei värise) ja kokeile kasvavia kulmia kunnes löytyy vapaa
+## suunta. Näin botti liukuu pitkää seinää pitkin lähimmälle aukolle sen sijaan
+## että jää jumiin — ja osaa mennä esim. MOBA-kartan gank-aukoista.
+func _steer_around(hero: Hero, pos: Vector2, desired: Vector2) -> Vector2:
+	var space := hero.get_world_2d().direct_space_state
+	var look: float = 130.0 + hero.radius
+	if _ray_clear(space, pos, desired, look):
+		_avoid_turn = 0.0
+		return desired
+	# Valitse kiertosuunta: pidä edellinen jos vielä käynnissä, muuten avoimempi puoli.
+	if _avoid_turn == 0.0:
+		var left_open: float = _open_dist(space, pos, desired.rotated(-1.0), look)
+		var right_open: float = _open_dist(space, pos, desired.rotated(1.0), look)
+		_avoid_turn = -1.0 if left_open >= right_open else 1.0
+	# Kokeile kasvavia kulmia valitulle puolelle.
+	for mag in [0.5, 0.9, 1.3, 1.7, 2.2]:
+		var cand: Vector2 = desired.rotated(_avoid_turn * mag)
+		if _ray_clear(space, pos, cand, look):
+			return cand
+	# Valittu puoli täysin tukossa -> vaihda puolta ja kokeile.
+	_avoid_turn = -_avoid_turn
+	for mag2 in [0.5, 0.9, 1.3, 1.7]:
+		var cand2: Vector2 = desired.rotated(_avoid_turn * mag2)
+		if _ray_clear(space, pos, cand2, look):
+			return cand2
+	# Kaikki tukossa -> peräänny hieman (irrota kulmasta).
+	return -desired * 0.4
+
+
+func _ray_clear(space: PhysicsDirectSpaceState2D, pos: Vector2, dir: Vector2, dist: float) -> bool:
+	var q := PhysicsRayQueryParameters2D.create(pos, pos + dir.normalized() * dist, 1)
+	return space.intersect_ray(q).is_empty()
+
+
+## Vapaan matkan pituus suuntaan (osumaan asti, tai koko dist jos vapaa).
+func _open_dist(space: PhysicsDirectSpaceState2D, pos: Vector2, dir: Vector2, dist: float) -> float:
+	var q := PhysicsRayQueryParameters2D.create(pos, pos + dir.normalized() * dist, 1)
+	var hit := space.intersect_ray(q)
+	if hit.is_empty():
+		return dist
+	var hp: Vector2 = hit["position"]
+	return pos.distance_to(hp)
 
 
 ## Vetäytyminen: kite poispäin uhasta kohtuullinen matka (ei aivan nurkkaan).
