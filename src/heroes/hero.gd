@@ -107,6 +107,7 @@ var res_max := 100.0
 var res_regen := 0.0               # passiivinen palautuminen/s (mana, energy)
 var res_cost := {"basic": 0.0, "a1": 0.0, "a2": 0.0, "dodge": 0.0}
 var _channel_slot := ""            # kanavoitava kyky pohjassa (esim. kilpi)
+var _channel_locked := ""          # resurssi loppui kesken pidon -> lukossa napin vapautukseen asti
 var _rage_idle := 0.0              # aika viime taistelutoiminnasta (rage-vaimeneminen)
 
 # Kenttäbuffit (blue/red). blue = resurssin nopea palautuminen, red = +vahinko
@@ -355,6 +356,9 @@ func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 	var released: bool = controller.ability1_released() if num == 1 else controller.ability2_released()
 
 	# Kanavoitava kyky: pito ylläpitää vaikutusta (esim. Bastionin energiakilpi).
+	# Kun resurssi loppuu kesken pidon, kyky lukittuu: se ei käynnisty uudelleen
+	# ennen kuin nappi vapautetaan (muuten regen-tippa käynnistäisi sen heti
+	# uudelleen -> säde/kilpi "toimisi" nollaresurssilla).
 	if not is_bot and slot in _channeled_slots():
 		if _channel_slot == slot:
 			if held and res > 0.0:
@@ -362,9 +366,15 @@ func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 			else:
 				_channel_slot = ""
 				_channel_end(slot)
-		elif _channel_slot == "" and held and cd[slot] <= 0.0 and res > 0.0:
-			_channel_slot = slot
-			_channel_tick(slot, delta)
+				if held and res <= 0.0:
+					_channel_locked = slot
+		else:
+			if not held and _channel_locked == slot:
+				_channel_locked = ""
+			if _channel_slot == "" and held and cd[slot] <= 0.0 \
+					and res > 0.0 and _channel_locked != slot:
+				_channel_slot = slot
+				_channel_tick(slot, delta)
 		return
 
 	# Tähdättävä kyky: pito tähtää, vapautus laukaisee.
@@ -436,10 +446,9 @@ func _setup_resource() -> void:
 
 func _tick_resource(delta: float) -> void:
 	var boost := 3.0 if blue_buff > 0.0 else 1.0   # sininen buffi: nopea palautuminen
-	if res_type == "mana":
-		res = minf(res + res_regen * boost * delta, res_max)
-	elif res_type == "energy":
-		# Energia ei palaudu kanavoinnin aikana (kilpi kuluttaa sitä).
+	if res_type == "mana" or res_type == "energy":
+		# Ei palaudu kanavoinnin aikana (säde/kilpi kuluttaa sitä), jotta
+		# resurssi todella loppuu eikä regen-tippa pidä kykyä hengissä.
 		if _channel_slot == "":
 			res = minf(res + res_regen * boost * delta, res_max)
 	elif res_type == "rage":
@@ -450,6 +459,7 @@ func _tick_resource(delta: float) -> void:
 
 func _reset_resource() -> void:
 	_channel_slot = ""
+	_channel_locked = ""
 	_rage_idle = 0.0
 	if res_type == "rage":
 		res = 0.0
@@ -788,6 +798,7 @@ func _knockout(source: Hero) -> void:
 	_aiming_slot = ""
 	_aim_active = false
 	_channel_slot = ""
+	_channel_locked = ""
 	_ult_holding = false
 	_beam_active = false
 	blue_buff = 0.0           # tyrmäys rikkoo kantajan buffit (vihollisen "murskaus")
