@@ -66,6 +66,13 @@ var reloading := false
 var guard_timer := 0.0
 var guard_absorb := 0.7
 var guard_arc_deg := 80.0
+var guard_radius := 0.0             # > 0 = piirrä leveä kilpivalli tälle säteelle
+
+# Tartunta (Titaani pitää kiinni): kohde ei törmää muihin sankareihin oteen
+# aikana, jottei se estä/tönäise kantajaa. Ote vapautuu itsestään jos sitä ei
+# virkistetä (esim. kantaja kuolee tai pudottaa otteen).
+var grabbed_by = null
+var _grab_hold_timer := 0.0
 
 # Väistösyöksy
 var dash_timer := 0.0
@@ -201,6 +208,13 @@ func _physics_process(delta: float) -> void:
 	controller.update(self, delta)
 	_tick_status(delta)
 	_tick_resource(delta)
+
+	# Tartunnan itsevapautus: jos otetta ei virkistetä (kantaja kuoli, pudotti
+	# otteen tms.), palauta törmäys ettei kohde jää haamuksi.
+	if grabbed_by != null:
+		_grab_hold_timer -= delta
+		if _grab_hold_timer <= 0.0 or not is_instance_valid(grabbed_by) or not grabbed_by.alive:
+			release_grabbed()
 
 	# Tähtäys
 	var aim_input: Vector2 = controller.aim_vector()
@@ -739,10 +753,32 @@ func apply_mark(duration: float, amp := 1.25) -> void:
 	arena.popup(global_position + Vector2(0, -60), "MERKITTY", Palette.GOLD, 14)
 
 
-func start_guard(duration: float, absorb := 0.7, arc_deg := 80.0) -> void:
+func start_guard(duration: float, absorb := 0.7, arc_deg := 80.0, radius := 0.0) -> void:
 	guard_timer = duration
 	guard_absorb = absorb
 	guard_arc_deg = arc_deg
+	guard_radius = radius
+
+
+## Merkitsee sankarin tartutuksi (Titaani): poistaa sankari-sankari-törmäyksen
+## jottei kohde estä kantajaa. Virkistetään joka framessa kantajan _aim_holdista;
+## ellei virkistetä, ote vapautuu itsestään (_physics_process).
+func set_grabbed(holder) -> void:
+	if grabbed_by == null:
+		set_collision_layer_value(2, false)
+		set_collision_mask_value(2, false)
+	grabbed_by = holder
+	_grab_hold_timer = 0.2
+
+
+func release_grabbed() -> void:
+	if grabbed_by == null:
+		return
+	grabbed_by = null
+	_grab_hold_timer = 0.0
+	if alive:
+		set_collision_layer_value(2, true)
+		set_collision_mask_value(2, true)
 
 
 # --- Tyrmäys ja paluu ---
@@ -765,6 +801,8 @@ func _knockout(source: Hero) -> void:
 	velocity = Vector2.ZERO
 	shield_hp = 0.0
 	guard_timer = 0.0
+	guard_radius = 0.0
+	grabbed_by = null
 	dash_timer = 0.0
 	slow_factor = 1.0
 	slow_timer = 0.0
@@ -804,6 +842,8 @@ func _respawn() -> void:
 	iframes = 2.0
 	global_position = arena.map.spawn_point(team, profile.index)
 	visible = true
+	grabbed_by = null
+	guard_radius = 0.0
 	set_collision_layer_value(2, true)
 	set_collision_mask_value(2, true)
 	for slot in cd:
@@ -843,6 +883,8 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	stun_timer = 0.0
 	mark_timer = 0.0
 	guard_timer = 0.0
+	guard_radius = 0.0
+	grabbed_by = null
 	ult_charge = ult_charge * keep_ult_fraction
 	_ult_ready_announced = ult_charge >= 100.0
 	for slot in cd:

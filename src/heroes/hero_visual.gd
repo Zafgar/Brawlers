@@ -131,18 +131,7 @@ func _draw_ground_ring() -> void:
 		draw_circle(chip, 11.0, hero.profile.color())
 		UiKit.draw_text(self, chip + Vector2(0, 1), str(hero.profile.index + 1), 15,
 			Palette.TEXT_DARK, true)
-		# Pienet cooldown-pallurat: kyky 1, kyky 2, väistö.
-		var slots := ["a1", "a2", "dodge"]
-		for i in range(slots.size()):
-			var pip := Vector2(-16.0 + i * 16.0, hero.radius + 34.0)
-			var max_cd: float = maxf(hero.cd_max[slots[i]], 0.001)
-			var progress: float = clampf(1.0 - hero.cd[slots[i]] / max_cd, 0.0, 1.0)
-			draw_circle(pip, 5.5, Color(0, 0, 0, 0.5))
-			if progress >= 1.0:
-				draw_circle(pip, 4.5, Palette.glow(hero.hero_color(), 1.2))
-			elif progress > 0.02:
-				draw_arc(pip, 4.0, -PI / 2.0, -PI / 2.0 + TAU * progress, 16,
-					Palette.with_alpha(hero.hero_color(), 0.8), 2.5)
+		# Kykyvalmiuspallerot piirretään _draw_ability_pips():ssä (yksi rivi).
 
 	if hero.ult_charge >= 100.0:
 		var pulse := 0.5 + 0.5 * sin(_time * 6.0)
@@ -220,8 +209,13 @@ func _draw_status(bob: float) -> void:
 		# Suuntatorjunnan kaari tähtäyksen suuntaan
 		var a := hero.aim.angle()
 		var half := deg_to_rad(hero.guard_arc_deg)
-		draw_arc(Vector2(0, -14), hero.radius + 13.0, a - half, a + half, 24,
-			Palette.glow(Palette.SHIELD, 1.4), 5.0)
+		if hero.guard_radius > 1.0:
+			# Leveä kilpivalli (esim. Bastionin kanavoitu kilpi): kiinteä
+			# läpikuultava este eteen, joka torjuu vihollisammukset.
+			_draw_shield_wall(a, hero.guard_radius, half)
+		else:
+			draw_arc(Vector2(0, -14), hero.radius + 13.0, a - half, a + half, 24,
+				Palette.glow(Palette.SHIELD, 1.4), 5.0)
 
 	if hero.mark_timer > 0.0:
 		# Scoutin merkki: pulssaava kultatimantti pään yläpuolella.
@@ -306,6 +300,40 @@ func _draw_ability_pips() -> void:
 			if frac > 0.01:
 				draw_arc(c, pr, -PI * 0.5, -PI * 0.5 + TAU * frac, 12,
 					Palette.with_alpha(col, 0.85), 1.5)
+
+
+## Leveä kilpivalli: kiinteän näköinen läpikuultava kaarieste eteen (Bastion).
+## a = suunta, radius = etäisyys, half = puolikaari (rad). Piirretään sankarin
+## paikallisavaruudessa (keskipiste origossa).
+func _draw_shield_wall(a: float, radius: float, half: float) -> void:
+	var col := Palette.SHIELD
+	var c := Vector2(0, -6)
+	var inner: float = maxf(radius - 22.0, 8.0)
+	var steps := 30
+	# Täytetty läpikuultava kilpivyö (este, jonka läpi näkee).
+	var band := PackedVector2Array()
+	for i in range(steps + 1):
+		var ang: float = a - half + (2.0 * half) * i / steps
+		band.append(c + Vector2(cos(ang), sin(ang)) * radius)
+	for i in range(steps, -1, -1):
+		var ang: float = a - half + (2.0 * half) * i / steps
+		band.append(c + Vector2(cos(ang), sin(ang)) * inner)
+	draw_colored_polygon(band, Palette.with_alpha(Palette.glow(col, 1.2), 0.20))
+	# Kirkas ulko- ja sisäreuna.
+	draw_arc(c, radius, a - half, a + half, 48,
+		Palette.with_alpha(Palette.glow(col, 1.6), 0.9), 5.0)
+	draw_arc(c, inner, a - half, a + half, 48,
+		Palette.with_alpha(Palette.glow(col, 1.3), 0.5), 2.5)
+	# Kimmelluskaari.
+	var shimmer := 0.5 + 0.5 * sin(_time * 6.0)
+	draw_arc(c, radius - 10.0, a - half, a + half, 48,
+		Palette.with_alpha(col, 0.2 + shimmer * 0.2), 2.0)
+	# Säteittäiset tukiviivat kilpivyön poikki.
+	for k in range(5):
+		var ang: float = a - half + (2.0 * half) * float(k) / 4.0
+		var op: Vector2 = c + Vector2(cos(ang), sin(ang)) * radius
+		var ip: Vector2 = c + Vector2(cos(ang), sin(ang)) * inner
+		draw_line(ip, op, Palette.with_alpha(Palette.glow(col, 1.4), 0.5), 2.0)
 
 
 func _body_base(center: Vector2, r: float, c1: Color, c2: Color) -> void:

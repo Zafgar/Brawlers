@@ -20,8 +20,6 @@ const PULL_SPEED := 1000.0
 const PULL_DUR := 0.2
 const PULL_STUN := 0.8
 
-var _wall_fx := 0.0
-
 func _init() -> void:
 	kb_resist = 0.55
 	radius = 30.0
@@ -43,26 +41,16 @@ func _channeled_slots() -> Array:
 
 
 func _channel_tick(_slot: String, delta: float) -> void:
-	# Ylläpidä vahva laaja kilpi niin kauan kuin energiaa riittää.
-	start_guard(0.15, 0.9, 150.0)
+	# Ylläpidä leveä kiinteä kilpivalli edessä niin kauan kuin energiaa riittää.
+	# guard_arc_deg on puolikaari -> BLOCK_ARC_DEG * 0.5, ja guard_radius tekee
+	# kilvestä leveän vallin (hero_visual piirtää sen kiinteänä esteenä).
+	start_guard(0.15, 0.9, BLOCK_ARC_DEG * 0.5, BLOCK_RADIUS)
 	res = maxf(res - 8.0 * delta, 0.0)
 	if res <= 0.0:
 		guard_timer = 0.0   # energia loppui -> kilpi putoaa heti
 		return
 	# Iso etukilpi torjuu vihollisammukset -> takana olevat liittolaiset suojassa.
 	_block_front_projectiles()
-	_wall_fx -= delta
-	if _wall_fx <= 0.0:
-		_wall_fx = 0.3
-		var a := aim.angle()
-		var half := deg_to_rad(BLOCK_ARC_DEG * 0.5)
-		# Hehkuva kilpivallikaari eteen
-		var pts := PackedVector2Array()
-		for i in range(9):
-			var ang: float = a - half + (2.0 * half) * i / 8.0
-			pts.append(global_position + Vector2(cos(ang), sin(ang)) * BLOCK_RADIUS)
-		for p in pts:
-			Fx.spark(arena, p, Palette.with_alpha(Palette.glow(Palette.SHIELD, 1.3), 0.7))
 
 
 ## Torjuu vihollisammukset isolla etukaarella (ei kosketa taakse jääviä).

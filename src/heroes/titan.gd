@@ -16,7 +16,7 @@ const GRAB_ARC_DEG := 62.0
 const GRAB_DMG := 10.0
 const THROW_KB := 780.0
 const GRAB_STUN := 0.75
-const GRAB_HOLD_DIST := 54.0        # kuinka kaukana edessä kohdetta pidetään
+const GRAB_HOLD_DIST := 72.0        # kuinka kaukana edessä kohdetta pidetään
 const GRAB_MAX_HOLD := 1.1          # pisin tähtäysaika ennen automaattista heittoa
 const GRAB_AIM_LEN := 250.0         # heiton tähtäysviivan pituus
 
@@ -131,6 +131,9 @@ func _aim_begin(_slot: String) -> bool:
 		return false
 	_held_target = t
 	_hold_time = 0.0
+	# Poista kohteen sankaritörmäys otteen ajaksi, jottei se estä/tönäise
+	# Titaania -> Titaani voi liikkua ja tähdätä vapaasti heittoa pidellessä.
+	t.set_grabbed(self)
 	t.global_position = global_position + aim * GRAB_HOLD_DIST
 	t.velocity = Vector2.ZERO
 	t.apply_stun(0.3)
@@ -153,6 +156,8 @@ func _aim_hold(_slot: String, delta: float) -> void:
 		_aiming_slot = ""
 		return
 	_hold_time += delta
+	# Virkistä ote (uusii itsevapautuksen ajastimen) ja pidä kohde edessä.
+	_held_target.set_grabbed(self)
 	_held_target.global_position = global_position + aim * GRAB_HOLD_DIST
 	_held_target.velocity = Vector2.ZERO
 	_held_target.apply_stun(0.2)
@@ -186,6 +191,8 @@ func _ability1(dir: Vector2) -> void:
 
 ## Heittää kohteen annettuun suuntaan tainnutuksella.
 func _throw_target(target: Hero, dir: Vector2) -> void:
+	# Palauta törmäys ennen heittoa, jotta lentävä kohde osuu seiniin normaalisti.
+	target.release_grabbed()
 	AudioMgr.play("slam", 0.1, -1.0)
 	arena.shake(0.25)
 	visual.squash(1.25, 0.8)
@@ -199,6 +206,8 @@ func _throw_target(target: Hero, dir: Vector2) -> void:
 
 ## Pudottaa pidellyn kohteen heittämättä (tähtäys keskeytyi).
 func _drop_target() -> void:
+	if _held_target != null and is_instance_valid(_held_target):
+		_held_target.release_grabbed()
 	_held_target = null
 
 
@@ -290,17 +299,17 @@ func _passive_update(delta: float) -> void:
 	# jäätyminen tms.) ilman heittoa, pudota kohde. Vapautus/heitto tyhjentää
 	# _held_targetin itse, joten tähän jää vain oikeat keskeytykset.
 	if _held_target != null and _aiming_slot != "a1":
-		_held_target = null
+		_drop_target()
 
 
 ## Berserk ja tartunta nollataan tyrmäyksestä ja erän vaihtuessa.
 func _respawn() -> void:
 	super()
 	_berserk = 0.0
-	_held_target = null
+	_drop_target()
 
 
 func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	super(keep_ult_fraction)
 	_berserk = 0.0
-	_held_target = null
+	_drop_target()
