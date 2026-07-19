@@ -282,7 +282,12 @@ func _cluster_center(cluster: Array) -> Vector2:
 ## (klassinen kamera), jottei kukaan jää ruudun ulkopuolelle.
 func _frame(cluster: Array) -> Array:
 	if _pane_count <= 1:
-		var everyone := _alive_heroes()
+		# Yksi ruutu: rajaa pelaajat (joukkueet 0/1), ei kaukaisia neutraaleja
+		# viidakko-olentoja jotka venyttäisivät näkymän.
+		var everyone: Array = []
+		for h in _alive_heroes():
+			if h.team < 2:
+				everyone.append(h)
 		return everyone if not everyone.is_empty() else cluster
 	var framed: Array = cluster.duplicate()
 	for h in _alive_heroes():

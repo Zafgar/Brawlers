@@ -24,8 +24,25 @@ const KOTH_TARGET := 60.0         # sekuntia ydinalueen hallintaa
 const KOTH_RADIUS := 175.0
 const KOTH_RELOCATE := 20.0       # kuinka usein ydin siirtyy
 
-var mode := "relic"               # "relic" tai "koth"
+# Viidakko-pelimuoto: 5 min ottelu, eniten pisteitä voittaa. Pisteitä saa
+# viidakko-olennoista (leirit, pomo) ja vihollisten tyrmäämisestä.
+const JUNGLE_TIME := 300.0        # ottelun kesto sekunteina (5 min)
+const BOSS_FIRST := 60.0          # pomon ensimmäinen ilmestyminen (s pelin alusta)
+const DMG_CAMP_POINTS := 2.0      # sivuleirin kaadosta
+const POINTS_CAMP_POINTS := 8.0   # pistereirin kaadosta
+const BOSS_POINTS := 14.0         # pomon kaadosta
+const KO_POINTS := 3.0            # vihollisen tyrmäyksestä
+const DMG_CAMP_BUFF := 18.0       # vahinkobuffin kesto (s) kaatajan tiimille
+const BOSS_BOOST := 45.0          # pomobuffin kesto (s) koko tiimille
+
+var mode := "relic"               # "relic", "koth" tai "jungle"
 var score_target := ROUND_TARGET
+
+var critters: Array = []          # viidakko-olennot (neutraali joukkue 2)
+var _boss_critter = null
+var _boss_timer := BOSS_FIRST
+var _boss_spawned_once := false
+var _last_point_team := -1
 
 var state: int = State.INTRO
 var round_number := 1
@@ -92,6 +109,11 @@ func _ready() -> void:
 		add_child(hero)
 		heroes.append(hero)
 
+	# Viidakko-olennot (leirit) luodaan pelaajien jälkeen, jotta heroes[0]
+	# pysyy pelaajana. Pomo ilmestyy myöhemmin ajastimella.
+	if mode == "jungle":
+		_setup_jungle()
+
 	blackboards = [TeamBlackboard.new(), TeamBlackboard.new()]
 	blackboards[0].setup(self, 0)
 	blackboards[1].setup(self, 1)
@@ -118,6 +140,9 @@ func _ready() -> void:
 
 
 func _make_map() -> MapBase:
+	# Viidakko-pelimuoto käyttää aina omaa isoa karttaansa.
+	if Game.mode_id == "jungle":
+		return MapJungle.new()
 	match Game.map_id:
 		"moonstone":
 			return MapMoon.new()
@@ -175,7 +200,12 @@ func _physics_process(delta: float) -> void:
 	if state != State.PLAY:
 		return
 
-	# Kenttäbuffit ilmestyvät molemmissa pelimuodoissa.
+	# Viidakko-pelimuodolla on oma logiikkansa (ei reliikkiä eikä kenttäbuffeja).
+	if mode == "jungle":
+		_jungle_physics(delta)
+		return
+
+	# Kenttäbuffit ilmestyvät reliikki- ja ydinvaltapeleissä.
 	_buff_timer -= delta
 	if _buff_timer <= 0.0:
 		_buff_timer = BUFF_INTERVAL
@@ -333,6 +363,149 @@ func _koth_relocate() -> void:
 	Fx.ring(self, choice, Palette.glow(Palette.GOLD, 1.5), KOTH_RADIUS, 0.8, 6.0)
 
 
+# --- Viidakko-pelimuoto ---
+
+## Luo sivuvahinkoleirit ja pistereirin. Pomo ilmestyy myöhemmin ajastimella.
+func _setup_jungle() -> void:
+	score_target = 999999.0        # ei pisteraja-voittoa; aika ratkaisee
+	# Reliikki ei ole käytössä viidakossa: piilota ja estä poiminta. Jätetään
+	# keskelle (0,0), jottei GameCamera venytä näkymää sen sijaintiin.
+	relic.koth = true
+	relic.visible = false
+	var jm := map as MapJungle
+	if jm == null:
+		return
+	for cpos in jm.damage_camps():
+		_spawn_camp(Critter.Kind.DAMAGE_CAMP, cpos)
+	_spawn_camp(Critter.Kind.POINTS_CAMP, jm.points_camp())
+	_boss_timer = BOSS_FIRST
+	_boss_spawned_once = false
+
+
+func _spawn_camp(kind: int, pos: Vector2) -> void:
+	var c := Critter.new()
+	c.setup_critter(self, kind, pos)
+	add_child(c)
+	heroes.append(c)
+	critters.append(c)
+
+
+func _spawn_boss() -> void:
+	var jm := map as MapJungle
+	var pos: Vector2 = jm.boss_spot() if jm != null else Vector2.ZERO
+	var b := Critter.new()
+	b.setup_critter(self, Critter.Kind.BOSS, pos)
+	add_child(b)
+	heroes.append(b)
+	critters.append(b)
+	_boss_critter = b
+	_boss_spawned_once = true
+	hud.show_banner("VIIDAKKOPOMO HERÄÄ!",
+		"Kaada pomo keskellä — voittaja saa ison boostin", 2.4)
+	AudioMgr.play("dome_up", 0.05, -3.0)
+	Fx.ring(self, pos, Palette.glow(Color("b64ad6"), 1.6), 220.0, 0.9, 9.0)
+	shake(0.4)
+
+
+func _jungle_physics(delta: float) -> void:
+	# Pomon ensimmäinen ilmestyminen ajastimella (sen jälkeen se herää itse
+	# uudelleen Heron respawn-koneiston kautta).
+	if not _boss_spawned_once:
+		_boss_timer -= delta
+		if _boss_timer <= 0.0:
+			_spawn_boss()
+
+	time_left -= delta
+	if time_left <= 0.0:
+		time_left = 0.0
+		_end_jungle()
+
+
+## Viidakko-olennon kaato: palkitse kaatajan joukkue tyypin mukaan.
+func on_critter_ko(critter, source) -> void:
+	var team := -1
+	if source != null and is_instance_valid(source) and source.team <= 1:
+		team = source.team
+	var c := critter as Critter
+	if c == null:
+		return
+	if team < 0:
+		return   # ympäristön/olennon tappama -> ei palkintoa
+	match c.kind:
+		Critter.Kind.DAMAGE_CAMP:
+			relic_points[team] += DMG_CAMP_POINTS
+			_grant_damage_buff(source)
+			popup(critter.global_position + Vector2(0, -90),
+				"VAHINKOBUFFI!", Palette.glow(Color("e08a3c"), 1.4), 20)
+			hud.ko_feed("%s kaatoi vahinkoleirin (+%d)" % [Game.team_name(team), int(DMG_CAMP_POINTS)])
+		Critter.Kind.POINTS_CAMP:
+			relic_points[team] += POINTS_CAMP_POINTS
+			_last_point_team = team
+			popup(critter.global_position + Vector2(0, -90),
+				"+%d PISTETTÄ" % int(POINTS_CAMP_POINTS), Palette.glow(Color("e0c23c"), 1.4), 20)
+			hud.ko_feed("%s kaatoi pistereirin (+%d)" % [Game.team_name(team), int(POINTS_CAMP_POINTS)])
+		Critter.Kind.BOSS:
+			relic_points[team] += BOSS_POINTS
+			_last_point_team = team
+			_grant_boss_boost(team)
+			hud.show_banner("%s KAATOI POMON!" % Game.team_name(team),
+				"Iso boosti koko joukkueelle (+%d pistettä)" % int(BOSS_POINTS), 2.8)
+			AudioMgr.play("match_win", 0.05, -8.0)
+
+
+func on_critter_respawn(critter) -> void:
+	var c := critter as Critter
+	if c != null and c.kind == Critter.Kind.BOSS:
+		hud.show_banner("VIIDAKKOPOMO PALASI!", "Pomo on taas keskellä", 2.0)
+		AudioMgr.play("dome_up", 0.05, -5.0)
+		Fx.ring(self, critter.global_position, Palette.glow(Color("b64ad6"), 1.5), 200.0, 0.8, 8.0)
+
+
+## Vahinkobuffi (punainen) kaatajalle ja lähellä oleville liittolaisille.
+func _grant_damage_buff(source) -> void:
+	if source == null or not is_instance_valid(source):
+		return
+	source.red_buff = maxf(source.red_buff, DMG_CAMP_BUFF)
+	for ally in alive_allies(source.team):
+		if ally.global_position.distance_to(source.global_position) < 420.0:
+			ally.red_buff = maxf(ally.red_buff, DMG_CAMP_BUFF)
+
+
+## Pomobuffi: iso ja pitkä boosti koko joukkueelle.
+func _grant_boss_boost(team: int) -> void:
+	for ally in alive_allies(team):
+		ally.red_buff = maxf(ally.red_buff, BOSS_BOOST)
+		ally.blue_buff = maxf(ally.blue_buff, BOSS_BOOST)
+		ally.apply_haste(1.2, BOSS_BOOST)
+		ally.add_shield(60.0, BOSS_BOOST, ally)
+		Fx.ring(self, ally.global_position, Palette.glow(Palette.GOLD, 1.5), ally.radius + 26.0, 0.6, 6.0)
+
+
+## Aika loppui: eniten pisteitä voittaa ottelun (viidakko on yksieräinen).
+func _end_jungle() -> void:
+	var winner := 0
+	if relic_points[1] > relic_points[0]:
+		winner = 1
+	elif relic_points[0] == relic_points[1] and _last_point_team >= 0:
+		winner = _last_point_team
+	state = State.MATCH_END
+	Game.last_winner_team = winner
+	if winner == 0:
+		Game.blue_rounds = 1
+	else:
+		Game.orange_rounds = 1
+	for hero in heroes:
+		if hero.team == winner:
+			hero.profile.add_score(50.0)
+	AudioMgr.play("match_win", 0.05, -6.0)
+	shake(0.5)
+	hud.show_banner("%s VOITTAA VIIDAKON!" % Game.team_name(winner),
+		"Pisteet  %d – %d" % [int(relic_points[0]), int(relic_points[1])], 3.4)
+	await get_tree().create_timer(3.6).timeout
+	if is_inside_tree():
+		Game.match_finished()
+
+
 func holder_team() -> int:
 	if mode == "koth":
 		return relic.control_team
@@ -417,8 +590,8 @@ func _spawn_buff(type: String, team: int, pos: Vector2) -> void:
 
 ## Aika seuraavaan buffiaaltoon sekunneissa (HUD-laskuri). -1 = ei näytetä.
 func next_buff_in() -> float:
-	if state != State.PLAY:
-		return -1.0
+	if state != State.PLAY or mode == "jungle":
+		return -1.0   # viidakossa ei ole kenttäbuffeja -> ei laskuria
 	return maxf(_buff_timer, 0.0)
 
 
@@ -432,7 +605,7 @@ func _input(event: InputEvent) -> void:
 func _start_round_intro() -> void:
 	state = State.INTRO
 	relic_points = [0.0, 0.0]
-	time_left = ROUND_TIME
+	time_left = JUNGLE_TIME if mode == "jungle" else ROUND_TIME
 	sudden_death = false
 	_sd_hold = 0.0
 	_sd_elapsed = 0.0
@@ -460,7 +633,9 @@ func _run_intro() -> void:
 	AudioMgr.play_music_pool("battle")
 	var wins_needed := Game.rounds_to_win
 	var objective := ""
-	if mode == "koth":
+	if mode == "jungle":
+		objective = "Kerää eniten pisteitä 5 minuutissa — kaada leirejä, keskustan pomo ja vihollisia"
+	elif mode == "koth":
 		objective = "Hallitse ydinaluetta — %d s hallintaa voittaa erän (voitot: %d/%d – %d/%d)" % [
 			int(KOTH_TARGET), Game.blue_rounds, wins_needed, Game.orange_rounds, wins_needed]
 	else:
@@ -523,6 +698,10 @@ func _round_over(winner_team: int) -> void:
 # --- Tapahtumakoukut ---
 
 func on_hero_ko(hero: Hero, source: Hero) -> void:
+	# Viidakko: vihollisen tyrmäys tuo joukkueelle pisteitä.
+	if mode == "jungle" and source != null and is_instance_valid(source) \
+			and source.team <= 1 and source.team != hero.team:
+		relic_points[source.team] += KO_POINTS
 	if relic.carrier == hero:
 		relic.drop_from_carrier(true)
 		if source != null and is_instance_valid(source):

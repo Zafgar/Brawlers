@@ -156,9 +156,20 @@ class ScorePanel:
 		bg.set_border_width_all(2)
 		bg.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
 
-		var target: float = arena.score_target
-		var blue_frac: float = clampf(arena.team_points(0) / target, 0.0, 1.0)
-		var orange_frac: float = clampf(arena.team_points(1) / target, 0.0, 1.0)
+		var blue_frac: float
+		var orange_frac: float
+		if arena.mode == "jungle":
+			# Viidakossa ei ole kiinteää maalia -> palkit näyttävät suhteellisen
+			# johdon (johtava täysi, toinen suhteessa siihen).
+			var bp: float = arena.team_points(0)
+			var op: float = arena.team_points(1)
+			var lead: float = maxf(maxf(bp, op), 1.0)
+			blue_frac = clampf(bp / lead, 0.0, 1.0)
+			orange_frac = clampf(op / lead, 0.0, 1.0)
+		else:
+			var target: float = arena.score_target
+			blue_frac = clampf(arena.team_points(0) / target, 0.0, 1.0)
+			orange_frac = clampf(arena.team_points(1) / target, 0.0, 1.0)
 
 		# Reliikkipistepalkit: sininen vasemmalta, oranssi oikealta.
 		var bar_y := 16.0

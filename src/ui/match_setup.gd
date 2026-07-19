@@ -20,7 +20,7 @@ const DESCRIPTIONS := {
 	"size": "Montako pelaajaa kummassakin joukkueessa. Tyhjät paikat täytetään boteilla.",
 	"rounds": "Paras kolmesta = kaksi erävoittoa, paras viidestä = kolme.",
 	"bots": "Tasot 1–6. Ylempi taso reagoi nopeammin ja tähtää tarkemmin. Taso 6 on tahallaan epäreilu — se huijaa (kovempi vahinko, sitkeämpi, nopeammat kyvyt).",
-	"mode": "Relic Hold: kanna reliikkiä pisteisiin. Jäljessä oleva joukkue kerää nopeammin ja liian kauan pidetty reliikki polttaa kantajaa — johtoa ei voi vain lukita. Ydinvalta: hallitse siirtyvää ydinaluetta yksin joukkueellasi.",
+	"mode": "Relic Hold: kanna reliikkiä pisteisiin. Ydinvalta: hallitse siirtyvää ydinaluetta. Viidakko: iso kartta jaetulle ruudulle — kaada leirejä (vahinkobuffi), pistereiri ja keskustan pomo (iso boosti). Eniten pisteitä 5 minuutissa voittaa; pisteitä myös vihollisten tyrmäyksistä.",
 	"map": "Geargarden: mekaaninen puutarha, jossa on kuljetinhihnoja ja rattaita.",
 	"music_vol": "Taustamusiikin voimakkuus. Sama säätö löytyy myös päävalikon asetuksista.",
 	"sfx_vol": "Äänitehosteiden (iskut, kyvyt, valikkoäänet) voimakkuus. Laske tästä jos äänet ovat liian kovat.",
@@ -69,9 +69,10 @@ func _ready() -> void:
 	bots_row.desc_key = "bots"
 	_add_row(inner, bots_row)
 
-	var mode_start: int = 0 if Game.mode_id == "relic" else 1
-	var mode_row := OptionRow.new("Pelimuoto", ["Relic Hold", "Ydinvalta"], mode_start,
-		func(i): Game.mode_id = "relic" if i == 0 else "koth")
+	var mode_ids := ["relic", "koth", "jungle"]
+	var mode_start: int = maxi(mode_ids.find(Game.mode_id), 0)
+	var mode_row := OptionRow.new("Pelimuoto", ["Relic Hold", "Ydinvalta", "Viidakko"], mode_start,
+		func(i): Game.mode_id = mode_ids[i])
 	mode_row.desc_key = "mode"
 	_add_row(inner, mode_row)
 

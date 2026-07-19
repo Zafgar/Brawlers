@@ -4,6 +4,7 @@ class_name Palette
 
 const TEAM_BLUE := Color("4aa8ff")
 const TEAM_ORANGE := Color("ffa03c")
+const TEAM_NEUTRAL := Color("8f9aa8")   # viidakko-olennot (joukkue 2)
 
 const BG_DARK := Color("101830")
 const BG_MID := Color("18243f")
@@ -37,7 +38,11 @@ const PLAYER_COLORS := [
 
 
 static func team(team_index: int) -> Color:
-	return TEAM_BLUE if team_index == 0 else TEAM_ORANGE
+	if team_index == 0:
+		return TEAM_BLUE
+	if team_index == 1:
+		return TEAM_ORANGE
+	return TEAM_NEUTRAL
 
 
 static func player(index: int) -> Color:
