@@ -189,8 +189,9 @@ static func _ability_table(lines: Array, agg: Dictionary) -> void:
 	if suspects.is_empty():
 		lines.append("  Kaikki käytetyt kyvyt tuottivat mitattavaa vaikutusta.")
 	else:
-		lines.append("  * = käytetty >=3 kertaa mutta EI mitattavaa vahinkoa/CC/parannusta")
-		lines.append("      (rikki TAI puhdas liikkumis-/asemointikyky): " + ", ".join(PackedStringArray(suspects)))
+		lines.append("  * = käytetty >=3 kertaa mutta EI mitattavaa vahinkoa/CC/parannusta.")
+		lines.append("      Tarkista: rikki VAI tarkoituksella liikkumis-/asemointi-/suoja-/")
+		lines.append("      buffikyky (esim. teleportti, kilpi, haste): " + ", ".join(PackedStringArray(suspects)))
 
 
 static func _mean_dpm(agg: Dictionary, avg_min: float) -> float:

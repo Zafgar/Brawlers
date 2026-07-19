@@ -147,7 +147,14 @@ func _on_wall_hit(body: Node) -> void:
 
 func _expire() -> void:
 	if on_expire.is_valid():
+		# Aseta ampuneen kyvyn konteksti, jotta on_expire-vahingot (esim. Emberin
+		# liekkilammikko) kirjautuvat oikealle kykypaikalle.
+		var have_src: bool = source != null and is_instance_valid(source)
+		if have_src:
+			source._act(_slot)
 		on_expire.call(global_position)
+		if have_src:
+			source._act_end()
 	if source != null and is_instance_valid(source) and source.arena != null:
 		Fx.spark(source.arena, global_position, color)
 	queue_free()

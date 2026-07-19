@@ -128,7 +128,9 @@ func _spike_cone(dir: Vector2) -> void:
 			if (to - dir * along).length() > half_w + enemy.radius:
 				continue
 			deal_damage_to(enemy, SPIKE_DMG, SPIKE_KB, dir)   # työntö poispäin
-			enemy.root_timer = maxf(enemy.root_timer, 0.3)     # estää liikkeen hetkeksi
+			var _rb := enemy.root_timer
+			enemy.root_timer = maxf(enemy.root_timer, 0.3)     # estää liikkeen hetkeksi (hiljainen)
+			enemy._record_cc("root", enemy.root_timer - _rb)   # kirjaa CC telemetriaan
 		await get_tree().create_timer(0.11).timeout
 
 

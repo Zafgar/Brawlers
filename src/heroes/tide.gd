@@ -128,6 +128,7 @@ func _rush_slam() -> void:
 	await get_tree().create_timer(RUSH_DUR).timeout
 	if not is_inside_tree() or not alive:
 		return
+	_act("ult")   # awaitin jälkeen: palauta konteksti (nosto-stun ilman vahinkoa)
 	var center := global_position
 	arena.shake(0.3)
 	AudioMgr.play("wave", 0.1, 1.0)

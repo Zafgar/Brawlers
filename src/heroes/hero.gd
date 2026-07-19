@@ -258,7 +258,10 @@ func _physics_process(delta: float) -> void:
 
 	# Toiminnot
 	if stun_timer <= 0.0:
-		# Perushyökkäyksen konteksti telemetriaan (osumat/vahinko slotille "basic").
+		# Perushyökkäyksen konteksti telemetriaan. Tallenna/palauta tarttuva
+		# konteksti ettei perushyökkäys pyyhi kesken olevaa kykyä (esim.
+		# kanavoitava ult, jonka viivästynyt vahinko tulee awaitin takaa).
+		var _prev_ctx := _cast_context
 		_act("basic")
 		_attack_control(
 			controller.attack_held(),
@@ -266,6 +269,7 @@ func _physics_process(delta: float) -> void:
 			controller.attack_just_released(),
 			aim, delta)
 		_act_end()
+		_cast_context = _prev_ctx
 		# Kyvyt toimivat myös reliikkiä kannettaessa (kuten väistökin).
 		# Tähdättävät kyvyt (pito -> vapautus) hoidetaan _run_ability_slotissa.
 		_run_ability_slot("a1", 1, delta)
@@ -479,6 +483,7 @@ func _tick_resource(delta: float) -> void:
 func _reset_resource() -> void:
 	_channel_slot = ""
 	_channel_locked = ""
+	_cast_context = ""
 	_rage_idle = 0.0
 	if res_type == "rage":
 		res = 0.0
@@ -544,7 +549,9 @@ func consume_void_stacks() -> int:
 
 
 func apply_freeze(dur: float) -> void:
+	var before := frozen
 	frozen = maxf(frozen, dur)
+	_record_cc("stun", frozen - before)   # jäädytys = kova CC, kirjataan stuniksi
 
 
 ## Kanavoitavat kykypaikat (pito ylläpitää). Oletuksena ei mitään.
@@ -652,8 +659,10 @@ func _act(slot: String) -> void:
 		arena._act_slot = slot
 
 
+## Sulkee arenan CC-ikkunan. _cast_context jää voimaan (TARTTUVA), jotta await-
+## kykyjen (esim. kanavoitavat ultit) viivästynyt vahinko kirjautuu yhä oikealle
+## kykypaikalle awaitin jälkeenkin. Konteksti nollataan kuolemassa/erän alussa.
 func _act_end() -> void:
-	_cast_context = ""
 	if arena != null:
 		arena._act_hero = null
 		arena._act_slot = ""
@@ -693,6 +702,11 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 		return 0.0
 	if kb_dir == Vector2.ZERO:
 		kb_dir = (target.global_position - global_position).normalized()
+	# Virkistä CC-ikkuna tarttuvasta kontekstista jos se on tyhjä (await-kykyjen
+	# viivästynyt vahinko + samassa iskussa tuleva CC osuu oikealle kyvylle).
+	if arena != null and arena._act_hero == null and _cast_context != "":
+		arena._act_hero = self
+		arena._act_slot = _cast_context
 	var dealt := target.take_damage(amount, self, kb, kb_dir)
 	if dealt > 0.0:
 		profile.stats.damage += dealt
@@ -891,6 +905,7 @@ func _knockout(source: Hero) -> void:
 	_aim_active = false
 	_channel_slot = ""
 	_channel_locked = ""
+	_cast_context = ""
 	_ult_holding = false
 	_beam_active = false
 	blue_buff = 0.0           # tyrmäys rikkoo kantajan buffit (vihollisen "murskaus")
