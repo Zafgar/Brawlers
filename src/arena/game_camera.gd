@@ -4,7 +4,10 @@ extends Camera2D
 ## zoomaa pehmeästi ja tärähtää osumista (jos asetuksissa sallittu).
 
 const MARGIN := 260.0
-const MIN_ZOOM := 0.76
+# Zoomin uloin raja: 0.5 riittää mahtuttamaan koko ison viidakkokartan
+# (3400x1900) näkyviin, joten pelaajat eivät katoa reunojen taakse. Pienillä
+# kartoilla tähän ei koskaan päädytä (pelaajat ovat lähekkäin -> lähempi zoom).
+const MIN_ZOOM := 0.5
 const MAX_ZOOM := 1.05
 const FOLLOW_SPEED := 3.5
 const ZOOM_SPEED := 2.5
@@ -35,7 +38,9 @@ func _process(delta: float) -> void:
 			any = true
 		else:
 			rect = rect.expand(hero.global_position)
-	if arena.relic != null and is_instance_valid(arena.relic):
+	# Reliikki rajataan mukaan vain kun se on näkyvissä (viidakossa se on
+	# piilotettu keskelle, eikä kameran pidä venyä sen sijaintiin).
+	if arena.relic != null and is_instance_valid(arena.relic) and arena.relic.visible:
 		rect = rect.expand(arena.relic.global_position)
 	rect = rect.grow(MARGIN)
 

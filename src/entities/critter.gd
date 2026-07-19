@@ -77,18 +77,18 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 			brain.leash = 340.0
 			cd_max.basic = 1.1
 		Kind.BOSS:
-			max_hp = 1500.0
+			max_hp = 1200.0
 			radius = 58.0
 			base_speed = 96.0
 			attack_reach = 122.0
-			attack_dmg = 34.0
+			attack_dmg = 30.0
 			attack_kb = 520.0
 			respawn_delay = 95.0
 			kb_resist = 0.92
 			_color = Color("b64ad6")
-			brain.aggro_radius = 470.0
+			brain.aggro_radius = 460.0
 			brain.attack_range = 112.0
-			brain.leash = 940.0
+			brain.leash = 720.0        # pysyy keskustan montussa (ei jahtaa kauas)
 			cd_max.basic = 0.9
 	hp = max_hp
 
