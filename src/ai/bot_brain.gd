@@ -73,6 +73,7 @@ var _aim_err_timer := 0.0
 var _dodge_check_timer := 0.0
 var _strafe_dir := 1.0
 var _avoid_turn := 0.0          # seinänseurannan kiertosuunta (-1 vasen, +1 oikea)
+var _avoid_time := 0.0          # kuinka kauan samaa seinää on seurattu (jumitunnistus)
 var _atk_phase := 0.0            # hyökkäyksen jaksotus (aggression-vaihtelu)
 var _atk_firing := true
 var _lurk := false              # assassin väijyy (odottaa avausta) sen sijaan että syöksyy
@@ -610,7 +611,7 @@ func _has_resource(hero: Hero) -> bool:
 	return hero.res_type != ""
 
 
-func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> void:
+func _update_movement(hero: Hero, arena, bb: TeamBlackboard, delta: float) -> void:
 	var pos: Vector2 = hero.global_position
 	var goal := pos
 
@@ -646,18 +647,19 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> v
 		var to_t: Vector2 = (_target.global_position - pos).normalized()
 		desired += to_t.orthogonal() * sin(_time * 2.5) * 0.5 * _strafe_dir
 
-	# Esteenväistö: seinänseuranta viuhkasäteillä (osaa liukua pitkää seinää
-	# pitkin lähimmälle aukolle, esim. MOBA-kartan viidakko/linja-jaon gankit).
-	if desired.length() > 0.1:
-		desired = _steer_around(hero, pos, desired)
-
-	# Erottelu: ei tungeta liittolaisen päälle.
+	# Erottelu ENSIN: ei tungeta liittolaisen päälle. Tehdään ennen esteenväistöä,
+	# jotta seinänseuranta saa viimeisen sanan eikä erottelu työnnä takaisin seinään.
 	for ally in arena.alive_allies(hero.team):
 		if ally == hero:
 			continue
 		var diff: Vector2 = pos - ally.global_position
 		if diff.length() < 70.0 and diff.length() > 0.01:
 			desired += diff.normalized() * 0.6
+
+	# Esteenväistö VIIMEISENÄ: seinänseuranta viuhkasäteillä (osaa liukua pitkää
+	# seinää pitkin lähimmälle aukolle, esim. MOBA-kartan gank-aukoista).
+	if desired.length() > 0.1:
+		desired = _steer_around(hero, pos, desired, delta)
 
 	_move = desired.limit_length(1.0)
 
@@ -666,17 +668,30 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> v
 ## hystereesillä ettei värise) ja kokeile kasvavia kulmia kunnes löytyy vapaa
 ## suunta. Näin botti liukuu pitkää seinää pitkin lähimmälle aukolle sen sijaan
 ## että jää jumiin — ja osaa mennä esim. MOBA-kartan gank-aukoista.
-func _steer_around(hero: Hero, pos: Vector2, desired: Vector2) -> Vector2:
+func _steer_around(hero: Hero, pos: Vector2, desired: Vector2, delta: float) -> Vector2:
 	var space := hero.get_world_2d().direct_space_state
 	var look: float = 130.0 + hero.radius
 	if _ray_clear(space, pos, desired, look):
 		_avoid_turn = 0.0
+		_avoid_time = 0.0
 		return desired
-	# Valitse kiertosuunta: pidä edellinen jos vielä käynnissä, muuten avoimempi puoli.
+	_avoid_time += delta
+	# Valitse kiertosuunta kun väistö alkaa: avoimempi puoli (pidemmillä luotaimilla
+	# jotta ne oikeasti havaitsevat edessä olevan seinän). Tasapelissä käytä botin
+	# omaa strafe-suuntaa -> botit hajautuvat eri puolille eikä kaikki käänny samaan.
 	if _avoid_turn == 0.0:
-		var left_open: float = _open_dist(space, pos, desired.rotated(-1.0), look)
-		var right_open: float = _open_dist(space, pos, desired.rotated(1.0), look)
-		_avoid_turn = -1.0 if left_open >= right_open else 1.0
+		var left_open: float = _open_dist(space, pos, desired.rotated(-0.6), look * 2.5)
+		var right_open: float = _open_dist(space, pos, desired.rotated(0.6), look * 2.5)
+		if left_open > right_open + 20.0:
+			_avoid_turn = -1.0
+		elif right_open > left_open + 20.0:
+			_avoid_turn = 1.0
+		else:
+			_avoid_turn = _strafe_dir
+	elif _avoid_time > 1.1:
+		# Sama seinä liian kauan (mahd. väärä puoli tai umpikulma) -> vaihda puolta.
+		_avoid_turn = -_avoid_turn
+		_avoid_time = 0.0
 	# Kokeile kasvavia kulmia valitulle puolelle.
 	for mag in [0.5, 0.9, 1.3, 1.7, 2.2]:
 		var cand: Vector2 = desired.rotated(_avoid_turn * mag)

@@ -44,10 +44,13 @@ func update(hero, delta: float) -> void:
 
 	var pos: Vector2 = hero.global_position
 	var to_home: Vector2 = home - pos
-	# Houkuteltu liian kauas -> unohda kohde ja palaa leirille.
+	# Houkuteltu liian kauas -> unohda kohde ja palaa leirille. Lisää vuorotteleva
+	# sivukomponentti (vaihtuu _strafe-ajastimella), ettei olento juutu suoraan
+	# leirialkovin seinää vasten paluumatkalla — se liukuu seinää pitkin ympäri.
 	if to_home.length() > leash:
 		_target = null
-		_mv = to_home.normalized()
+		var dir: Vector2 = to_home.normalized()
+		_mv = (dir + dir.orthogonal() * 0.4 * _strafe).normalized()
 		return
 
 	_target = _pick_target(hero, pos)
