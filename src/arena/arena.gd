@@ -44,6 +44,20 @@ var _boss_timer := BOSS_FIRST
 var _boss_spawned_once := false
 var _last_point_team := -1
 
+# MOBA-pelimuoto: viidakko yläpuolella + linja alapuolella, minioniaallot,
+# tornit ja nexus. Voitto = tuhoa vihollisen nexus (tornit ensin).
+const MOBA_TIME := 1500.0         # varakatto (s) jos nexusta ei tuhota (25 min)
+const WAVE_INTERVAL := 24.0       # minioniaallon väli
+const WAVE_FIRST := 10.0          # ensimmäinen aalto pelin alusta
+const WAVE_SIZE := 4              # minionia per aalto per joukkue
+const MINION_CAP := 40            # yhtäaikaisten minionien katto (suorituskyky)
+
+var minions: Array = []
+var structures: Array = []
+var _nexus: Array = [null, null]      # per joukkue
+var _towers: Array = [[], []]          # per joukkue
+var _wave_timer := WAVE_FIRST
+
 var state: int = State.INTRO
 var round_number := 1
 var time_left := ROUND_TIME
@@ -113,6 +127,8 @@ func _ready() -> void:
 	# pysyy pelaajana. Pomo ilmestyy myöhemmin ajastimella.
 	if mode == "jungle":
 		_setup_jungle()
+	elif mode == "moba":
+		_setup_moba()
 
 	blackboards = [TeamBlackboard.new(), TeamBlackboard.new()]
 	blackboards[0].setup(self, 0)
@@ -140,7 +156,9 @@ func _ready() -> void:
 
 
 func _make_map() -> MapBase:
-	# Viidakko-pelimuoto käyttää aina omaa isoa karttaansa.
+	# Viidakko- ja MOBA-pelimuodot käyttävät omia isoja karttojaan.
+	if Game.mode_id == "moba":
+		return MapMoba.new()
 	if Game.mode_id == "jungle":
 		return MapJungle.new()
 	match Game.map_id:
@@ -200,9 +218,12 @@ func _physics_process(delta: float) -> void:
 	if state != State.PLAY:
 		return
 
-	# Viidakko-pelimuodolla on oma logiikkansa (ei reliikkiä eikä kenttäbuffeja).
+	# Viidakko- ja MOBA-pelimuodoilla on oma logiikkansa (ei reliikkiä/buffeja).
 	if mode == "jungle":
 		_jungle_physics(delta)
+		return
+	if mode == "moba":
+		_moba_physics(delta)
 		return
 
 	# Kenttäbuffit ilmestyvät reliikki- ja ydinvaltapeleissä.
@@ -390,9 +411,18 @@ func _spawn_camp(kind: int, pos: Vector2) -> void:
 	critters.append(c)
 
 
-func _spawn_boss() -> void:
+func _map_boss_spot() -> Vector2:
 	var jm := map as MapJungle
-	var pos: Vector2 = jm.boss_spot() if jm != null else Vector2.ZERO
+	if jm != null:
+		return jm.boss_spot()
+	var mm := map as MapMoba
+	if mm != null:
+		return mm.boss_spot()
+	return Vector2.ZERO
+
+
+func _spawn_boss() -> void:
+	var pos: Vector2 = _map_boss_spot()
 	var b := Critter.new()
 	b.setup_critter(self, Critter.Kind.BOSS, pos)
 	add_child(b)
@@ -506,6 +536,162 @@ func _end_jungle() -> void:
 		Game.match_finished()
 
 
+# --- MOBA-pelimuoto ---
+
+## Luo viidakon (leirit + pomo ajastimella) sekä linjan rakennukset
+## (2 tornia + nexus per joukkue). Minioniaallot alkavat myöhemmin.
+func _setup_moba() -> void:
+	score_target = 999999.0
+	relic.koth = true
+	relic.visible = false
+	var mm := map as MapMoba
+	if mm == null:
+		return
+	# Viidakko yläpuolella.
+	for cpos in mm.damage_camps():
+		_spawn_camp(Critter.Kind.DAMAGE_CAMP, cpos)
+	_spawn_camp(Critter.Kind.POINTS_CAMP, mm.points_camp())
+	_boss_timer = BOSS_FIRST
+	_boss_spawned_once = false
+	# Rakennukset: nexus + 2 tornia per joukkue.
+	for t in range(2):
+		var nx := Structure.new()
+		nx.setup_structure(self, Structure.Kind.NEXUS, t, mm.nexus_spot(t))
+		add_child(nx)
+		heroes.append(nx)
+		structures.append(nx)
+		_nexus[t] = nx
+		for tpos in mm.tower_spots(t):
+			var tw := Structure.new()
+			tw.setup_structure(self, Structure.Kind.TOWER, t, tpos)
+			add_child(tw)
+			heroes.append(tw)
+			structures.append(tw)
+			_towers[t].append(tw)
+	_wave_timer = WAVE_FIRST
+
+
+func _moba_physics(delta: float) -> void:
+	_cleanup_minions()
+	# Viidakon pomo ajastimella (kuten jungle-moodissa).
+	if not _boss_spawned_once:
+		_boss_timer -= delta
+		if _boss_timer <= 0.0:
+			_spawn_boss()
+	# Minioniaallot molemmille joukkueille.
+	_wave_timer -= delta
+	if _wave_timer <= 0.0:
+		_wave_timer = WAVE_INTERVAL
+		_spawn_wave(0)
+		_spawn_wave(1)
+	# Varakatto: jos nexusta ei tuhota, ratkaise vähemmän vaurioituneen nexuksen
+	# eduksi.
+	time_left -= delta
+	if time_left <= 0.0:
+		time_left = 0.0
+		_end_moba(_moba_leader())
+
+
+## Poistaa kaatuneet minionit heroes-listasta ja vapauttaa ne (turvallisesti,
+## areenan omassa vaiheessa ennen taistelulogiikkaa).
+func _cleanup_minions() -> void:
+	if minions.is_empty():
+		return
+	var live: Array = []
+	for m in minions:
+		if not is_instance_valid(m):
+			continue
+		if m.alive:
+			live.append(m)
+		else:
+			heroes.erase(m)
+			m.queue_free()
+	minions = live
+
+
+## Yksi minioniaalto: WAVE_SIZE minionia tukikohdasta linjaa pitkin. Sininen
+## kulkee reittiä eteenpäin, oranssi käänteisesti.
+func _spawn_wave(team: int) -> void:
+	if minions.size() >= MINION_CAP:
+		return
+	var mm := map as MapMoba
+	if mm == null:
+		return
+	var path: Array = mm.lane_path()
+	if team == 1:
+		path = path.duplicate()
+		path.reverse()
+	var base: Vector2 = path[0] if not path.is_empty() else Vector2.ZERO
+	for i in range(WAVE_SIZE):
+		var m := Minion.new()
+		var offset := Vector2(0.0, -60.0 + i * 30.0)
+		m.setup_minion(self, team, base + offset, path)
+		add_child(m)
+		heroes.append(m)
+		minions.append(m)
+
+
+## Rakennus tuhottu: torni avaa nexuksen kun molemmat kaatuneet; nexus = voitto.
+func on_structure_destroyed(structure, source) -> void:
+	var s := structure as Structure
+	if s == null:
+		return
+	if s.kind == Structure.Kind.TOWER:
+		_towers[s.team].erase(s)
+		popup(structure.global_position + Vector2(0, -90), "TORNI TUHOTTU!",
+			Palette.glow(Palette.team(1 - s.team), 1.4), 20)
+		hud.ko_feed("%s menetti tornin" % Game.team_name(s.team))
+		if _towers[s.team].is_empty():
+			var nx := _nexus[s.team] as Structure
+			if nx != null and is_instance_valid(nx):
+				nx.set_vulnerable()
+			hud.show_banner("NEXUS AVOINNA!",
+				"%s nexus on nyt haavoittuvainen" % Game.team_name(s.team), 2.6)
+			AudioMgr.play("dome_up", 0.05, -3.0)
+	else:
+		_end_moba(1 - s.team)
+
+
+func _moba_leader() -> int:
+	return 0 if _nexus_hp(0) >= _nexus_hp(1) else 1
+
+
+func _nexus_hp(team: int) -> float:
+	var nx := _nexus[team] as Structure
+	if nx != null and is_instance_valid(nx) and nx.alive:
+		return nx.hp
+	return 0.0
+
+
+func nexus_fraction(team: int) -> float:
+	var nx := _nexus[team] as Structure
+	if nx != null and is_instance_valid(nx) and nx.alive:
+		return clampf(nx.hp / nx.max_hp, 0.0, 1.0)
+	return 0.0
+
+
+func nexus_hp_int(team: int) -> int:
+	return int(_nexus_hp(team))
+
+
+func _end_moba(winner: int) -> void:
+	state = State.MATCH_END
+	Game.last_winner_team = winner
+	if winner == 0:
+		Game.blue_rounds = 1
+	else:
+		Game.orange_rounds = 1
+	for hero in heroes:
+		if hero.team == winner and not hero.is_unit:
+			hero.profile.add_score(80.0)
+	AudioMgr.play("match_win", 0.05, -6.0)
+	shake(0.6)
+	hud.show_banner("%s TUHOSI NEXUKSEN!" % Game.team_name(winner), "Voitto!", 3.4)
+	await get_tree().create_timer(3.6).timeout
+	if is_inside_tree():
+		Game.match_finished()
+
+
 func holder_team() -> int:
 	if mode == "koth":
 		return relic.control_team
@@ -590,8 +776,8 @@ func _spawn_buff(type: String, team: int, pos: Vector2) -> void:
 
 ## Aika seuraavaan buffiaaltoon sekunneissa (HUD-laskuri). -1 = ei näytetä.
 func next_buff_in() -> float:
-	if state != State.PLAY or mode == "jungle":
-		return -1.0   # viidakossa ei ole kenttäbuffeja -> ei laskuria
+	if state != State.PLAY or mode == "jungle" or mode == "moba":
+		return -1.0   # viidakossa/MOBAssa ei ole kenttäbuffeja -> ei laskuria
 	return maxf(_buff_timer, 0.0)
 
 
@@ -605,7 +791,12 @@ func _input(event: InputEvent) -> void:
 func _start_round_intro() -> void:
 	state = State.INTRO
 	relic_points = [0.0, 0.0]
-	time_left = JUNGLE_TIME if mode == "jungle" else ROUND_TIME
+	if mode == "moba":
+		time_left = MOBA_TIME
+	elif mode == "jungle":
+		time_left = JUNGLE_TIME
+	else:
+		time_left = ROUND_TIME
 	sudden_death = false
 	_sd_hold = 0.0
 	_sd_elapsed = 0.0
@@ -633,7 +824,9 @@ func _run_intro() -> void:
 	AudioMgr.play_music_pool("battle")
 	var wins_needed := Game.rounds_to_win
 	var objective := ""
-	if mode == "jungle":
+	if mode == "moba":
+		objective = "Tuhoa vihollisen nexus! Kaada tornit, työnnä minioneilla ja hallitse viidakkoa."
+	elif mode == "jungle":
 		objective = "Kerää eniten pisteitä 5 minuutissa — kaada leirejä, keskustan pomo ja vihollisia"
 	elif mode == "koth":
 		objective = "Hallitse ydinaluetta — %d s hallintaa voittaa erän (voitot: %d/%d – %d/%d)" % [
@@ -768,7 +961,10 @@ func alive_enemies(team: int) -> Array:
 
 
 func alive_allies(team: int) -> Array:
-	return heroes.filter(func(h): return is_instance_valid(h) and h.alive and h.team == team)
+	# Vain oikeat sankarit (ei olentoja/minioneja/rakennuksia) — muodostelma- ja
+	# tukilogiikka koskee pelaajia, ei yksiköitä.
+	return heroes.filter(func(h): return is_instance_valid(h) and h.alive \
+		and h.team == team and not h.is_unit)
 
 
 func team_points(team: int) -> float:

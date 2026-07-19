@@ -23,6 +23,10 @@ var profile: PlayerProfile = null
 var controller = null               # DeviceInput tai BotBrain (sama rajapinta)
 var hero_id := ""
 var team := 0
+# Ei-pelaajayksikkö (viidakko-olento, minioni, rakennus). Jätetään pois
+# pelaajakeskeisistä järjestelmistä (kamera, muodostelmat, tuen kohteet).
+var is_unit := false
+var regen_disabled := false         # rakennukset/minionit eivät palaudu
 
 var max_hp := 200.0
 var hp := 200.0
@@ -293,7 +297,7 @@ func _physics_process(delta: float) -> void:
 
 	# Palautuminen
 	since_damage += delta
-	if since_damage > REGEN_DELAY and hp < max_hp:
+	if not regen_disabled and since_damage > REGEN_DELAY and hp < max_hp:
 		hp = minf(hp + REGEN_PER_SEC * delta, max_hp)
 	if red_buff > 0.0 and hp < max_hp:
 		hp = minf(hp + 11.0 * delta, max_hp)   # punainen buffi: elämän palautuminen

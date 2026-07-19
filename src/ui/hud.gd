@@ -158,7 +158,11 @@ class ScorePanel:
 
 		var blue_frac: float
 		var orange_frac: float
-		if arena.mode == "jungle":
+		if arena.mode == "moba":
+			# MOBAssa palkit näyttävät nexusten kestopisteet (kumpi lähempänä häviötä).
+			blue_frac = arena.nexus_fraction(0)
+			orange_frac = arena.nexus_fraction(1)
+		elif arena.mode == "jungle":
 			# Viidakossa ei ole kiinteää maalia -> palkit näyttävät suhteellisen
 			# johdon (johtava täysi, toinen suhteessa siihen).
 			var bp: float = arena.team_points(0)
@@ -187,10 +191,15 @@ class ScorePanel:
 		draw_rect(Rect2(12, bar_y, bar_half * blue_frac, bar_h), blue_color)
 		draw_rect(Rect2(w - 12 - bar_half * orange_frac, bar_y, bar_half * orange_frac, bar_h),
 			orange_color)
+		var blue_num := int(arena.team_points(0))
+		var orange_num := int(arena.team_points(1))
+		if arena.mode == "moba":
+			blue_num = arena.nexus_hp_int(0)
+			orange_num = arena.nexus_hp_int(1)
 		UiKit.draw_text(self, Vector2(12 + 30, bar_y + bar_h / 2.0),
-			str(int(arena.team_points(0))), 16, Palette.TEXT_MAIN, true, 3)
+			str(blue_num), 16, Palette.TEXT_MAIN, true, 3)
 		UiKit.draw_text(self, Vector2(w - 12 - 30, bar_y + bar_h / 2.0),
-			str(int(arena.team_points(1))), 16, Palette.TEXT_MAIN, true, 3)
+			str(orange_num), 16, Palette.TEXT_MAIN, true, 3)
 
 		# Aika tai äkkikuolema
 		if arena.sudden_death:

@@ -242,6 +242,12 @@ func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 		_decide_jungle(hero, arena)
 		return
 
+	# MOBA: taistele lähellä olevia vihollisia, muuten työnnä linjaa kohti
+	# vihollisen tornia/nexusta.
+	if arena.mode == "moba":
+		_decide_moba(hero, arena)
+		return
+
 	# Kenttäbuffit: hae oman tiimin arvokas buffi tai riko vihollisen buffi.
 	# Vaikeustaso päättää kuinka innokkaasti ja kaukaa (buff_focus/buff_deny).
 	var buff: FieldBuff = _pick_buff(hero, arena)
@@ -353,6 +359,53 @@ func _jungle_value(hero: Hero, cr: Critter) -> float:
 				return 260.0
 			return 25.0
 	return 0.0
+
+
+## MOBA-päätöksenteko: lähellä oleva vihollinen -> taistele; muuten työnnä
+## linjaa hyökkäämällä lähintä tuhottavissa olevaa vihollisrakennusta.
+func _decide_moba(hero: Hero, arena) -> void:
+	_jungle_target = null
+	if _is_support:
+		_mode = Mode.SUPPORT
+		return
+	var near := _nearest_enemy(hero, arena, 330.0)
+	if near != null:
+		_mode = Mode.FIGHT
+		return
+	_jungle_target = _pick_push_target(hero, arena)
+	_mode = Mode.FIGHT
+
+
+## Lähin tuhottavissa oleva vihollisrakennus (torni ensin, nexus vasta avattuna).
+func _pick_push_target(hero: Hero, arena) -> Hero:
+	var foe: int = 1 - hero.team
+	var best: Hero = null
+	var best_d := 1.0e20
+	for st in arena.structures:
+		var s := st as Structure
+		if s == null or not s.alive or s.team != foe:
+			continue
+		if s.kind == Structure.Kind.NEXUS and s._invuln:
+			continue
+		var d: float = hero.global_position.distance_to(s.global_position)
+		if d < best_d:
+			best_d = d
+			best = s
+	return best
+
+
+## Lähin vihollisyksikkö/-sankari (joukkue 0/1, ei neutraaleja) max_dist päässä.
+func _nearest_enemy(hero: Hero, arena, max_dist: float) -> Hero:
+	var best: Hero = null
+	var best_d := max_dist
+	for enemy in arena.alive_enemies(hero.team):
+		if enemy.team > 1:
+			continue
+		var d: float = enemy.global_position.distance_to(hero.global_position)
+		if d < best_d:
+			best_d = d
+			best = enemy
+	return best
 
 
 ## Lähin vihollis*pelaaja* (ei neutraaleja olentoja) enintään max_dist päässä.

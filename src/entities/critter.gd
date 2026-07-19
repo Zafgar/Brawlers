@@ -52,6 +52,7 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 	home = p_home
 	team = 2
 	hero_id = "critter"
+	is_unit = true
 
 	profile = PlayerProfile.new()
 	profile.is_bot = true

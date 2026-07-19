@@ -286,7 +286,7 @@ func _frame(cluster: Array) -> Array:
 		# viidakko-olentoja jotka venyttäisivät näkymän.
 		var everyone: Array = []
 		for h in _alive_heroes():
-			if h.team < 2:
+			if not h.is_unit:
 				everyone.append(h)
 		return everyone if not everyone.is_empty() else cluster
 	var framed: Array = cluster.duplicate()

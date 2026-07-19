@@ -31,8 +31,8 @@ func _process(delta: float) -> void:
 	for hero in arena.heroes:
 		if not is_instance_valid(hero) or not hero.alive:
 			continue
-		if hero.team >= 2:
-			continue   # neutraalit viidakko-olennot eivät venytä kameraa
+		if hero.is_unit:
+			continue   # olennot/minionit/rakennukset eivät venytä kameraa
 		if not any:
 			rect = Rect2(hero.global_position, Vector2.ONE)
 			any = true
