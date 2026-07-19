@@ -45,6 +45,10 @@ var options := {
 var main: Node = null
 var arena = null
 
+# Simulaatio: bot vs bot -ajot telemetriaa varten (tekoälyn/tasapainon kehitys).
+var simulating := false
+var sim_runner = null
+
 
 func boot(root: Node) -> void:
 	main = root
@@ -199,7 +203,14 @@ func start_match() -> void:
 
 
 func match_finished() -> void:
+	if simulating and sim_runner != null:
+		sim_runner.on_match_done()
+		return
 	_swap(Results.new())
+
+
+func go_sim() -> void:
+	_swap(SimSetup.new())
 
 
 func rematch() -> void:

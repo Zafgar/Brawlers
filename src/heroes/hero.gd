@@ -632,6 +632,8 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 	var dealt := target.take_damage(amount, self, kb, kb_dir)
 	if dealt > 0.0:
 		profile.stats.damage += dealt
+		if target is Structure:
+			profile.stats.structure_damage += dealt
 		profile.add_score(dealt * 0.1)
 		add_ult(dealt * 0.22)
 		if res_type == "rage":
@@ -686,6 +688,7 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 
 	hp -= amount
 	since_damage = 0.0
+	profile.stats.taken += amount
 	if res_type == "rage":
 		gain_res(amount * 0.6)
 	if kb > 0.0 and kb_dir != Vector2.ZERO:

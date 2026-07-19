@@ -9,6 +9,7 @@ var team := 0             # 0 = sininen, 1 = oranssi
 var hero_id := ""
 var is_bot := false
 var display_name := ""
+var bot_level := -1        # -1 = käytä Game.bot_level; muuten oma taso (simulaatio)
 
 var stats := {}
 
@@ -24,6 +25,9 @@ func reset_stats() -> void:
 		"assists": 0,         # avustukset
 		"deaths": 0,          # omat tyrmäytymiset
 		"damage": 0.0,        # aiheutettu vahinko
+		"taken": 0.0,         # otettu vahinko (simulaatiotelemetria)
+		"structure_damage": 0.0,  # vahinko rakennuksiin (tornit/nexus)
+		"minion_kills": 0,    # kaadetut minionit (CS)
 		"healing": 0.0,       # parannettu määrä
 		"prevented": 0.0,     # estetty vahinko (kilvet, torjunnat, kuplat)
 		"carry_time": 0.0,    # reliikin kantoaika sekunteina

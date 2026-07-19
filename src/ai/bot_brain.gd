@@ -209,7 +209,7 @@ func _assassin_should_dive(hero: Hero, arena) -> bool:
 	if _target.hp < _target.max_hp * 0.45:
 		return true                     # tapettavissa -> syöksy kannattaa
 	# Eristetty kohde (vain se itse lähellä) -> hyvä avaus.
-	var guards: int = arena.heroes_in_circle(_target.global_position, 220.0, 1 - hero.team).size()
+	var guards: int = arena.heroes_in_circle(_target.global_position, 220.0, 1 - hero.team, true, true).size()
 	return guards <= 1
 
 
@@ -395,31 +395,26 @@ func _pick_push_target(hero: Hero, arena) -> Hero:
 
 
 ## Lähin vihollisyksikkö/-sankari (joukkue 0/1, ei neutraaleja) max_dist päässä.
+## Ohittaa vielä suojatun nexuksen (siihen ei voi tehdä vahinkoa).
 func _nearest_enemy(hero: Hero, arena, max_dist: float) -> Hero:
 	var best: Hero = null
 	var best_d := max_dist
 	for enemy in arena.alive_enemies(hero.team):
 		if enemy.team > 1:
 			continue
-		var d: float = enemy.global_position.distance_to(hero.global_position)
-		if d < best_d:
-			best_d = d
-			best = enemy
-	return best
-
-
-## Lähin vihollis*pelaaja* (ei neutraaleja olentoja) enintään max_dist päässä.
-func _nearest_enemy_player(hero: Hero, arena, max_dist: float) -> Hero:
-	var best: Hero = null
-	var best_d := max_dist
-	for enemy in arena.alive_enemies(hero.team):
-		if enemy.team > 1:
+		var st := enemy as Structure
+		if st != null and st.kind == Structure.Kind.NEXUS and st._invuln:
 			continue
 		var d: float = enemy.global_position.distance_to(hero.global_position)
 		if d < best_d:
 			best_d = d
 			best = enemy
 	return best
+
+
+## Lähin vihollis*pelaaja*/-yksikkö max_dist päässä (sama suodatus).
+func _nearest_enemy_player(hero: Hero, arena, max_dist: float) -> Hero:
+	return _nearest_enemy(hero, arena, max_dist)
 
 
 func _allies_near(hero: Hero, pos: Vector2, r: float) -> int:
@@ -778,7 +773,7 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 	var dist := 1e20
 	if _target != null and is_instance_valid(_target):
 		dist = pos.distance_to(_target.global_position)
-	var near_enemies: int = arena.heroes_in_circle(pos, 320.0, 1 - hero.team).size()
+	var near_enemies: int = arena.heroes_in_circle(pos, 320.0, 1 - hero.team, true, true).size()
 
 	# Ultimate — arvokkain, käytetään herkemmin kaikilla vaikeustasoilla.
 	if hero.ult_charge >= 100.0:
@@ -812,7 +807,7 @@ func _in_danger(hero: Hero, arena) -> bool:
 	var hp_thresh: float = 0.4 if frail else 0.25
 	if hero.hp < hero.max_hp * hp_thresh:
 		return true
-	if frail and arena.heroes_in_circle(hero.global_position, 180.0, 1 - hero.team).size() >= 2:
+	if frail and arena.heroes_in_circle(hero.global_position, 180.0, 1 - hero.team, true, true).size() >= 2:
 		return true
 	return false
 
@@ -866,7 +861,7 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 			return dist < 450.0 and hero.hp > hero.max_hp * 0.4
 		"luma":
 			var hurt := 0
-			for ally in arena.heroes_in_circle(pos, 300.0, hero.team):
+			for ally in arena.heroes_in_circle(pos, 300.0, hero.team, true, true):
 				if ally.hp < ally.max_hp * 0.6:
 					hurt += 1
 			return hurt >= 2 or (bb.own_carrier != null and bb.own_carrier.hp < bb.own_carrier.max_hp * 0.5)
@@ -879,15 +874,15 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 		"shade":
 			return dist < 350.0 and hero.hp > hero.max_hp * 0.35
 		"scout":
-			return arena.heroes_in_circle(pos, 640.0, 1 - hero.team).size() >= 2
+			return arena.heroes_in_circle(pos, 640.0, 1 - hero.team, true, true).size() >= 2
 		"maestro":
 			var hurt_allies := 0
-			for ally in arena.heroes_in_circle(pos, 300.0, hero.team):
+			for ally in arena.heroes_in_circle(pos, 300.0, hero.team, true, true):
 				if ally.hp < ally.max_hp * 0.6:
 					hurt_allies += 1
 			return hurt_allies >= 2 or near_enemies >= 3
 		"prism":
-			return arena.heroes_in_circle(pos, 220.0, hero.team).size() >= 2
+			return arena.heroes_in_circle(pos, 220.0, hero.team, true, true).size() >= 2
 		"rift":
 			return near_enemies >= 2
 		"titan":
@@ -922,7 +917,7 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"scout":
 			return dist > 200.0 and dist < 700.0
 		"maestro":
-			return dist < 500.0 and not arena.heroes_in_circle(pos, 240.0, hero.team).is_empty()
+			return dist < 500.0 and not arena.heroes_in_circle(pos, 240.0, hero.team, true, true).is_empty()
 		"prism":
 			return dist < 430.0
 		"rift":
@@ -935,7 +930,7 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) -> bool:
 	match hero.hero_id:
 		"bastion":
-			return arena.heroes_in_circle(pos, 170.0, 1 - hero.team).size() >= 1
+			return arena.heroes_in_circle(pos, 170.0, 1 - hero.team, true, true).size() >= 1
 		"ember":
 			return dist < 210.0
 		"luma":
@@ -947,7 +942,7 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"quill":
 			return dist > 250.0 and dist < 500.0
 		"boulder":
-			return arena.heroes_in_circle(pos, 190.0, 1 - hero.team).size() >= 1
+			return arena.heroes_in_circle(pos, 190.0, 1 - hero.team, true, true).size() >= 1
 		"volt":
 			return dist > 150.0 and dist < 450.0
 		"shade":

@@ -38,8 +38,9 @@ func update(delta: float) -> void:
 
 	var allies: Array = arena.alive_allies(team)
 
-	# Vihollisten painopiste
-	var enemies: Array = arena.alive_enemies(team)
+	# Vihollisten painopiste — vain oikeat vihollissankarit (ei minioneja/
+	# rakennuksia/olentoja), jotta uhka-arvio ja keskitetty tuli eivät vääristy.
+	var enemies: Array = arena.enemy_heroes(team)
 	if enemies.is_empty():
 		threat_center = Vector2.ZERO
 	else:

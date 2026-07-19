@@ -84,13 +84,16 @@ func _basic(dir: Vector2) -> void:
 		Fx.spark(arena, best.global_position, Palette.with_alpha(_color, 0.8))
 
 
-func _knockout(_source: Hero) -> void:
+func _knockout(source: Hero) -> void:
 	alive = false
 	velocity = Vector2.ZERO
 	visible = false
 	set_collision_layer_value(2, false)
 	set_collision_mask_value(2, false)
 	set_physics_process(false)
+	# CS-luku: viimeinen osuma saa minionitapon (vain oikea sankari).
+	if source != null and is_instance_valid(source) and not source.is_unit:
+		source.profile.stats.minion_kills += 1
 	Fx.burst(arena, global_position, _color, 8, 160.0, 0.3, 4.0)
 	# Poisto arena.heroesista ja vapautus hoidetaan areenan siivouksessa
 	# (turvallista iteroinnin kannalta) — ei queue_free tässä.
@@ -98,6 +101,12 @@ func _knockout(_source: Hero) -> void:
 
 func _respawn() -> void:
 	pass   # minionit eivät herää; aallot tuovat uusia
+
+
+## MOBA on yksieräinen -> minionit eivät osallistu erän nollaukseen. Ohitetaan
+## perusluokan reset (joka kutsuisi spawn_pointia); käytännössä ei koskaan kutsuta.
+func reset_for_round(_keep_ult_fraction := 0.5) -> void:
+	pass
 
 
 ## Minionin ohjain: seuraa linjaa kohti vihollistukikohtaa, hyökkää lähelle

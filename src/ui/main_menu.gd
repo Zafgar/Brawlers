@@ -32,6 +32,7 @@ func _ready() -> void:
 	var play_btn := _menu_button(box, "Pelaa", func(): Game.go_setup(false), true)
 	_menu_button(box, "Harjoittelu", func(): Game.go_setup(true))
 	_menu_button(box, "Sankarit", func(): Game.go_gallery())
+	_menu_button(box, "Simulaatio", func(): Game.go_sim())
 	_menu_button(box, "Asetukset", func(): _open_settings())
 	_menu_button(box, "Lopeta peli", func(): get_tree().quit())
 

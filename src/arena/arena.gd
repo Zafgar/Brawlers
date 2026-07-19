@@ -58,6 +58,13 @@ var _nexus: Array = [null, null]      # per joukkue
 var _towers: Array = [[], []]          # per joukkue
 var _wave_timer := WAVE_FIRST
 
+# Simulaatiotelemetria (kerätään kun Game.simulating). match_elapsed = pelattu
+# aika sekunteina; sim_events = tapahtumaloki aikaleimoineen.
+var match_elapsed := 0.0
+var sim_events: Array = []
+var _end_reason := ""
+var _first_blood := false
+
 var state: int = State.INTRO
 var round_number := 1
 var time_left := ROUND_TIME
@@ -115,7 +122,9 @@ func _ready() -> void:
 		var hero := _make_hero(profile.hero_id)
 		var controller
 		if profile.is_bot:
-			controller = BotBrain.new(Game.bot_level)
+			# Simulaatiossa kullakin botilla voi olla oma taso (profile.bot_level).
+			var lvl: int = profile.bot_level if profile.bot_level >= 0 else Game.bot_level
+			controller = BotBrain.new(lvl)
 		else:
 			controller = DeviceInput.new(profile.device)
 		hero.setup(self, profile, controller)
@@ -217,6 +226,7 @@ func _physics_process(delta: float) -> void:
 
 	if state != State.PLAY:
 		return
+	match_elapsed += delta
 
 	# Viidakko- ja MOBA-pelimuodoilla on oma logiikkansa (ei reliikkiä/buffeja).
 	if mode == "jungle":
@@ -481,6 +491,7 @@ func on_critter_ko(critter, source) -> void:
 			hud.show_banner("%s KAATOI POMON!" % Game.team_name(team),
 				"Iso boosti koko joukkueelle (+%d pistettä)" % int(BOSS_POINTS), 2.8)
 			AudioMgr.play("match_win", 0.05, -8.0)
+			_sim_event("Pomo kaadettu: %s" % Game.team_name(team))
 
 
 func on_critter_respawn(critter) -> void:
@@ -589,6 +600,7 @@ func _moba_physics(delta: float) -> void:
 	time_left -= delta
 	if time_left <= 0.0:
 		time_left = 0.0
+		_end_reason = "aikakatto"
 		_end_moba(_moba_leader())
 
 
@@ -641,6 +653,7 @@ func on_structure_destroyed(structure, source) -> void:
 		popup(structure.global_position + Vector2(0, -90), "TORNI TUHOTTU!",
 			Palette.glow(Palette.team(1 - s.team), 1.4), 20)
 		hud.ko_feed("%s menetti tornin" % Game.team_name(s.team))
+		_sim_event("%s torni kaatui (%d jäljellä)" % [Game.team_name(s.team), _towers[s.team].size()])
 		if _towers[s.team].is_empty():
 			var nx := _nexus[s.team] as Structure
 			if nx != null and is_instance_valid(nx):
@@ -648,7 +661,10 @@ func on_structure_destroyed(structure, source) -> void:
 			hud.show_banner("NEXUS AVOINNA!",
 				"%s nexus on nyt haavoittuvainen" % Game.team_name(s.team), 2.6)
 			AudioMgr.play("dome_up", 0.05, -3.0)
+			_sim_event("%s nexus avattu" % Game.team_name(s.team))
 	else:
+		_end_reason = "nexus tuhottu"
+		_sim_event("%s nexus tuhottu" % Game.team_name(s.team))
 		_end_moba(1 - s.team)
 
 
@@ -684,12 +700,51 @@ func _end_moba(winner: int) -> void:
 	for hero in heroes:
 		if hero.team == winner and not hero.is_unit:
 			hero.profile.add_score(80.0)
+	if _end_reason == "":
+		_end_reason = "nexus"
+	_sim_event("%s VOITTAA (%s)" % [Game.team_name(winner), _end_reason])
 	AudioMgr.play("match_win", 0.05, -6.0)
 	shake(0.6)
 	hud.show_banner("%s TUHOSI NEXUKSEN!" % Game.team_name(winner), "Voitto!", 3.4)
+	if Game.simulating:
+		# Ottelu päättyi kesken fysiikkaruudun (kutsuttu take_damagesta) ->
+		# lykätään arenan vaihto turvallisesti ruudun ulkopuolelle.
+		Game.call_deferred("match_finished")
+		return
 	await get_tree().create_timer(3.6).timeout
 	if is_inside_tree():
 		Game.match_finished()
+
+
+## Simulaatiotelemetria: kirjaa tapahtuma aikaleiman kanssa.
+func _sim_event(text: String) -> void:
+	if Game.simulating:
+		sim_events.append({"t": match_elapsed, "text": text})
+
+
+## Ottelun tilannekuva simulaatioraporttiin (kutsutaan ennen seuraavaa ottelua).
+func sim_snapshot() -> Dictionary:
+	var heroes_data: Array = []
+	for h in heroes:
+		if not is_instance_valid(h) or h.is_unit:
+			continue
+		var p: PlayerProfile = h.profile
+		var lvl: int = -1
+		if h.controller != null and h.controller.is_bot():
+			lvl = int(h.controller.level)
+		heroes_data.append({
+			"hero_id": h.hero_id, "team": h.team, "level": lvl,
+			"kos": int(p.stats.kos), "deaths": int(p.stats.deaths),
+			"assists": int(p.stats.assists), "damage": float(p.stats.damage),
+			"taken": float(p.stats.taken),
+			"structure_damage": float(p.stats.structure_damage),
+			"minion_kills": int(p.stats.minion_kills), "healing": float(p.stats.healing),
+		})
+	return {
+		"elapsed": match_elapsed, "winner": Game.last_winner_team,
+		"reason": _end_reason, "events": sim_events,
+		"heroes": heroes_data,
+	}
 
 
 func holder_team() -> int:
@@ -822,6 +877,10 @@ func _start_round_intro() -> void:
 func _run_intro() -> void:
 	# Uusi taistelubiisi joka erälle -> vaihtelua erien välillä.
 	AudioMgr.play_music_pool("battle")
+	# Simulaatiossa ohitetaan lähtölaskenta ja mennään suoraan peliin.
+	if Game.simulating:
+		state = State.PLAY
+		return
 	var wins_needed := Game.rounds_to_win
 	var objective := ""
 	if mode == "moba":
@@ -913,6 +972,11 @@ func on_hero_ko(hero: Hero, source: Hero) -> void:
 				source.profile.add_score(20.0)
 				break
 		hud.ko_feed("%s tyrmäsi %s" % [source.profile.display_name, hero.profile.display_name])
+		if not _first_blood:
+			_first_blood = true
+			_sim_event("Ensiveri: %s (%s) tyrmäsi %s (%s)" % [
+				Game.team_name(source.team), source.hero_id,
+				Game.team_name(hero.team), hero.hero_id])
 	else:
 		hud.ko_feed("%s poistui hetkeksi" % hero.profile.display_name)
 
@@ -942,12 +1006,15 @@ func add_zone(z: Zone) -> void:
 	zones.append(z)
 
 
-func heroes_in_circle(pos: Vector2, r: float, team := -1, only_alive := true) -> Array:
+func heroes_in_circle(pos: Vector2, r: float, team := -1, only_alive := true,
+		exclude_units := false) -> Array:
 	var result: Array = []
 	for hero in heroes:
 		if not is_instance_valid(hero):
 			continue
 		if only_alive and not hero.alive:
+			continue
+		if exclude_units and hero.is_unit:
 			continue
 		if team >= 0 and hero.team != team:
 			continue
@@ -958,6 +1025,13 @@ func heroes_in_circle(pos: Vector2, r: float, team := -1, only_alive := true) ->
 
 func alive_enemies(team: int) -> Array:
 	return heroes.filter(func(h): return is_instance_valid(h) and h.alive and h.team != team)
+
+
+## Vain oikeat vihollissankarit (ei yksiköitä) — botin uhka-arvioon ja
+## keskitettyyn tuleen, jottei minioneja/rakennuksia lasketa vihollispelaajiksi.
+func enemy_heroes(team: int) -> Array:
+	return heroes.filter(func(h): return is_instance_valid(h) and h.alive \
+		and h.team != team and not h.is_unit)
 
 
 func alive_allies(team: int) -> Array:
