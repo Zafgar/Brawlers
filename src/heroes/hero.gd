@@ -675,7 +675,7 @@ func _log_cast(slot: String) -> void:
 ## Kirjaa CC-vaikutus (stun/slow/root) sekunteina toimijalle. Kutsutaan kohteen
 ## apply_*-funktiosta: toimija ja slot luetaan arenan aktiivikontekstista.
 func _record_cc(kind: String, duration: float) -> void:
-	if arena == null:
+	if duration <= 0.0 or arena == null:
 		return
 	var actor: Hero = arena._act_hero
 	if actor == null or not is_instance_valid(actor):
@@ -822,8 +822,12 @@ func add_ult(points: float) -> void:
 func apply_slow(factor: float, duration: float) -> void:
 	if factor < slow_factor or slow_timer <= 0.0:
 		slow_factor = factor
+	# Kirjaa VAIN lisätty aika (uusi kesto - vanha), ei raakaa duration-arvoa:
+	# alueet uusivat slow'n joka ruutu -> summa vastaa todellista slow-aikaa
+	# eikä paisu (esim. 2 s alueessa seisominen ~= 2 s, ei 36 s).
+	var before := slow_timer
 	slow_timer = maxf(slow_timer, duration)
-	_record_cc("slow", duration)
+	_record_cc("slow", slow_timer - before)
 
 
 func apply_haste(factor: float, duration: float) -> void:
@@ -832,15 +836,17 @@ func apply_haste(factor: float, duration: float) -> void:
 
 
 func apply_root(duration: float) -> void:
+	var before := root_timer
 	root_timer = maxf(root_timer, duration)
 	arena.popup(global_position + Vector2(0, -60), "JUURTUNUT", Palette.BAD, 16)
 	AudioMgr.play("root")
-	_record_cc("root", duration)
+	_record_cc("root", root_timer - before)
 
 
 func apply_stun(duration: float) -> void:
+	var before := stun_timer
 	stun_timer = maxf(stun_timer, duration)
-	_record_cc("stun", duration)
+	_record_cc("stun", stun_timer - before)
 
 
 func apply_mark(duration: float, amp := 1.25) -> void:
