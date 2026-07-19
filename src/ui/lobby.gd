@@ -615,7 +615,7 @@ func _draw_hero_detail(index: int) -> void:
 		["a1", "KYKY 1", "R1 / hiiri oik."],
 		["a2", "KYKY 2", "L1 / Q"],
 		["dodge", "VÄISTÖ", "X / väli"],
-		["ult", "ULTI", "△ / E"],
+		["ult", "ULTI", "L2 / E"],
 	]
 	var font := ThemeDB.fallback_font
 	var lx := px + 28.0

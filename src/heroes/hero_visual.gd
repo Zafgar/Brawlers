@@ -275,6 +275,38 @@ func _draw_status(bob: float) -> void:
 			var p := Vector2(cos(ang), sin(ang) * 0.5) * 18.0 + Vector2(0, -46.0 - bob)
 			draw_circle(p, 3.0, Palette.GOLD)
 
+	# Kykyvalmiuden pallerot ihmispelaajan hahmon alla (glance-info): R1, L1,
+	# väistö, ulti. Hehkuu kirkkaana kun valmis, muuten latauskaari.
+	if hero.controller != null and not hero.controller.is_bot():
+		_draw_ability_pips()
+
+
+## Pieni rivi kykyvalmiuspalleroita hahmon alapuolella (vain ihmispelaaja).
+func _draw_ability_pips() -> void:
+	var c1: Color = hero.hero_color()
+	var y := 24.0
+	var pr := 3.7
+	var gap := 10.0
+	var fracs: Array = [
+		clampf(1.0 - hero.cd.a1 / maxf(hero.cd_max.a1, 0.001), 0.0, 1.0),
+		clampf(1.0 - hero.cd.a2 / maxf(hero.cd_max.a2, 0.001), 0.0, 1.0),
+		clampf(1.0 - hero.cd.dodge / maxf(hero.cd_max.dodge, 0.001), 0.0, 1.0),
+		clampf(hero.ult_charge / 100.0, 0.0, 1.0),
+	]
+	var cols: Array = [c1, c1, Palette.glow(c1, 1.15), Palette.GOLD]
+	for i in range(4):
+		var c := Vector2(-1.5 * gap + i * gap, y)
+		var frac: float = fracs[i]
+		var col: Color = cols[i]
+		if frac >= 1.0:
+			draw_circle(c, pr + 0.9, Palette.with_alpha(Palette.glow(col, 1.4), 0.85))
+			draw_circle(c, pr * 0.5, Color(1, 1, 1, 0.85))
+		else:
+			draw_circle(c, pr, Color(0, 0, 0, 0.5))
+			if frac > 0.01:
+				draw_arc(c, pr, -PI * 0.5, -PI * 0.5 + TAU * frac, 12,
+					Palette.with_alpha(col, 0.85), 1.5)
+
 
 func _body_base(center: Vector2, r: float, c1: Color, c2: Color) -> void:
 	draw_circle(center, r + 3.0, Palette.darker(c2, 0.5))      # ääriviiva

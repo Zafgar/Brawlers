@@ -7,7 +7,9 @@ extends RefCounted
 ## ei tiedä ohjaako sitä ihminen vai botti.
 ##
 ## PS5-ohjain:  vasen tatti = liike, oikea tatti = tähtäys, R2 = perushyökkäys,
-## R1 = kyky 1, L1 = kyky 2, Risti = väistö, Kolmio = ultimate, Ympyrä = pudota.
+## R1 = kyky 1, L1 = kyky 2, Risti = väistö, L2 = ultimate, Ympyrä = pudota.
+## Ulti on L2-liipaisimessa: helpompi pitää pohjassa ja tähdätä oikealla tatilla
+## kuin kolmiolla. Kolmio toimii yhä vaihtoehtoisena ultinappina.
 
 const DEADZONE := 0.22
 const TRIGGER_THRESHOLD := 0.4
@@ -16,7 +18,6 @@ const PAD_BUTTONS := {
 	"a1": JOY_BUTTON_RIGHT_SHOULDER,
 	"a2": JOY_BUTTON_LEFT_SHOULDER,
 	"dodge": JOY_BUTTON_A,
-	"ult": JOY_BUTTON_Y,
 	"drop": JOY_BUTTON_B,
 }
 
@@ -80,6 +81,9 @@ func _update_gamepad() -> void:
 	_pressed = {}
 	for key in PAD_BUTTONS:
 		_pressed[key] = Input.is_joy_button_pressed(device, PAD_BUTTONS[key])
+	# Ultimate = L2-liipaisin (helpompi tähdätä), kolmio vaihtoehtona.
+	_pressed["ult"] = Input.get_joy_axis(device, JOY_AXIS_TRIGGER_LEFT) > TRIGGER_THRESHOLD \
+		or Input.is_joy_button_pressed(device, JOY_BUTTON_Y)
 
 
 func _read_stick(axis_x: int, axis_y: int) -> Vector2:
