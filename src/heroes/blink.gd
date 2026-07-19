@@ -37,9 +37,9 @@ func _basic(dir: Vector2) -> void:
 		if absf(rad_to_deg(dir.angle_to(to_enemy))) > SLASH_ARC_DEG:
 			continue
 		var dmg := SLASH_DMG
-		# Selkäänisku: kohde katsoo poispäin Blinkistä -> 50 % lisää.
+		# Selkäänisku: kohde katsoo poispäin Blinkistä -> 50 % lisää (kuvauksen mukaan).
 		if enemy.aim.dot(to_enemy.normalized()) > 0.3:
-			dmg *= 1.65
+			dmg *= 1.5
 			Fx.spark(arena, enemy.global_position, Palette.glow(hero_color(), 1.9))
 			arena.popup(enemy.global_position + Vector2(0, -54), "SELKÄÄN!", hero_color(), 15)
 		deal_damage_to(enemy, dmg, 140.0, to_enemy.normalized())

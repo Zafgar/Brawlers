@@ -227,6 +227,8 @@ class VoidMark:
 		for hero in arena.heroes:
 			if not is_instance_valid(hero) or not hero.alive or hero == source:
 				continue
+			if hero.is_unit:
+				continue   # ei tartu minioneihin/torneihin/olentoihin (vain sankarit)
 			if global_position.distance_to(hero.global_position) < 22.0 + hero.radius:
 				_land(hero)
 				return

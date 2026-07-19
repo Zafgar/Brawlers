@@ -211,8 +211,11 @@ func _drop_target() -> void:
 	_held_target = null
 
 
-## Berserkin alueheitto: kaikki lähiviholliset lentävät ilmaan.
+## Berserkin alueheitto: kaikki lähiviholliset lentävät ilmaan. Kutsutaan
+## _aim_beginistä (ei dispatch-kontekstia), joten asetetaan telemetriakonteksti
+## itse -> vahinko/stun kirjautuu a1:lle eikä ultille.
 func _aoe_launch() -> void:
+	_act("a1")
 	AudioMgr.play("quake", 0.05, 1.0)
 	arena.shake(0.4)
 	Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.6), AOE_LAUNCH_RADIUS, 0.55, 8.0)
@@ -229,13 +232,17 @@ func _aoe_launch() -> void:
 		enemy.visual.squash(0.65, 1.5)
 		Fx.spark(arena, enemy.global_position, Palette.glow(hero_color(), 1.5))
 		arena.popup(enemy.global_position + Vector2(0, -74), "ILMAAN!", Palette.glow(hero_color(), 1.4), 16)
+	_act_end()
 
 
-## Etummainen tartuttava kohde tähtäyskaaren sisällä.
+## Etummainen tartuttava kohde tähtäyskaaren sisällä. Vain oikeat sankarit —
+## ei minioneja/torneja/nexusta/viidakko-olentoja (niitä ei voi napata ja heittää).
 func _grab_target(dir: Vector2) -> Hero:
 	var best: Hero = null
 	var best_dist := GRAB_RANGE + 40.0
 	for enemy in arena.alive_enemies(team):
+		if enemy.is_unit:
+			continue
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		var d := to_enemy.length()
 		if d > GRAB_RANGE + enemy.radius:

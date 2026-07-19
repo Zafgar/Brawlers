@@ -94,9 +94,11 @@ func _basic(dir: Vector2) -> void:
 		Fx.spark(arena, global_position + dir * SWING_RANGE * 0.7, hero_color())
 
 
-## Kyky 1: Kilpivalli — torjuu edestä tulevat osumat 2,6 s ajan.
+## Kyky 1: Kilpivalli — torjuu edestä tulevat osumat 2,8 s ajan. Bottien versio:
+## leveä valli (BLOCK_RADIUS) joka torjuu vihollisammukset (ks. _passive_update)
+## kuten ihmispelaajan kanavoitu kilpi -> Bastion suojaa joukkuetta myös simeissä.
 func _ability1(dir: Vector2) -> void:
-	start_guard(2.8, 0.85, 92.0)
+	start_guard(2.8, 0.85, BLOCK_ARC_DEG * 0.5, BLOCK_RADIUS)
 	AudioMgr.play("guard_up")
 	# Etukilven välähdys ja suojarengas
 	Fx.ring(arena, global_position, Palette.glow(Palette.SHIELD, 1.5), radius + 22.0, 0.4, 6.0)
@@ -156,8 +158,12 @@ func _ultimate(_dir: Vector2) -> void:
 		ally.add_shield(65.0, 4.5, self)
 
 
-## Passiivi: saa hetkellisen pikkusuojan aina torjuessaan kilvellä.
+## Passiivi: saa hetkellisen pikkusuojan aina torjuessaan kilvellä. Lisäksi:
+## kun leveä kilpivalli on ylhäällä (guard_radius > 1), torjuu vihollisammukset
+## joka framessa -> myös bottien kertakäyttökilpi (a1) suojaa joukkuetta.
 func _passive_update(_delta: float) -> void:
+	if guard_timer > 0.0 and guard_radius > 1.0:
+		_block_front_projectiles()
 	if guard_timer > 0.0 and shield_hp <= 0.0 and since_damage < 0.2:
 		shield_hp = 24.0
 		shield_timer = 1.5

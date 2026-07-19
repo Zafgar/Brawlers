@@ -147,9 +147,11 @@ func _rush_slam() -> void:
 	# Vesipatsas keskellä
 	Fx.ring(arena, center, Palette.glow(Color("4ad4ff"), 1.7), 120.0, 0.5, 9.0)
 	Fx.burst(arena, center, Palette.glow(Color("bfeaf7"), 1.4), 20, 200.0, 0.5, 6.0)
+	_act_end()   # sulje nosto-vaiheen ikkuna ennen awaitia (ei roiku Tidella)
 	await get_tree().create_timer(0.45).timeout
-	if not is_inside_tree():
+	if not is_inside_tree() or not alive:
 		return
+	_act("ult")   # awaitin jälkeen: palauta konteksti slam-vahingolle/-stunille
 	# Iske alas: vahinko + tainnutus + isku ulospäin.
 	arena.shake(0.5)
 	AudioMgr.play("wave", 0.05, -3.0)
@@ -164,6 +166,7 @@ func _rush_slam() -> void:
 		enemy.apply_stun(SLAM_STUN)
 		enemy.visual.squash(1.5, 0.6)
 		Fx.burst(arena, enemy.global_position, Palette.glow(Color("4ad4ff"), 1.6), 12, 260.0, 0.45, 6.0)
+	_act_end()
 
 
 func _passive_update(delta: float) -> void:

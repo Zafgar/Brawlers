@@ -51,18 +51,22 @@ func _basic(dir: Vector2) -> void:
 func _ignite(hit_hero: Hero, _proj: Projectile) -> void:
 	if hit_hero == null or not is_instance_valid(hit_hero):
 		return
-	_burn_ticks(hit_hero)
+	# _cast_context on nyt sytyttänyt kyky (ammuksen slot: perus tai a2).
+	_burn_ticks(hit_hero, _cast_context)
 
 
-## Toistuva jälkipoltto kohteeseen.
-func _burn_ticks(target: Hero) -> void:
+## Toistuva jälkipoltto kohteeseen. slot = sytyttänyt kyky, jotta jälkipolton
+## vahinko kirjautuu oikealle kykypaikalle (re-asetetaan konteksti joka tickillä).
+func _burn_ticks(target: Hero, slot: String) -> void:
 	for i in range(BURN_TICKS):
 		await get_tree().create_timer(0.5).timeout
 		if not is_inside_tree() or not is_instance_valid(target) or not target.alive:
 			return
 		if target.team == team:
 			return
+		_act(slot)
 		deal_damage_to(target, BURN_TICK)
+		_act_end()
 		Fx.spark(target.arena, target.global_position, Color("ff8a4a"))
 
 
@@ -115,7 +119,7 @@ func _ability2(dir: Vector2) -> void:
 		if absf(rad_to_deg(dir.angle_to(to_enemy))) > 45.0:
 			continue
 		deal_damage_to(enemy, 22.0, 470.0, to_enemy.normalized())
-		_burn_ticks(enemy)
+		_burn_ticks(enemy, _cast_context)
 
 
 ## Väistö: kipinäliuku, joka jättää lyhyen palojäljen.

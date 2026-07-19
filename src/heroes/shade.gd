@@ -278,6 +278,7 @@ class Shuriken:
 	var kb := 110.0
 	var catch_radius := 36.0
 	var returning := false
+	var _slot := "a2"          # telemetria: mikä kyky ampui tämän
 	var _t := 0.0
 	var _out := 0.0
 	var _return_target := Vector2.ZERO
@@ -337,7 +338,11 @@ class Shuriken:
 				var kbdir: Vector2 = direction
 				if returning:
 					kbdir = (enemy.global_position - global_position).normalized()
+				# Aseta telemetriakonteksti: vahinko kirjautuu a2:lle, ei Shaden
+				# viimeksi käyttämälle kyvylle (mukautettu solmu, ei Projectile).
+				source._act(_slot)
 				source.deal_damage_to(enemy, pass_dmg, kb, kbdir)
+				source._act_end()
 				Fx.spark(arena, enemy.global_position, Palette.glow(color, 1.4))
 
 	func _pop(arena) -> void:
