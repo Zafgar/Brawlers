@@ -50,7 +50,7 @@ func _setup() -> void:
 	for t in _tower_orange:
 		blocked.append(t)
 	var tries := 0
-	while pillars.size() < 14 and tries < 260:
+	while pillars.size() < 10 and tries < 260:
 		tries += 1
 		var p := Vector2(rng.randf_range(-half.x + 300.0, half.x - 300.0),
 			rng.randf_range(-half.y + 260.0, -120.0))   # vain yläpuoli (viidakko)
@@ -65,6 +65,31 @@ func _setup() -> void:
 				break
 		if ok:
 			pillars.append({"pos": p, "radius": rng.randf_range(46.0, 76.0)})
+
+	_setup_walls()
+
+
+## Sisaseinat (rect_walls): viidakon ja linjan erottava seina gank-aukoin,
+## pomo-alkovi ja sivuleirien alkovit. Linja pidetaan taysin auki (minionit
+## marssivat sita) eivatka seinat osu torneihin/nexuksiin/spawneihin.
+func _setup_walls() -> void:
+	var t := 64.0
+	var dy := 320.0 - t / 2.0
+	# Viidakon ja linjan erottava seina; gank-aukot kohdissa x = -1150 / 0 / +1150.
+	# Paadyt jaavat auki tukikohtien puolelle (oma viidakko/linja yhteydessa).
+	rect_walls.append(Rect2(-1900.0, dy, 600.0, t))
+	rect_walls.append(Rect2(-1000.0, dy, 850.0, t))
+	rect_walls.append(Rect2(150.0, dy, 850.0, t))
+	rect_walls.append(Rect2(1300.0, dy, 600.0, t))
+	# Pomo-alkovi (0,-800): seinat pohjoiseen ja sivuille, auki etelaan.
+	rect_walls.append(Rect2(-440.0, -1090.0, 880.0, 60.0))
+	rect_walls.append(Rect2(-440.0, -1030.0, 70.0, 380.0))
+	rect_walls.append(Rect2(370.0, -1030.0, 70.0, 380.0))
+	# Sivuleirien alkovit (L-seina ulkokulmaan, auki keskelle ja etelaan).
+	rect_walls.append(Rect2(-1420.0, -760.0, 340.0, 60.0))
+	rect_walls.append(Rect2(-1420.0, -760.0, 60.0, 300.0))
+	rect_walls.append(Rect2(1080.0, -760.0, 340.0, 60.0))
+	rect_walls.append(Rect2(1360.0, -760.0, 60.0, 300.0))
 
 
 # --- Paikat (areena kysyy näitä) ---
@@ -130,6 +155,9 @@ func _draw() -> void:
 	_camp_marker(_points, Color("e0c23c"))
 	_boss_pit(_boss)
 
+	# Sisaseinat (kivi + lehtiharja) esteiden ja latvuston alle.
+	_draw_moba_walls()
+
 	# Latvuston lehtiläikät esteiden päällä.
 	for pillar in pillars:
 		draw_circle(pillar.pos + Vector2(0, 6), pillar.radius + 6.0, Color(0.03, 0.09, 0.05, 0.6))
@@ -188,3 +216,16 @@ func _boss_pit(pos: Vector2) -> void:
 	draw_arc(pos, 190.0, 0.0, TAU, 52, Palette.with_alpha(Color("b64ad6"), 0.55), 4.0)
 	draw_arc(pos, 165.0, -_time * 0.4, -_time * 0.4 + TAU, 52,
 		Palette.with_alpha(Palette.glow(Color("b64ad6"), 1.2), 0.35), 2.0)
+
+
+## Piirtaa sisaseinat kivisena harjanteena joukkuevarittomana + lehtiharja.
+func _draw_moba_walls() -> void:
+	for entry in rect_walls:
+		var w: Rect2 = entry
+		draw_rect(w, Color("0f1f16"))
+		draw_rect(Rect2(w.position + Vector2(4, 4), w.size - Vector2(8, 8)),
+			Palette.with_alpha(Color("24402c"), 0.7))
+		draw_rect(w, Palette.with_alpha(Palette.glow(LEAF, 1.1), 0.3), false, 2.5)
+		# Lehtiharja yläreunaan.
+		draw_rect(Rect2(w.position - Vector2(0, 7), Vector2(w.size.x, 12)),
+			Palette.with_alpha(CANOPY, 0.85))
