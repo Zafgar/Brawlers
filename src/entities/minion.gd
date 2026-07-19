@@ -95,6 +95,9 @@ func _knockout(source: Hero) -> void:
 	if source != null and is_instance_valid(source) and not source.is_unit:
 		source.profile.stats.minion_kills += 1
 	Fx.burst(arena, global_position, _color, 8, 160.0, 0.3, 4.0)
+	# Hiljainen "pop" minionin kaatuessa (elävöittää linjaa; sim ei soita).
+	if not Game.simulating:
+		AudioMgr.play("pop", 0.25, -15.0)
 	# Poisto arena.heroesista ja vapautus hoidetaan areenan siivouksessa
 	# (turvallista iteroinnin kannalta) — ei queue_free tässä.
 

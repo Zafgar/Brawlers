@@ -195,6 +195,9 @@ func _knockout(source: Hero) -> void:
 	Fx.knockout_burst(arena, global_position, _color)
 	Fx.ring(arena, global_position, Palette.glow(_color, 1.6), radius + 60.0, 0.9, 12.0)
 	Fx.flash(arena, global_position, Palette.glow(_color, 1.5), radius + 40.0, 0.6)
+	# Rakennuksen romahdus: kivinen jyrähdys + tyrmäys. Nexus isompi.
+	AudioMgr.play("rock", 0.05, 1.0 if kind == Kind.NEXUS else -3.0)
+	AudioMgr.play("quake", 0.05, -1.0 if kind == Kind.NEXUS else -5.0)
 	AudioMgr.play("ko", 0.1, -6.0)
 	arena.shake(0.5)
 	if arena.has_method("on_structure_destroyed"):

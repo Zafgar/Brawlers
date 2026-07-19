@@ -496,7 +496,9 @@ func on_critter_ko(critter, source) -> void:
 			_grant_boss_boost(team)
 			hud.show_banner("%s KAATOI POMON!" % Game.team_name(team),
 				"Iso boosti koko joukkueelle (+%d pistettä)" % int(BOSS_POINTS), 2.8)
-			AudioMgr.play("match_win", 0.05, -8.0)
+			# Pomon kaato: raskas möräys, ei voittosointi (ottelu jatkuu).
+			AudioMgr.play("quake", 0.05, -1.0)
+			AudioMgr.play("inferno", 0.05, -6.0)
 			_sim_event("Pomo kaadettu: %s" % Game.team_name(team))
 
 
@@ -601,6 +603,9 @@ func _moba_physics(delta: float) -> void:
 		_wave_timer = WAVE_INTERVAL
 		_spawn_wave(0)
 		_spawn_wave(1)
+		# Hienovarainen vihjeääni uudesta aallosta (rytmittää peliä).
+		if not Game.simulating:
+			AudioMgr.play("drop", 0.1, -12.0)
 	# Varakatto: jos nexusta ei tuhota, ratkaise vähemmän vaurioituneen nexuksen
 	# eduksi.
 	time_left -= delta
