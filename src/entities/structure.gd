@@ -11,12 +11,17 @@ enum Kind { TOWER, NEXUS }
 
 const SHOT_RANGE := 360.0
 const SHOT_DMG := 42.0
-const SHOT_INTERVAL := 1.05
+const CHARGE_TIME := 1.05      # latausaika ennen laukausta (näkyvä telegrafi)
+const AIM_LOCK_AT := 0.6       # missä latauksen vaiheessa kohde lukitaan
+const MUZZLE_TIME := 0.14      # piipun välähdyksen kesto
+const DEFEND_WINDOW := 2.5     # kuinka tuoreesta osumasta torni puolustaa liittolaista
 
 var kind := Kind.TOWER
 var _color := Color("4aa8ff")
 var _invuln := false          # nexus: suojattu kunnes tornit kaadettu
-var _shot_cd := 0.0
+var _charge := 0.0            # latausvaihe 0..1 (visuaalinen telegrafi)
+var _target_lock: Hero = null # lukittu kohde (asetetaan latauksen loppuvaiheessa)
+var _muzzle := 0.0            # piipun välähdyksen ajastin
 
 
 func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2) -> void:
@@ -41,7 +46,7 @@ func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2) -> void:
 		Kind.TOWER:
 			max_hp = 900.0
 			radius = 46.0
-			_shot_cd = randf_range(0.0, SHOT_INTERVAL)
+			_charge = randf_range(0.0, 0.6)   # porrasta aloituslataus
 		Kind.NEXUS:
 			max_hp = 1600.0
 			radius = 72.0
@@ -78,17 +83,26 @@ func set_vulnerable() -> void:
 	_invuln = false
 
 
-## Torni ampuu: minionit etusijalla, muuten lähin vihollissankari kantamalla.
+## Torni lataa ensin näkyvästi (telegrafi), lukitsee kohteen latauksen
+## loppuvaiheessa ja ampuu kun lataus on täynnä. Kohdejärjestys: liittolaisen
+## puolustus (LoL) > minionit > lähin vihollissankari.
 func _passive_update(delta: float) -> void:
 	if kind != Kind.TOWER:
 		return
-	_shot_cd -= delta
-	if _shot_cd > 0.0:
+	_muzzle = maxf(_muzzle - delta, 0.0)
+	if _charge < 1.0:
+		_charge = minf(_charge + delta / CHARGE_TIME, 1.0)
+		# Lukitse kohde latauksen loppuvaiheessa -> näkyvä tähtäys ennen laukausta.
+		if _charge >= AIM_LOCK_AT:
+			_target_lock = _valid_lock()
 		return
-	var target := _tower_target()
+	# Lataus täynnä: varmista/valitse kohde ja ammu.
+	var target := _valid_lock()
+	_target_lock = target
 	if target == null:
-		return
-	_shot_cd = SHOT_INTERVAL
+		return   # valmis mutta ei kohdetta -> pysyy ladattuna, ampuu heti kun kohde tulee
+	_charge = 0.0
+	_muzzle = MUZZLE_TIME
 	var dir: Vector2 = (target.global_position - global_position).normalized()
 	Projectile.launch(self, global_position + dir * (radius + 6.0), dir, {
 		"speed": 880.0,
@@ -101,7 +115,21 @@ func _passive_update(delta: float) -> void:
 	AudioMgr.play("light", 0.1, -4.0)
 
 
+## Lukitun kohteen validointi: pidä lukittu kohde jos se on yhä elossa ja
+## kantamalla, muuten valitse uusi normaalilla prioriteetilla.
+func _valid_lock() -> Hero:
+	if _target_lock != null and is_instance_valid(_target_lock) and _target_lock.alive \
+			and _target_lock.global_position.distance_to(global_position) <= SHOT_RANGE:
+		return _target_lock
+	return _tower_target()
+
+
 func _tower_target() -> Hero:
+	# LoL-tornin puolustus: jos vihollissankari on hiljattain lyönyt liittolais-
+	# sankaria tornin kantamassa, kohdista siihen heti (minionien ohi).
+	var defend := _defend_target()
+	if defend != null:
+		return defend
 	var foe: int = 1 - team
 	var best_m: Hero = null
 	var bm := SHOT_RANGE
@@ -124,6 +152,27 @@ func _tower_target() -> Hero:
 				bh = d
 				best_h = h
 	return best_m if best_m != null else best_h
+
+
+## Vihollissankari joka on hiljattain lyönyt liittolaissankaria tornin
+## kantamassa -> tornin aggro siirtyy häneen (rankaisee sukeltajaa).
+func _defend_target() -> Hero:
+	var now: float = Time.get_ticks_msec() / 1000.0
+	for ally in arena.heroes:
+		if not is_instance_valid(ally) or not ally.alive or ally.team != team or ally.is_unit:
+			continue
+		if ally.global_position.distance_to(global_position) > SHOT_RANGE:
+			continue
+		for entry in ally._recent_damagers:
+			var h = entry.hero
+			if not is_instance_valid(h) or not h.alive or h.is_unit or h.team == team:
+				continue
+			if now - float(entry.time) > DEFEND_WINDOW:
+				continue
+			if h.global_position.distance_to(global_position) > SHOT_RANGE:
+				continue
+			return h
+	return null
 
 
 ## Nexus torjuu kaiken vahingon kunnes sen tornit on kaadettu.
@@ -168,7 +217,9 @@ func reset_for_round(_keep_ult_fraction := 0.5) -> void:
 	slow_timer = 0.0
 	slow_factor = 1.0
 	_invuln = (kind == Kind.NEXUS)
-	_shot_cd = randf_range(0.0, SHOT_INTERVAL)
+	_charge = randf_range(0.0, 0.6)
+	_target_lock = null
+	_muzzle = 0.0
 	set_collision_layer_value(2, true)
 	set_collision_mask_value(2, true)
 	set_physics_process(true)
@@ -201,27 +252,77 @@ class StructureVisual:
 		draw_circle(Vector2.ZERO, r * 1.05, Color(0.02, 0.03, 0.06, 0.4))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if s.kind == Structure.Kind.TOWER:
-			_paint_tower(r, col, dark)
+			_paint_tower(s, r, col, dark)
 		else:
 			_paint_nexus(s, r, col, dark)
 		if _flash > 0.0:
 			draw_circle(Vector2.ZERO, r, Color(1, 1, 1, _flash * 0.55))
 		_hp_bar(s, r, col)
 
-	func _paint_tower(r: float, col: Color, dark: Color) -> void:
+	func _paint_tower(s: Structure, r: float, col: Color, dark: Color) -> void:
 		# Kivijalka + kapeneva torni + hehkuva kärki josta ammukset lähtevät.
+		var glow: Color = Palette.glow(col, 1.6)
+		# Kivijalka: leveä matala kuusikulmio.
+		var base_ring := PackedVector2Array()
+		for i in range(6):
+			var a: float = TAU * float(i) / 6.0 + PI / 6.0
+			base_ring.append(Vector2(cos(a) * r * 0.98, r * 0.5 + sin(a) * r * 0.34))
+		draw_colored_polygon(base_ring, Palette.darker(dark, 0.2))
+		# Runko: kapeneva kivitorni kahdessa savyssa.
 		draw_colored_polygon(PackedVector2Array([
-			Vector2(-r * 0.62, r * 0.55), Vector2(r * 0.62, r * 0.55),
-			Vector2(r * 0.4, -r * 0.7), Vector2(-r * 0.4, -r * 0.7)]), dark)
+			Vector2(-r * 0.58, r * 0.5), Vector2(r * 0.58, r * 0.5),
+			Vector2(r * 0.42, -r * 0.4), Vector2(-r * 0.42, -r * 0.4)]), dark)
 		draw_colored_polygon(PackedVector2Array([
 			Vector2(-r * 0.46, r * 0.45), Vector2(r * 0.46, r * 0.45),
-			Vector2(r * 0.26, -r * 0.7), Vector2(-r * 0.26, -r * 0.7)]), col)
-		draw_line(Vector2(-r * 0.3, -r * 0.1), Vector2(r * 0.3, -r * 0.1),
-			Palette.with_alpha(Color.WHITE, 0.2), 2.0)
-		var tip := Vector2(0, -r * 0.95)
-		var pulse: float = 0.6 + 0.4 * sin(_time * 4.0)
-		draw_circle(tip, r * 0.34, Palette.with_alpha(Palette.glow(col, 1.6), 0.35 + 0.3 * pulse))
-		draw_circle(tip, r * 0.2, Palette.glow(col, 1.7))
+			Vector2(r * 0.32, -r * 0.4), Vector2(-r * 0.32, -r * 0.4)]), col)
+		# Kivisaumat + riimuvyo.
+		for sy in [0.28, 0.02, -0.24]:
+			var yy: float = r * sy
+			var wx: float = r * (0.44 - sy * 0.18)
+			draw_line(Vector2(-wx, yy), Vector2(wx, yy), Palette.with_alpha(dark, 0.6), 1.5)
+		draw_line(Vector2(-r * 0.4, -r * 0.12), Vector2(r * 0.4, -r * 0.12),
+			Palette.with_alpha(glow, 0.5), 3.0)
+		# Ampuma-alusta + rintavarustus (battlements).
+		draw_colored_polygon(PackedVector2Array([
+			Vector2(-r * 0.5, -r * 0.4), Vector2(r * 0.5, -r * 0.4),
+			Vector2(r * 0.4, -r * 0.6), Vector2(-r * 0.4, -r * 0.6)]), Palette.darker(col, 0.35))
+		for bx in [-0.36, -0.12, 0.12, 0.36]:
+			draw_rect(Rect2(bx * r - r * 0.07, -r * 0.74, r * 0.14, r * 0.18), dark)
+
+		# --- Latauskristalli karjessa: TELEGRAFI ---
+		# Koko, hehku ja tayttyva rengas kasvavat latauksen (_charge) mukaan,
+		# joten seuraavan laukauksen nakee tulossa.
+		var tip := Vector2(0, -r * 0.86)
+		var ch: float = clampf(s._charge, 0.0, 1.0)
+		var ready: bool = ch >= 0.999
+		var crys: float = r * (0.14 + 0.20 * ch)
+		draw_circle(tip, crys + r * 0.18, Palette.with_alpha(glow, 0.10 + 0.35 * ch))
+		if ch > 0.02:
+			draw_arc(tip, crys + r * 0.13, -PI / 2.0, -PI / 2.0 + TAU * ch, 30,
+				Palette.with_alpha(glow, 0.9), 3.0)
+		var core: Color = Color.WHITE.lerp(glow, 0.35) if ready else glow
+		draw_circle(tip, crys, Palette.with_alpha(core, 0.9))
+		draw_circle(tip, crys * 0.5, Color(1, 1, 1, 0.85 if ready else 0.45))
+
+		# Tahtaysviiva + tahtain lukittuun kohteeseen (nakyy kun kohde lukittu).
+		var lock: Hero = s._target_lock
+		if ch >= Structure.AIM_LOCK_AT and lock != null and is_instance_valid(lock) and lock.alive:
+			var to_t: Vector2 = lock.global_position - s.global_position
+			var d: float = to_t.length()
+			if d > 1.0:
+				var reticle: Vector2 = to_t / d * minf(d, Structure.SHOT_RANGE)
+				var beam_a: float = 0.20 + 0.45 * ch
+				draw_line(tip, reticle, Palette.with_alpha(glow, beam_a), 1.5)
+				draw_arc(reticle, 15.0, 0.0, TAU, 20, Palette.with_alpha(glow, beam_a + 0.15), 2.0)
+				draw_line(reticle - Vector2(20, 0), reticle + Vector2(20, 0),
+					Palette.with_alpha(glow, beam_a), 1.5)
+				draw_line(reticle - Vector2(0, 20), reticle + Vector2(0, 20),
+					Palette.with_alpha(glow, beam_a), 1.5)
+
+		# Piipun valahdys laukaisuhetkella.
+		if s._muzzle > 0.0:
+			var mf: float = s._muzzle / Structure.MUZZLE_TIME
+			draw_circle(tip, crys + r * 0.34 * mf, Color(1, 1, 1, 0.6 * mf))
 
 	func _paint_nexus(s: Structure, r: float, col: Color, dark: Color) -> void:
 		var vuln: bool = not s._invuln
