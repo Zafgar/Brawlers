@@ -220,8 +220,12 @@ func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	if hero.hp < hero.max_hp * retreat_hp:
 		_mode = Mode.RETREAT
 		return
-	if _mode == Mode.RETREAT and hero.hp < hero.max_hp * 0.6:
-		return  # jatka vetäytymistä kunnes palautunut
+	# Jatka vetäytymistä vain jos yhä matala JA vihollinen lähellä. Heti kun on
+	# turvassa (ei vihollista lähellä), palaa peliin — ei jäädä seisomaan
+	# nurkkaan/respawniin vaikka olisi tekemistä (esim. 1v1).
+	if _mode == Mode.RETREAT and hero.hp < hero.max_hp * 0.5 \
+			and _enemy_within(hero, arena, 300.0):
+		return
 
 	# Kenttäbuffit: hae oman tiimin arvokas buffi tai riko vihollisen buffi.
 	# Vaikeustaso päättää kuinka innokkaasti ja kaukaa (buff_focus/buff_deny).
@@ -399,7 +403,7 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> v
 		Mode.GET_RELIC:
 			goal = arena.relic.global_position
 		Mode.RETREAT:
-			goal = bb.retreat_pos
+			goal = _retreat_goal(hero, arena, bb, pos)
 		Mode.CARRY:
 			goal = _carry_goal(arena, pos)
 		Mode.ESCORT:
@@ -441,6 +445,27 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, _delta: float) -> v
 			desired += diff.normalized() * 0.6
 
 	_move = desired.limit_length(1.0)
+
+
+## Vetäytyminen: kite poispäin uhasta kohtuullinen matka (ei aivan nurkkaan).
+## Kun uhkaa ei ole, liiku takaisin objektille — ei jäädä seisomaan respawniin.
+func _retreat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector2:
+	var away := Vector2.ZERO
+	if _target != null and is_instance_valid(_target):
+		away = pos - _target.global_position
+	elif bb.threat_center != Vector2.ZERO:
+		away = pos - bb.threat_center
+	if away.length() < 1.0:
+		# Ei uhkaa: palaa peliin (reliikki/keskusta), älä jää nurkkaan.
+		return arena.relic.global_position
+	return arena.map.clamp_to_field(pos + away.normalized() * 280.0, 100.0)
+
+
+func _enemy_within(hero: Hero, arena, dist: float) -> bool:
+	for e in arena.alive_enemies(hero.team):
+		if e.global_position.distance_to(hero.global_position) < dist:
+			return true
+	return false
 
 
 ## Kantaja kiertää keskustaa ja pakoilee lähintä vihollista.
@@ -541,10 +566,12 @@ func _update_attack(hero: Hero, delta: float) -> void:
 	_attack = false
 	if _target == null or not is_instance_valid(_target) or not _target.alive:
 		return
-	if _reaction_left > 0.0 or _mode == Mode.RETREAT:
+	if _reaction_left > 0.0:
 		return
 	if _lurk:
 		return                          # väijyvä assassin ei tulita, odottaa avausta
+	# HUOM: vetäytyessä botti saa puolustautua (ampua takaa-ajajaa), liike vie
+	# silti poispäin — ei enää avutonta seisoskelua.
 	var dist: float = hero.global_position.distance_to(_target.global_position)
 	var attack_range := _pref_range + 120.0
 	if _is_tank or _role == "Fighter" or _is_assassin:
