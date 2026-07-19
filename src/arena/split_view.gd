@@ -121,8 +121,8 @@ func _apply_layout() -> void:
 ## Ruutujen suorakulmiot annetulle määrälle: 1 = koko ruutu, 2 = vasen/oikea,
 ## 3 = kaksi ylös + yksi leveä alas, 4 = 2x2-ruudukko.
 func _pane_rects(count: int, full: Vector2) -> Array:
-	var hw := floor(full.x / 2.0)
-	var hh := floor(full.y / 2.0)
+	var hw := floorf(full.x / 2.0)
+	var hh := floorf(full.y / 2.0)
 	match count:
 		1:
 			return [Rect2(0, 0, full.x, full.y)]
