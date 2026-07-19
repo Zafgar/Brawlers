@@ -35,6 +35,7 @@ var buff_deny := 0.0            # kuinka herkästi botti rikkoo vihollisen buffi
 var focus_fire := 0.0           # kuinka hyvin botti keskittää tulen joukkueen kohteeseen
 var patience := 0.0             # assassiinin kärsivällisyys (odottaa hyvää avausta)
 var self_preserve := 0.0        # kuinka herkästi botti pakenee kyvyillä vaarassa
+var jungle_focus := 0.0         # kuinka aktiivisesti botti tunnistaa ja farmaa viidakon leirit/pomon
 
 # Taso 6 (epäreilu) huijaa: nämä poikkeavat 1.0:sta vain kyseisellä tasolla.
 # Hero lukee kertoimet setup()issa ja soveltaa niitä.
@@ -56,6 +57,7 @@ var _hero: Hero = null
 var _mode: int = Mode.FIGHT
 var _target: Hero = null
 var _buff_target = null          # tavoiteltu FieldBuff (GET_BUFF-tilassa)
+var _jungle_target: Hero = null  # tavoiteltu viidakko-olento (leiri/pomo)
 var _move := Vector2.ZERO
 var _aim := Vector2.RIGHT
 
@@ -101,6 +103,9 @@ func _init(p_level: int) -> void:
 	# itsesuojelu (pakenee kyvyillä hädässä) — ylemmät tasot osaavat molemmat.
 	var patiences := [0.0, 0.1, 0.35, 0.6, 0.82, 1.0]
 	var preserves := [0.0, 0.12, 0.35, 0.6, 0.85, 1.0]
+	# Viidakon objektiivitietoisuus: alemmat tasot taistelevat vain lähellä
+	# olevia olentoja, ylemmät hakevat leirit ja pomon aktiivisesti kauempaakin.
+	var jungle_foci := [0.0, 0.15, 0.45, 0.68, 0.88, 1.0]
 	reaction = reactions[level]
 	aim_error_deg = aims[level]
 	decision_interval = decisions[level]
@@ -113,6 +118,7 @@ func _init(p_level: int) -> void:
 	focus_fire = focus_fires[level]
 	patience = patiences[level]
 	self_preserve = preserves[level]
+	jungle_focus = jungle_foci[level]
 	# Ultimatet ovat arvokkaimpia — niitä käytetään kaikilla tasoilla,
 	# heikommilla vain hieman huonommalla ajoituksella.
 	ult_chance = clampf(ability_chance + 0.35, 0.0, 1.0)
@@ -210,6 +216,9 @@ func _assassin_should_dive(hero: Hero, arena) -> bool:
 ## Valitsee toimintatilan roolin ja tilanteen mukaan.
 func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	_lurk = false
+	# Nollaa viidakko-objektiivi joka päätöksessä; vain _decide_jungle asettaa
+	# sen uudelleen (esim. vetäytyvä botti ei jää hyökkäämään leiriä).
+	_jungle_target = null
 	if hero.carrying:
 		_mode = Mode.CARRY
 		return
@@ -225,6 +234,12 @@ func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	# nurkkaan/respawniin vaikka olisi tekemistä (esim. 1v1).
 	if _mode == Mode.RETREAT and hero.hp < hero.max_hp * 0.5 \
 			and _enemy_within(hero, arena, 300.0):
+		return
+
+	# Viidakko-pelimuoto: ei reliikkiä eikä kenttäbuffeja — botti tunnistaa ja
+	# farmaa leirit ja pomon vaikeustason mukaan (jungle_focus).
+	if arena.mode == "jungle":
+		_decide_jungle(hero, arena)
 		return
 
 	# Kenttäbuffit: hae oman tiimin arvokas buffi tai riko vihollisen buffi.
@@ -276,6 +291,94 @@ func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	_mode = Mode.SUPPORT if _is_support else Mode.FIGHT
 
 
+## Viidakon päätöksenteko: puolusta itseä lähellä olevaa vihollispelaajaa
+## vastaan, muuten hae paras leiri/pomo-objektiivi vaikeustason mukaan. Tuki
+## pysyy tukena (seuraa ja parantaa joukkuetta objektiiveille).
+func _decide_jungle(hero: Hero, arena) -> void:
+	_jungle_target = null
+	if _is_support:
+		_mode = Mode.SUPPORT
+		return
+	# Lähellä oleva vihollispelaaja -> taistele (KO-pisteet + itsepuolustus).
+	var threat := _nearest_enemy_player(hero, arena, 300.0)
+	if threat != null:
+		_mode = Mode.FIGHT
+		return
+	# Objektiivien tunnistus vaikeustason mukaan.
+	if jungle_focus >= 0.05:
+		_jungle_target = _pick_jungle_objective(hero, arena)
+	_mode = Mode.FIGHT
+
+
+## Paras tavoiteltava viidakko-olento (arvo tyypin mukaan, etäisyys huomioiden).
+## Matkan sietokyky ja pomon houkuttelevuus skaalautuvat vaikeustasolla.
+func _pick_jungle_objective(hero: Hero, arena) -> Hero:
+	if arena.critters.is_empty():
+		return null
+	var pos: Vector2 = hero.global_position
+	var max_travel: float = 480.0 + jungle_focus * 1500.0
+	var best: Hero = null
+	var best_score := 0.0
+	for c in arena.critters:
+		var cr := c as Critter
+		if cr == null or not cr.alive:
+			continue
+		var d: float = pos.distance_to(cr.global_position)
+		if d > max_travel:
+			continue
+		var val: float = _jungle_value(hero, cr)
+		if val <= 0.0:
+			continue
+		var score: float = val - d * 0.10
+		if score > best_score:
+			best_score = score
+			best = cr
+	return best
+
+
+## Olennon arvo botille: pistereiri > pomo (jos vahva/ryhmässä) > vahinkoleiri.
+func _jungle_value(hero: Hero, cr: Critter) -> float:
+	match cr.kind:
+		Critter.Kind.POINTS_CAMP:
+			return 200.0
+		Critter.Kind.DAMAGE_CAMP:
+			# Arvokkaampi kun botti terve (ehtii hyödyntää vahinkobuffin).
+			return 120.0 if hero.hp > hero.max_hp * 0.5 else 70.0
+		Critter.Kind.BOSS:
+			# Pomo on iso palkinto mutta vaarallinen: mene vain terveenä ja
+			# mieluiten ryhmässä; korkein taso uskaltaa yksinkin.
+			var strong: bool = hero.hp > hero.max_hp * 0.55 and jungle_focus >= 0.4
+			var grouped: bool = _allies_near(hero, cr.global_position, 420.0) >= 1
+			if strong and (grouped or jungle_focus >= 0.85):
+				return 260.0
+			return 25.0
+	return 0.0
+
+
+## Lähin vihollis*pelaaja* (ei neutraaleja olentoja) enintään max_dist päässä.
+func _nearest_enemy_player(hero: Hero, arena, max_dist: float) -> Hero:
+	var best: Hero = null
+	var best_d := max_dist
+	for enemy in arena.alive_enemies(hero.team):
+		if enemy.team > 1:
+			continue
+		var d: float = enemy.global_position.distance_to(hero.global_position)
+		if d < best_d:
+			best_d = d
+			best = enemy
+	return best
+
+
+func _allies_near(hero: Hero, pos: Vector2, r: float) -> int:
+	var n := 0
+	for ally in arena.alive_allies(hero.team):
+		if ally == hero:
+			continue
+		if ally.global_position.distance_to(pos) < r:
+			n += 1
+	return n
+
+
 ## Kohteenvalinta roolin mukaan.
 func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	var enemies: Array = arena.alive_enemies(hero.team)
@@ -285,6 +388,14 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 
 	var pos: Vector2 = hero.global_position
 	var pick: Hero = null
+
+	# Viidakko: jos on valittu leiri/pomo-objektiivi, hyökkää sitä — paitsi jos
+	# vihollispelaaja tulee lähelle (silloin puolustaudu / KO-pisteet).
+	if _jungle_target != null and is_instance_valid(_jungle_target) and _jungle_target.alive:
+		var near_player := _nearest_enemy_player(hero, arena, 240.0)
+		_target = near_player if near_player != null else _jungle_target
+		_reaction_left = reaction
+		return
 
 	if _mode == Mode.ATTACK_CARRIER and bb.enemy_carrier != null \
 			and is_instance_valid(bb.enemy_carrier):
