@@ -105,6 +105,9 @@ func _finish() -> void:
 			"%dv%d | Taso %d vs %d | Tyyppiparit: %d | Toistot: %d | Otteluita: %d | Nopeus: %dx" % [
 				team_size, team_size, blue_level + 1, orange_level + 1,
 				ARCHETYPES.size() * ARCHETYPES.size(), repeats, match_count, speed]]
+		if blue_level >= 5 or orange_level >= 5:
+			intro.append("HUOM: taso 6 (Epäreilu) HUIJAA (vahinko/kesto/CD) — "
+				+ "tasapainolukemat eivät ole luotettavia. Käytä tasoa 1–5.")
 		results.report_text = MatchReport.build_sweep(_results, intro)
 	else:
 		var intro := [

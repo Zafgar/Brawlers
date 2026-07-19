@@ -10,8 +10,11 @@ extends Control
 ##              täystankki, kaukotaisto, sukellus, tasapaino) toistoineen.
 
 var _team_size := 4       # 3v3 ja 4v4 ovat tärkeimmät; 4v4 oletuksena
-var _blue_level := 2
-var _orange_level := 2
+# Oletustaso 5 (Mestari): paras EI-huijaava taso. Tasapainon mittaamiseen
+# halutaan korkea, puhdas taso — taso 6 (Epäreilu) huijaa (enemmän vahinkoa,
+# vähemmän otettua) ja vääristäisi tulokset.
+var _blue_level := 4
+var _orange_level := 4
 var _comp := 0            # 0 = satunnainen, 1 = peilattu
 var _count := 3
 var _speed := 8
@@ -80,15 +83,16 @@ func _ready() -> void:
 func _update_note() -> void:
 	if _note == null:
 		return
+	var cheat := " · HUOM: taso 6 (Epäreilu) huijaa — käytä tasapainotestiin sama, ei-huijaava taso molemmilla."
 	if _sweep:
 		var pairs: int = 36                       # 6 tyyppiä × 6
 		var total: int = pairs * _repeats
 		_note.text = ("Sweep: %d tyyppiparia × %d toistoa = %d ottelua %dv%d. Kestää tovin — "
-			+ "ottelut näkyvät ruudulla nopeutettuna. Raportti tallentuu ja tulostuu konsoliin.") % [
-			pairs, _repeats, total, _team_size, _team_size]
+			+ "ottelut näkyvät ruudulla nopeutettuna. Raportti tallentuu ja tulostuu konsoliin.%s") % [
+			pairs, _repeats, total, _team_size, _team_size, cheat]
 	else:
 		_note.text = ("Manuaali: %d ottelua %dv%d nopeutettuna. "
-			+ "Raportti tallentuu ja tulostuu konsoliin.") % [_count, _team_size, _team_size]
+			+ "Raportti tallentuu ja tulostuu konsoliin.%s") % [_count, _team_size, _team_size, cheat]
 
 
 func _add(parent: Control, row: Control) -> void:
