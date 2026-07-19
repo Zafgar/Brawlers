@@ -193,7 +193,7 @@ func start_match() -> void:
 	for profile in roster:
 		profile.reset_stats()
 	var new_arena := Arena.new()
-	if options.split_screen:
+	if options.split_screen and not simulating:
 		# Jaettu ruutu: areena renderöidään SplitViewin SubViewporteihin.
 		var host := SplitView.new()
 		host.setup(new_arena)

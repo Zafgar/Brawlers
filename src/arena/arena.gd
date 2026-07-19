@@ -47,6 +47,7 @@ var _last_point_team := -1
 # MOBA-pelimuoto: viidakko yläpuolella + linja alapuolella, minioniaallot,
 # tornit ja nexus. Voitto = tuhoa vihollisen nexus (tornit ensin).
 const MOBA_TIME := 1500.0         # varakatto (s) jos nexusta ei tuhota (25 min)
+const SIM_MOBA_TIME := 480.0      # simulaation lyhyempi varakatto (8 min)
 const WAVE_INTERVAL := 24.0       # minioniaallon väli
 const WAVE_FIRST := 10.0          # ensimmäinen aalto pelin alusta
 const WAVE_SIZE := 4              # minionia per aalto per joukkue
@@ -850,7 +851,9 @@ func _start_round_intro() -> void:
 	state = State.INTRO
 	relic_points = [0.0, 0.0]
 	if mode == "moba":
-		time_left = MOBA_TIME
+		# Simulaatiossa lyhyempi varakatto ettei pattitilanne veny (ottelut
+		# päättyvät yleensä nexuksen tuhoon jo paljon ennen tätä).
+		time_left = SIM_MOBA_TIME if Game.simulating else MOBA_TIME
 	elif mode == "jungle":
 		time_left = JUNGLE_TIME
 	else:
