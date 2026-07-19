@@ -368,8 +368,11 @@ func _decide_moba(hero: Hero, arena) -> void:
 	if _is_support:
 		_mode = Mode.SUPPORT
 		return
-	var near := _nearest_enemy(hero, arena, 330.0)
-	if near != null:
+	# Vain oikea vihollissankari laukaisee tiimitaistelun — minionit ja tornit
+	# eivat (ne hoidetaan tyontologiikassa, ettei botti jaa jumiin aaltoon eika
+	# hylkaa tyontoa minionin takia).
+	var enemy_hero := _nearest_enemy_hero(hero, arena, 360.0)
+	if enemy_hero != null:
 		_mode = Mode.FIGHT
 		return
 	_jungle_target = _pick_push_target(hero, arena)
@@ -417,6 +420,54 @@ func _nearest_enemy_player(hero: Hero, arena, max_dist: float) -> Hero:
 	return _nearest_enemy(hero, arena, max_dist)
 
 
+## Lähin vihollis*sankari* (ei yksiköitä: ei minioneja/torneja) max_dist päässä.
+func _nearest_enemy_hero(hero: Hero, arena, max_dist: float) -> Hero:
+	var best: Hero = null
+	var best_d := max_dist
+	for e in arena.enemy_heroes(hero.team):
+		var d: float = e.global_position.distance_to(hero.global_position)
+		if d < best_d:
+			best_d = d
+			best = e
+	return best
+
+
+## Lähin vihollisminioni max_dist päässä (vihollisaallon siivoamiseen).
+func _nearest_enemy_minion(hero: Hero, arena, max_dist: float) -> Hero:
+	var best: Hero = null
+	var best_d := max_dist
+	for e in arena.alive_enemies(hero.team):
+		if not (e is Minion):
+			continue
+		var d: float = e.global_position.distance_to(hero.global_position)
+		if d < best_d:
+			best_d = d
+			best = e
+	return best
+
+
+## Montako omaa minionia on annetun pisteen lähellä (onko oma aalto paikalla?).
+func _own_minions_near(hero: Hero, arena, pos: Vector2, r: float) -> int:
+	var n := 0
+	for m in arena.minions:
+		if is_instance_valid(m) and m.alive and m.team == hero.team \
+				and m.global_position.distance_to(pos) < r:
+			n += 1
+	return n
+
+
+## MOBA-työnnön kohteenvalinta: vihollissankari lähellä -> taistele; muuten
+## siivoa vihollisaalto (jotta oma aalto crashaa tornille); muuten lyö rakennus.
+func _moba_push_target(hero: Hero, arena) -> Hero:
+	var enemy_hero := _nearest_enemy_hero(hero, arena, 280.0)
+	if enemy_hero != null:
+		return enemy_hero
+	var minion := _nearest_enemy_minion(hero, arena, 360.0)
+	if minion != null:
+		return minion
+	return _jungle_target
+
+
 func _allies_near(hero: Hero, pos: Vector2, r: float) -> int:
 	var n := 0
 	for ally in arena.alive_allies(hero.team):
@@ -440,8 +491,12 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	# Viidakko: jos on valittu leiri/pomo-objektiivi, hyökkää sitä — paitsi jos
 	# vihollispelaaja tulee lähelle (silloin puolustaudu / KO-pisteet).
 	if _jungle_target != null and is_instance_valid(_jungle_target) and _jungle_target.alive:
-		var near_player := _nearest_enemy_player(hero, arena, 240.0)
-		_target = near_player if near_player != null else _jungle_target
+		if arena.mode == "moba":
+			# MOBA: siivoa aalto ennen tornia, taistele sankaria lähellä.
+			_target = _moba_push_target(hero, arena)
+		else:
+			var near_player := _nearest_enemy_player(hero, arena, 240.0)
+			_target = near_player if near_player != null else _jungle_target
 		_reaction_left = reaction
 		return
 
@@ -659,6 +714,9 @@ func _support_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vecto
 	if pocket == null or pocket == hero:
 		pocket = bb.frontline_ally
 	if pocket == null or pocket == hero:
+		# MOBA: ei jäädä keskustaan — seuraa linjan työntöä oman aallon takana.
+		if arena.mode == "moba":
+			return _moba_support_goal(hero, arena, pos)
 		# Ei suojeltavaa: pysy lähellä keskustaa mutta poissa vihollisista.
 		var base: Vector2 = arena.relic.global_position
 		if _target != null and is_instance_valid(_target) \
@@ -677,11 +735,42 @@ func _support_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vecto
 	return goal
 
 
+## MOBA-tuki ilman selvää suojeltavaa: seuraa työntävää liittolaista (pysy
+## hänen takanaan vihollisen puolelle nähden), tai etene painostettavaa
+## rakennusta kohti — ei ajauta keskustan jokivyöhykkeeseen.
+func _moba_support_goal(hero: Hero, arena, pos: Vector2) -> Vector2:
+	var push := _pick_push_target(hero, arena)
+	var aim_pos: Vector2 = push.global_position if push != null else pos
+	var lead := _moba_frontline_ally(hero, arena, aim_pos)
+	if lead != null:
+		var back: Vector2 = (pos - aim_pos).normalized()
+		return lead.global_position + back * 120.0
+	var to_push: Vector2 = aim_pos - pos
+	if to_push.length() < 60.0:
+		return pos
+	return pos + to_push.normalized() * 220.0
+
+
+## Liittolainen, joka on lähimpänä painostettavaa rakennusta (työnnön kärki).
+func _moba_frontline_ally(hero: Hero, arena, aim_pos: Vector2) -> Hero:
+	var best: Hero = null
+	var best_d := 1.0e20
+	for a in arena.alive_allies(hero.team):
+		if a == hero:
+			continue
+		var d: float = a.global_position.distance_to(aim_pos)
+		if d < best_d:
+			best_d = d
+			best = a
+	return best
+
+
 ## Taisteluasemointi: lähesty kohdetta roolin ihannematkalle. Tankki peelaa.
 func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector2:
-	# Tankin peel: jos vihollinen uhkaa suojeltavaa, asetu väliin.
+	# Tankin peel: jos vihollinen uhkaa suojeltavaa, asetu väliin. Ei rakennuksia
+	# vastaan (tornia ei "peelata" — sitä työnnetään).
 	if _is_tank and bb.protect_ally != null and bb.protect_ally != hero \
-			and _target != null and is_instance_valid(_target):
+			and _target != null and is_instance_valid(_target) and not (_target is Structure):
 		var pd: float = _target.global_position.distance_to(bb.protect_ally.global_position)
 		if pd < 220.0:
 			return bb.protect_ally.global_position \
@@ -691,6 +780,20 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 		if bb.own_carrier != null and is_instance_valid(bb.own_carrier):
 			return bb.own_carrier.global_position
 		return arena.relic.global_position
+
+	# MOBA: älä sukella vihollistornia yksin. Torni ampuu ensin minioneja, joten
+	# odota että oma aalto crashaa — muuten pysy juuri kantaman ulkopuolella.
+	# (Kaukotaistelijat pref_range > kantama peittoavat tornin turvassa jo nyt.)
+	if _target is Structure:
+		var st := _target as Structure
+		if st.kind == Structure.Kind.TOWER:
+			var hold: float = Structure.SHOT_RANGE + 45.0
+			if _pref_range < hold and _own_minions_near(hero, arena, st.global_position, 360.0) == 0:
+				var to_s: Vector2 = (st.global_position - pos).normalized()
+				var d0: float = pos.distance_to(st.global_position)
+				if d0 < hold - 10.0:
+					return pos - to_s * 130.0
+				return st.global_position - to_s * hold
 
 	var dist: float = pos.distance_to(_target.global_position)
 	var to_target: Vector2 = (_target.global_position - pos).normalized()
