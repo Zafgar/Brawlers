@@ -625,7 +625,13 @@ func _cleanup_minions() -> void:
 ## Yksi minioniaalto: WAVE_SIZE minionia tukikohdasta linjaa pitkin. Sininen
 ## kulkee reittiä eteenpäin, oranssi käänteisesti.
 func _spawn_wave(team: int) -> void:
-	if minions.size() >= MINION_CAP:
+	# Katto per joukkue (ei jaettu), ettei aikaisemmin luotu joukkue nälkiinnytä
+	# toista lähellä kattoa. Kumpikin saa enintään puolet globaalista katosta.
+	var team_count := 0
+	for m in minions:
+		if is_instance_valid(m) and m.alive and m.team == team:
+			team_count += 1
+	if team_count >= MINION_CAP / 2:
 		return
 	var mm := map as MapMoba
 	if mm == null:
@@ -669,8 +675,23 @@ func on_structure_destroyed(structure, source) -> void:
 		_end_moba(1 - s.team)
 
 
+## Aikakaton ratkaisu ilman sokeaa sinisen suosintaa. Järjestys:
+##  1) suurempi oma nexus-hp, 2) enemmän vihollistorneja kaadettu,
+##  3) enemmän pisteitä (leirit/pomo), muuten aito tasapeli (-1).
 func _moba_leader() -> int:
-	return 0 if _nexus_hp(0) >= _nexus_hp(1) else 1
+	var h0: float = _nexus_hp(0)
+	var h1: float = _nexus_hp(1)
+	if absf(h0 - h1) > 1.0:
+		return 0 if h0 > h1 else 1
+	var orange_towers: int = _towers[1].size()   # jäljellä -> sininen kaatanut vähemmän
+	var blue_towers: int = _towers[0].size()
+	if orange_towers != blue_towers:
+		return 0 if orange_towers < blue_towers else 1
+	var p0: float = relic_points[0]
+	var p1: float = relic_points[1]
+	if absf(p0 - p1) > 0.5:
+		return 0 if p0 > p1 else 1
+	return -1   # aito tasapeli
 
 
 func _nexus_hp(team: int) -> float:
@@ -692,21 +713,40 @@ func nexus_hp_int(team: int) -> int:
 
 
 func _end_moba(winner: int) -> void:
+	if state == State.MATCH_END:
+		return   # estä kaksinkertainen päättyminen samalla fysiikkaruudulla
+	var by_nexus: bool = _end_reason == "nexus tuhottu"
 	state = State.MATCH_END
 	Game.last_winner_team = winner
 	if winner == 0:
 		Game.blue_rounds = 1
-	else:
+	elif winner == 1:
 		Game.orange_rounds = 1
-	for hero in heroes:
-		if hero.team == winner and not hero.is_unit:
-			hero.profile.add_score(80.0)
+	# winner < 0 -> tasapeli: ei kierrosvoittoa kummallekaan.
+	if winner >= 0:
+		for hero in heroes:
+			if hero.team == winner and not hero.is_unit:
+				hero.profile.add_score(80.0)
 	if _end_reason == "":
 		_end_reason = "nexus"
-	_sim_event("%s VOITTAA (%s)" % [Game.team_name(winner), _end_reason])
+	if winner < 0:
+		_end_reason = "tasapeli (aikakatto)"
+	var who: String = "TASAPELI" if winner < 0 else "%s VOITTAA" % Game.team_name(winner)
+	_sim_event("%s (%s)" % [who, _end_reason])
 	AudioMgr.play("match_win", 0.05, -6.0)
 	shake(0.6)
-	hud.show_banner("%s TUHOSI NEXUKSEN!" % Game.team_name(winner), "Voitto!", 3.4)
+	var title: String
+	var sub: String
+	if winner < 0:
+		title = "TASAPELI!"
+		sub = "Aikakatto — nexukset tasan"
+	elif by_nexus:
+		title = "%s TUHOSI NEXUKSEN!" % Game.team_name(winner)
+		sub = "Voitto!"
+	else:
+		title = "%s JOHTAA!" % Game.team_name(winner)
+		sub = "Aikakatto ratkaisi ottelun"
+	hud.show_banner(title, sub, 3.4)
 	if Game.simulating:
 		# Ottelu päättyi kesken fysiikkaruudun (kutsuttu take_damagesta) ->
 		# lykätään arenan vaihto turvallisesti ruudun ulkopuolelle.

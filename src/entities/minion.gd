@@ -117,34 +117,86 @@ class MinionBrain:
 	var waypoints: Array = []
 	var _wp := 0
 
+	# Kuinka läheltä liittolaischampionia puolustetaan (LoL: hyökkääjä vetää
+	# aallon aggron itseensä) ja kuinka tuoreesta osumasta aggro laukeaa.
+	const DEFEND_RADIUS := 240.0
+	const DEFEND_WINDOW := 3.5
+
 	func update(hero, _delta: float) -> void:
 		_attack = false
 		_mv = Vector2.ZERO
 		var pos: Vector2 = hero.global_position
-		var foe := _nearest_foe(hero, pos)
-		if foe != null:
-			var to_t: Vector2 = foe.global_position - pos
+		var target := _pick_target(hero, pos)
+		if target != null and is_instance_valid(target):
+			var to_t: Vector2 = target.global_position - pos
 			if to_t.length() > 0.5:
 				_aim = to_t.normalized()
-			if to_t.length() > attack_range:
+			# Lyöntietäisyyteen on laskettava kohteen säde: iso torni (r46) tai
+			# nexus (r72) ei koskaan tule keskipisteiltään 58 px:n päähän
+			# (törmäys estää), joten ilman sädettä minion ei ikinä lyönyt niitä.
+			var reach: float = attack_range + target.radius
+			if to_t.length() > reach:
 				_mv = to_t.normalized()
 			else:
 				_attack = true
 			return
 		_advance_lane(pos)
 
-	func _nearest_foe(hero, pos: Vector2) -> Hero:
-		var foe_team: int = 1 - hero.team
-		var best: Hero = null
-		var best_d := aggro_radius
+	## Kohdevalinta LoL-tyyliin:
+	##  1) Champion-aggro: sankari (pelaaja/botti) joka on hiljattain lyönyt tätä
+	##     minionia TAI lähellä olevaa liittolaischampionia -> käänny sen kimppuun
+	##     (leashaa takaisin linjalle kun hyökkääjä pakenee tai ikkuna umpeutuu).
+	##  2) Muuten lähin vihollisyksikkö (minioni/torni) aggro-säteellä -> työnnä.
+	##  3) Jos yksiköitä ei ole säteellä, lähin vihollischampion (esim. sankari
+	##     tukkii aallon ilman minioneja) — muuten minion ei tekisi mitään.
+	func _pick_target(hero, pos: Vector2) -> Hero:
+		var champ := _aggro_champion(hero, pos)
+		if champ != null:
+			return champ
+		var best_unit: Hero = null
+		var bu := aggro_radius
+		var best_champ: Hero = null
+		var bc := aggro_radius
 		for h in hero.arena.heroes:
-			if not is_instance_valid(h) or not h.alive or h.team != foe_team:
+			if not is_instance_valid(h) or not h.alive:
 				continue
+			if h.team == hero.team or h.team > 1:
+				continue   # ohita omat ja neutraalit viidakko-olennot
 			var d: float = h.global_position.distance_to(pos)
-			if d < best_d:
-				best_d = d
-				best = h
-		return best
+			if d >= aggro_radius:
+				continue
+			if h.is_unit:
+				if d < bu:
+					bu = d
+					best_unit = h
+			elif d < bc:
+				bc = d
+				best_champ = h
+		return best_unit if best_unit != null else best_champ
+
+	## Sankari joka provosoi tämän minionin: löi minionia (kosto) tai lähellä
+	## olevaa liittolaischampionia (puolustus). Palauttaa vain sankareita (ei
+	## yksiköitä). _recent_attacker hoitaa leashin ja aikaikkunan kostolle.
+	func _aggro_champion(hero, pos: Vector2) -> Hero:
+		var attacker := _recent_attacker(hero, pos)
+		if attacker != null and not attacker.is_unit:
+			return attacker
+		var now: float = Time.get_ticks_msec() / 1000.0
+		for ally in hero.arena.alive_allies(hero.team):
+			if ally.global_position.distance_to(pos) > DEFEND_RADIUS:
+				continue
+			for entry in ally._recent_damagers:
+				var h = entry.hero
+				if not is_instance_valid(h) or not h.alive or h.is_unit:
+					continue
+				if h.team == hero.team:
+					continue
+				if now - float(entry.time) > DEFEND_WINDOW:
+					continue
+				if h.global_position.distance_to(pos) > aggro_radius * 1.4:
+					continue
+				return h
+		return null
 
 	func _advance_lane(pos: Vector2) -> void:
 		if waypoints.is_empty():

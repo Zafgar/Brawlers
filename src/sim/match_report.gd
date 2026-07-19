@@ -191,6 +191,8 @@ static func _accumulate(agg: Dictionary, h: Dictionary, winner: int) -> void:
 
 
 static func _team(t: int) -> String:
+	if t < 0:
+		return "Tasapeli"
 	return "Sininen" if t == 0 else "Oranssi"
 
 
