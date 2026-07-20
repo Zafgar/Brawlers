@@ -3,7 +3,7 @@ extends Node
 ## proseduraalisesti käynnistyksessä taustasäikeessä — ei äänitiedostoja.
 ## play("nimi") toimii heti; jos synteesi on kesken, ääni jää vain väliin.
 
-const RATE := 22050
+const RATE := 44100              # 22050 -> 44100: poistaa square/saw-aliasoinnin (zap/mark/count) ja kirkastaa
 const POOL_SIZE := 18            # samanaikaisten äänten katto (nostettu 12->18)
 const MUSIC_VOL := -8.0          # musiikin soittimien häivytystaso
 const MIN_REPEAT_MS := 28        # sama ääni ei soi tätä tiheämmin (ei kakofoniaa/klippausta)
@@ -15,10 +15,20 @@ const AUDIO_FALLOFF := 34.0      # px per -1 dB tämän jälkeen
 const AUDIO_CUTOFF_DB := -38.0   # tätä hiljaisemmat ohitetaan (liian kaukana)
 
 # Biisipoolit: valikot ja taistelut arpovat vaihtelua näistä.
+# HUOM: battle4 EI ole poolissa — se on varattu nexus-avauksen huipennukselle
+# (play_music("battle4")). Jos se olisi kierrossa, ~25 % otteluista alkaisi jo
+# battle4:llä ja huipennuksesta tulisi kuulumaton no-op.
 const MUSIC_POOLS := {
 	"menu": ["menu", "menu2"],
 	"lobby": ["lobby", "lobby2"],
-	"battle": ["battle", "battle2", "battle3", "battle4"],
+	"battle": ["battle", "battle2", "battle3"],
+}
+
+# UI-äänet reititetään kuivalle SFX_UI-väylälle (ei kaikua) — napsautukset
+# pysyvät terävinä eikä lyhyt count_tick smearaudu kaiun esiviiveestä.
+const UI_SOUNDS := {
+	"ui_move": true, "ui_ok": true, "ui_back": true,
+	"count_tick": true, "count_go": true, "score": true,
 }
 
 var _streams := {}
@@ -39,9 +49,14 @@ var _last_play := {}
 var listener_pos := Vector2.ZERO
 var listener_on := false
 
+# Musiikin duckaus: perus(ducktaamaton)taso ja käynnissä oleva palautus-tween.
+var _music_base_db := 0.0
+var _duck_tween: Tween = null
+
 
 func _ready() -> void:
 	_make_bus("SFX")
+	_make_bus("SFX_UI")   # kuiva UI-väylä (ei kaikua)
 	_make_bus("Music")
 	_setup_master_fx()
 	_setup_sfx_fx()
@@ -96,6 +111,8 @@ func _setup_sfx_fx() -> void:
 	verb.room_size = 0.4
 	verb.damping = 0.6
 	verb.spread = 0.7
+	verb.predelay_msec = 25.0   # oletus 150 -> 25: ei kuulu erillisenä kaiku-blippinä
+	verb.hipass = 0.15          # ei kaikuteta subbassoa (bass/quake/thunder pysyvät selkeinä)
 	verb.dry = 0.92
 	verb.wet = 0.1
 	AudioServer.add_bus_effect(idx, verb)
@@ -143,6 +160,7 @@ func play(sound_name: String, pitch_var := 0.08, volume_db := 0.0, pos := Vector
 			break
 	if player == null:
 		player = _players[0]
+	player.bus = "SFX_UI" if UI_SOUNDS.has(sound_name) else "SFX"
 	player.stream = _streams[sound_name]
 	player.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
 	player.volume_db = db
@@ -154,15 +172,43 @@ func set_master_volume(v: float) -> void:
 
 
 func set_sfx_volume(v: float) -> void:
+	var db := linear_to_db(clampf(v, 0.0001, 1.0))
+	# Sekä pelin SFX että kuiva UI-väylä seuraavat samaa liukusäädintä.
 	var idx := AudioServer.get_bus_index("SFX")
 	if idx >= 0:
-		AudioServer.set_bus_volume_db(idx, linear_to_db(clampf(v, 0.0001, 1.0)))
+		AudioServer.set_bus_volume_db(idx, db)
+	var ui_idx := AudioServer.get_bus_index("SFX_UI")
+	if ui_idx >= 0:
+		AudioServer.set_bus_volume_db(ui_idx, db)
 
 
 func set_music_volume(v: float) -> void:
 	var idx := AudioServer.get_bus_index("Music")
 	if idx >= 0:
-		AudioServer.set_bus_volume_db(idx, linear_to_db(clampf(v, 0.0001, 1.0)))
+		_music_base_db = linear_to_db(clampf(v, 0.0001, 1.0))
+		AudioServer.set_bus_volume_db(idx, _music_base_db)
+
+
+## Duckaa musiikin hetkeksi alas ison hetken alta (nexus, pomo) ja palauttaa
+## sen pehmeästi — tarkoituksellinen dippi sen sijaan että Master-rajoitin
+## pumppaisi musiikkia hallitsemattomasti SFX-ryöpyn alla.
+func duck_music(depth_db: float, release: float) -> void:
+	var idx := AudioServer.get_bus_index("Music")
+	if idx < 0:
+		return
+	if _duck_tween != null and _duck_tween.is_valid():
+		_duck_tween.kill()
+	var ducked := _music_base_db - absf(depth_db)
+	AudioServer.set_bus_volume_db(idx, ducked)   # nopea dippi alas
+	_duck_tween = create_tween()
+	_duck_tween.set_ease(Tween.EASE_OUT)
+	_duck_tween.tween_method(_set_music_bus_db, ducked, _music_base_db, maxf(release, 0.05))
+
+
+func _set_music_bus_db(v: float) -> void:
+	var idx := AudioServer.get_bus_index("Music")
+	if idx >= 0:
+		AudioServer.set_bus_volume_db(idx, v)
 
 
 ## Vaihtaa taustamusiikin (pehmeä ristihäivytys). Sama nimi = ei uudelleenaloitusta.
@@ -261,7 +307,7 @@ func _synth_all() -> void:
 	# Tehosteet viimeisenä.
 	var sounds := {}
 	sounds["ui_move"] = _tone(0.05, 660.0, 880.0, "sine", 0.005, 0.03, 0.28)
-	sounds["ui_ok"] = _seq([[0.06, 520.0, 520.0, "sine"], [0.09, 780.0, 780.0, "sine"]], 0.5)
+	sounds["ui_ok"] = _seq([[0.06, 520.0, 520.0, "sine"], [0.09, 780.0, 780.0, "sine"]], 0.32)
 	sounds["ui_back"] = _tone(0.1, 520.0, 340.0, "sine", 0.005, 0.06, 0.4)
 	sounds["count_tick"] = _tone(0.06, 880.0, 880.0, "square", 0.002, 0.04, 0.25)
 	sounds["count_go"] = _mix2(
@@ -344,8 +390,10 @@ func _synth_all() -> void:
 		_tone(0.18, 784.0, 784.0, "tri", 0.005, 0.14, 0.26),
 		_tone(0.18, 1176.0, 1176.0, "sine", 0.01, 0.14, 0.1), 0.0)
 	# Basso: syvä bassoisku
+	# Basso: syvä bassoisku (Maestron perushyökkäys -> pidetty maltillisena,
+	# ettei toistuva basso jyrää muita ääniä; sine 0.48 -> 0.38).
 	sounds["bass"] = _mix2(
-		_tone(0.26, 110.0, 68.0, "sine", 0.005, 0.2, 0.48),
+		_tone(0.26, 110.0, 68.0, "sine", 0.005, 0.2, 0.38),
 		_tone(0.2, 165.0, 110.0, "tri", 0.005, 0.15, 0.16), 0.0)
 	# Crescendo: nouseva riemukas huipennus (ulti)
 	sounds["crescendo"] = _mix2(_seq([
@@ -418,6 +466,10 @@ func _synth_all() -> void:
 	sounds["mark"] = _mix2(
 		_tone(0.1, 1400.0, 1400.0, "square", 0.002, 0.06, 0.2),
 		_tone(0.08, 1900.0, 1900.0, "sine", 0.005, 0.05, 0.14), 0.03)
+	# Sydämenlyönti: matala tup-tup varoitus kun oma sankari on kriittisessä HP:ssä.
+	sounds["heartbeat"] = _mix2(
+		_tone(0.10, 95.0, 55.0, "sine", 0.004, 0.07, 0.5),
+		_tone(0.09, 82.0, 48.0, "sine", 0.004, 0.07, 0.36), 0.14)
 
 	var result := {}
 	for key in sounds:
@@ -455,7 +507,14 @@ func _make_track(roots: Array, minor: Array, bar: float, lead_wave: String,
 		var bass := _tone(bar, root, root, "sine", 0.05, bar * 0.15, 0.16 * gain)
 		out = _mix_at(out, bass, bar_i * bar)
 		var third := 2.4 if minor[bar_i] else 2.5
-		var steps := [2.0, third, 3.0, 4.0, 3.0, third]
+		# Kierrätä arpeggio-kuviota tahdeittain (sama konsonoiva sävelvarasto,
+		# vaihteleva kontuuri) -> ei enää identtistä figuuria joka tahdissa.
+		var patterns := [
+			[2.0, third, 3.0, 4.0, 3.0, third],
+			[2.0, 3.0, third, 4.0, third, 2.0],
+			[4.0, 3.0, third, 2.0, third, 3.0],
+		]
+		var steps: Array = patterns[bar_i % patterns.size()]
 		var note_len := bar / steps.size()
 		for step_i in range(steps.size()):
 			var freq: float = root * steps[step_i]
@@ -513,13 +572,26 @@ func _noise(dur: float, gain: float, lowpass: float) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	out.resize(n)
 	var y := 0.0
+	# DC-esto (~30 Hz ylipäästö): poistaa suodatetun kohinan subbasso-mudan
+	# ja tasajännitteen -> vapauttaa headroomia, ei ohenna kuuluvaa bodya.
+	var hp := 0.0
+	var prev := 0.0
+	var atk_n := maxi(int(0.003 * RATE), 1)   # 3 ms nousu: poistaa alun naksun
+	# Alipäästön rajataajuus ~ kerroin*RATE, joten skaalataan kerroin niin että
+	# kohinan sointi säilyy SAMANA vaikka RATE nousi (22050 -> 44100). Näin vain
+	# tonaalinen aliasointi paranee, kohinan luonne ei muutu yllättäen.
+	var lp := clampf(lowpass * (22050.0 / float(RATE)), 0.0, 1.0)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(dur * 1000.0 + gain * 777.0)
 	for i in range(n):
 		var x := rng.randf_range(-1.0, 1.0)
-		y += lowpass * (x - y)
+		y += lp * (x - y)
+		hp = 0.996 * (hp + y - prev)
+		prev = y
 		var env := 1.0 - float(i) / n
-		out[i] = y * env * gain
+		if i < atk_n:
+			env *= float(i) / float(atk_n)
+		out[i] = hp * env * gain
 	return out
 
 

@@ -86,6 +86,9 @@ var visual: HeroVisual = null
 var _recent_damagers: Array = []    # [{hero, time}]
 var _ult_ready_announced := false
 var _buf := {"a1": 0.0, "a2": 0.0, "ult": 0.0, "dodge": 0.0}  # syötepuskurin ajastimet
+var _heartbeat_t := 0.0             # matalan HP:n sydämenlyöntivaroituksen ajastin
+var _deny_cd := 0.0                 # "ei resurssia" -äänen debounce
+var _dodge_was_cooling := false     # väistön jäähdytys -> valmis siirtymän havaitsemiseen
 
 # Tähtäys: osa kyvyistä tähdätään pitämällä nappi pohjassa (tähtäysviiva
 # näkyy) ja laukaistaan vapautettaessa. Latauskyvyt (Quill) näyttävät myös viivan.
@@ -313,10 +316,22 @@ func _physics_process(delta: float) -> void:
 	if red_buff > 0.0 and hp < max_hp:
 		hp = minf(hp + 11.0 * delta, max_hp)   # punainen buffi: elämän palautuminen
 
-	# Latautumiset
+	# Matalan HP:n varoitus omalle (ei-botti) sankarille: tup-tup kiihtyy ja
+	# voimistuu HP:n laskiessa. Ei-positionaalinen (henkilökohtainen varoitus).
+	_heartbeat_t = maxf(_heartbeat_t - delta, 0.0)
+	if not controller.is_bot() and hp < max_hp * 0.30 and _heartbeat_t <= 0.0:
+		var sev: float = clampf((max_hp * 0.30 - hp) / (max_hp * 0.30), 0.0, 1.0)
+		AudioMgr.play("heartbeat", 0.03, lerpf(-8.0, 1.0, sev))
+		_heartbeat_t = lerpf(0.62, 0.34, sev)
+	_deny_cd = maxf(_deny_cd - delta, 0.0)
+
+	# Latautumiset (+ väistön valmistumisen hiljainen äänivihje)
 	for slot in cd:
 		if cd[slot] > 0.0:
 			cd[slot] -= delta
+	if _dodge_was_cooling and cd.dodge <= 0.0 and not controller.is_bot():
+		AudioMgr.play("count_tick", 0.0, -14.0)
+	_dodge_was_cooling = cd.dodge > 0.0
 	add_ult(delta * 2.2)
 
 	_passive_update(delta)
@@ -424,6 +439,13 @@ func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 		cd[slot] = cd_max[slot]
 		_spend(slot)
 		_cast_slot(slot)
+	elif not is_bot and _buf[slot] > 0.0 and cd[slot] <= 0.0 and not _can_afford(slot):
+		# Jäähdytys valmis mutta resurssi ei riitä -> kuuluva "ei onnistu" -vihje
+		# (aiemmin painallus katosi täysin äänettä). Jäähdytys-odotus jätetään
+		# puskurin hoidettavaksi, joten sitä ei kuittausäänellä hämmennetä.
+		if _deny_cd <= 0.0:
+			AudioMgr.play("ui_back", 0.05, -8.0)
+			_deny_cd = 0.45
 
 
 func _cast_slot(slot: String) -> void:
@@ -769,6 +791,9 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 			shield_source.profile.stats.prevented += soak
 			shield_source.profile.add_score(soak * 0.08)
 		arena.popup(global_position + Vector2(0, -46), str(int(soak)), Palette.SHIELD, 18)
+		# Kilven imemä osuma kuuluu (aiemmin täysin vaimennettu osuma oli mykkä).
+		if soak > 0.0:
+			AudioMgr.play("shield", 0.1, -7.0, global_position)
 
 	if amount <= 0.0:
 		return 0.0
@@ -783,7 +808,7 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 
 	visual.flash()
 	arena.popup(global_position + Vector2(0, -46), str(int(amount)), Color.WHITE, 20)
-	AudioMgr.play("hit", 0.08, 0.0, global_position)
+	AudioMgr.play("hit", 0.08, -6.0, global_position)   # tiheä ääni -> hillitympi taso
 	add_ult(amount * 0.14)
 
 	if source != null:
@@ -975,6 +1000,8 @@ func _respawn() -> void:
 	set_collision_mask_value(2, true)
 	for slot in cd:
 		cd[slot] = 0.0
+	_dodge_was_cooling = false   # ei valheellista "väistö valmis" -piippausta respawnissa
+	_heartbeat_t = 0.0
 	Fx.ring(arena, global_position, Palette.with_alpha(profile.color(), 0.9), 60.0, 0.5)
 	AudioMgr.play("respawn")
 	arena.on_hero_respawn(self)
@@ -1014,6 +1041,9 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	grabbed_by = null
 	ult_charge = ult_charge * keep_ult_fraction
 	_ult_ready_announced = ult_charge >= 100.0
+	_dodge_was_cooling = false
+	_heartbeat_t = 0.0
+	_deny_cd = 0.0
 	for slot in cd:
 		cd[slot] = 0.0
 	set_collision_layer_value(2, true)

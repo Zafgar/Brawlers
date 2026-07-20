@@ -67,7 +67,7 @@ func _attack_control(held: bool, _just_pressed: bool, _just_released: bool,
 func _fire_one(dir: Vector2) -> void:
 	ammo -= 1
 	visual.attack_swing()
-	AudioMgr.play("pop", 0.25, -1.0)
+	AudioMgr.play("pop", 0.12, -1.0)
 	var spread := randf_range(-0.05, 0.05)
 	Projectile.launch(self, global_position + dir * 28.0, dir.rotated(spread), {
 		"speed": 1000.0,

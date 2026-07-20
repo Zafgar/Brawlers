@@ -94,7 +94,12 @@ func _passive_update(delta: float) -> void:
 		_charge = minf(_charge + delta / CHARGE_TIME, 1.0)
 		# Lukitse kohde latauksen loppuvaiheessa -> näkyvä tähtäys ennen laukausta.
 		if _charge >= AIM_LOCK_AT:
+			var had_lock := _target_lock != null
 			_target_lock = _valid_lock()
+			# Äänitelegrafi lukituksen kohdatessa: kuuluva varoitus ennen laukausta,
+			# vastaa näkyvää tähtäyssädettä (kerran per kohteen hankinta).
+			if _target_lock != null and not had_lock and not Game.simulating:
+				AudioMgr.play("mark", 0.05, -13.0, global_position)
 		return
 	# Lataus täynnä: varmista/valitse kohde ja ammu.
 	var target := _valid_lock()

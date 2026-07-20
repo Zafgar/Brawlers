@@ -42,6 +42,7 @@ var critters: Array = []          # viidakko-olennot (neutraali joukkue 2)
 var _boss_critter = null
 var _boss_timer := BOSS_FIRST
 var _boss_spawned_once := false
+var _boss_warned := false             # T-3s äänivaroitus ammuttu (kerran)
 var _last_point_team := -1
 
 # MOBA-pelimuoto: viidakko yläpuolella + linja alapuolella, minioniaallot,
@@ -85,6 +86,7 @@ var _koth_spots: Array = []
 const BUFF_INTERVAL := 70.0
 const BUFF_FIRST := 40.0
 var _buff_timer := BUFF_FIRST
+var _buff_warned := false             # T-3s äänivaroitus ammuttu (nollataan joka syklissä)
 
 var map: MapBase = null
 var relic: Relic = null
@@ -244,8 +246,13 @@ func _physics_process(delta: float) -> void:
 
 	# Kenttäbuffit ilmestyvät reliikki- ja ydinvaltapeleissä.
 	_buff_timer -= delta
+	if _buff_timer <= 3.0 and not _buff_warned:
+		_buff_warned = true
+		if not Game.simulating:
+			AudioMgr.play("count_tick", 0.0, -9.0)   # buffiaalto lähestyy
 	if _buff_timer <= 0.0:
 		_buff_timer = BUFF_INTERVAL
+		_buff_warned = false
 		_spawn_buff_wave()
 
 	if mode == "koth":
@@ -417,6 +424,7 @@ func _setup_jungle() -> void:
 	_spawn_camp(Critter.Kind.POINTS_CAMP, jm.points_camp())
 	_boss_timer = BOSS_FIRST
 	_boss_spawned_once = false
+	_boss_warned = false
 
 
 func _spawn_camp(kind: int, pos: Vector2) -> void:
@@ -435,6 +443,20 @@ func _map_boss_spot() -> Vector2:
 	if mm != null:
 		return mm.boss_spot()
 	return Vector2.ZERO
+
+
+## Pomon ensimmäisen ilmestymisen ajastin + T-3s äänivaroitus (matala pomo­jyrinä),
+## jotta joukkueet ehtivät kiertää kiistelemään pelin isoimmasta voimapiikistä.
+func _advance_boss_timer(delta: float) -> void:
+	if _boss_spawned_once:
+		return
+	_boss_timer -= delta
+	if _boss_timer <= 3.0 and not _boss_warned:
+		_boss_warned = true
+		if not Game.simulating:
+			AudioMgr.play("dome_up", 0.05, -10.0)
+	if _boss_timer <= 0.0:
+		_spawn_boss()
 
 
 func _spawn_boss() -> void:
@@ -456,10 +478,7 @@ func _spawn_boss() -> void:
 func _jungle_physics(delta: float) -> void:
 	# Pomon ensimmäinen ilmestyminen ajastimella (sen jälkeen se herää itse
 	# uudelleen Heron respawn-koneiston kautta).
-	if not _boss_spawned_once:
-		_boss_timer -= delta
-		if _boss_timer <= 0.0:
-			_spawn_boss()
+	_advance_boss_timer(delta)
 
 	time_left -= delta
 	if time_left <= 0.0:
@@ -499,6 +518,8 @@ func on_critter_ko(critter, source) -> void:
 			hud.show_banner("%s KAATOI POMON!" % Game.team_name(team),
 				"Iso boosti koko joukkueelle (+%d pistettä)" % int(BOSS_POINTS), 2.8)
 			# Pomon kaato: raskas möräys, ei voittosointi (ottelu jatkuu).
+			if not Game.simulating:
+				AudioMgr.duck_music(6.0, 0.8)   # musiikki dippaa möräyksen alta
 			AudioMgr.play("quake", 0.05, -1.0)
 			AudioMgr.play("inferno", 0.05, -6.0)
 			_sim_event("Pomo kaadettu: %s" % Game.team_name(team))
@@ -574,6 +595,7 @@ func _setup_moba() -> void:
 	_spawn_camp(Critter.Kind.POINTS_CAMP, mm.points_camp())
 	_boss_timer = BOSS_FIRST
 	_boss_spawned_once = false
+	_boss_warned = false
 	# Rakennukset: nexus + 2 tornia per joukkue.
 	for t in range(2):
 		var nx := Structure.new()
@@ -595,10 +617,7 @@ func _setup_moba() -> void:
 func _moba_physics(delta: float) -> void:
 	_cleanup_minions()
 	# Viidakon pomo ajastimella (kuten jungle-moodissa).
-	if not _boss_spawned_once:
-		_boss_timer -= delta
-		if _boss_timer <= 0.0:
-			_spawn_boss()
+	_advance_boss_timer(delta)
 	# Minioniaallot molemmille joukkueille.
 	_wave_timer -= delta
 	if _wave_timer <= 0.0:
@@ -683,6 +702,7 @@ func on_structure_destroyed(structure, source) -> void:
 			AudioMgr.play("thunder", 0.05, -4.0)
 			AudioMgr.play("rock", 0.05, -6.0)
 			if not Game.simulating:
+				AudioMgr.duck_music(7.0, 0.9)    # musiikki dippaa iskun alta
 				AudioMgr.play_music("battle4")   # raju huipennus loppupeliin
 			_sim_event("%s nexus avattu" % Game.team_name(s.team))
 	else:
@@ -923,6 +943,7 @@ func _start_round_intro() -> void:
 	_heat_tick = 0.0
 	_heat_warned = false
 	_buff_timer = BUFF_FIRST
+	_buff_warned = false
 	for child in get_children():
 		if child is FieldBuff:
 			child.queue_free()
@@ -963,7 +984,7 @@ func _run_intro() -> void:
 		if not is_inside_tree():
 			return
 		hud.show_big_number(str(n))
-		AudioMgr.play("count_tick")
+		AudioMgr.play("count_tick", 0.0)   # tasainen pitch -> vakaa metronomi
 		await get_tree().create_timer(0.8).timeout
 	if not is_inside_tree():
 		return
