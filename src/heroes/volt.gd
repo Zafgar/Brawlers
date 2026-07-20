@@ -14,7 +14,7 @@ func _setup_resource() -> void:
 	res_max = 100.0
 	res = 100.0
 	res_regen = 15.0
-	res_cost = {"basic": 0.0, "a1": 30.0, "a2": 34.0, "dodge": 0.0}
+	res_cost = {"basic": 0.0, "a1": 34.0, "a2": 34.0, "dodge": 0.0}   # a1 30->34 (nerf 2: harvempi spämmi)
 	cd_max.a1 = 0.6
 	cd_max.a2 = 0.6
 
@@ -79,14 +79,15 @@ func _ability1(dir: Vector2) -> void:
 	var from := global_position
 	var chain: Array = []
 	var target := first
-	# Nerf (sim: volt oli 2.5x keskiarvo, a1 ~70% sen vahingosta): 24 -> 18 ja
-	# lievempi hidastus (0.8/0.8s -> 0.85/0.55s).
+	# Nerf 2 (sim2: volt yhä 920 vah/min = 2.2x ka, 73% voitto; a1 tuotti 139k
+	# vahinkoa + 78 866 s hidastusta -> 93% arvosta oli kontrollia). Ketju 3->2,
+	# lyhyempi hidastus (0.55->0.45s). Vahinko pysyy 18 (24->18 oli nerf 1).
 	var dmg := 18.0
-	while target != null and chain.size() < 3:
+	while target != null and chain.size() < 2:
 		Fx.bolt(arena, from, target.global_position, hero_color())
 		Fx.flash(arena, target.global_position, Palette.glow(hero_color(), 1.5), 38.0, 0.25)
 		deal_damage_to(target, dmg, 120.0, (target.global_position - from).normalized())
-		target.apply_slow(0.85, 0.55)
+		target.apply_slow(0.85, 0.45)
 		chain.append(target)
 		from = target.global_position
 		dmg *= 0.8

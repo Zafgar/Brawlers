@@ -98,7 +98,7 @@ func _spawn_fire_pool(pos: Vector2) -> void:
 		"type": "fire",
 		"radius": 118.0,
 		"dur": 4.5,
-		"dps": 16.0,
+		"dps": 13.0,   # nerf (sim2: ember 74% voitto, a1-liekkialue oli päävahingon lähde): 16 -> 13
 	})
 	arena.shake(0.15)
 

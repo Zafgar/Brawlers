@@ -61,8 +61,16 @@ static func build_sweep(results: Array, intro: Array) -> String:
 		var winner: int = int(snap["winner"])
 		var elapsed: float = float(snap["elapsed"])
 		total_time += elapsed
-		_arch_add(arch, str(e["ba"]), winner == 0, elapsed)
-		_arch_add(arch, str(e["oa"]), winner == 1, elapsed)
+		# Kokoonpanon vah/peli: summaa joukkueen sankarien vahinko (ba=sininen, oa=oranssi).
+		var dmg0 := 0.0
+		var dmg1 := 0.0
+		for h in snap["heroes"]:
+			if int(h["team"]) == 0:
+				dmg0 += float(h["damage"])
+			else:
+				dmg1 += float(h["damage"])
+		_arch_add(arch, str(e["ba"]), winner == 0, elapsed, dmg0)
+		_arch_add(arch, str(e["oa"]), winner == 1, elapsed, dmg1)
 		for h in snap["heroes"]:
 			_accumulate(agg, h, winner)
 
@@ -237,7 +245,10 @@ static func _ability_table(lines: Array, agg: Dictionary) -> void:
 			var shield: float = float(s.get("shield", 0))
 			var buff: float = float(s.get("buff", 0))
 			var value: float = dmg + heal + shield + buff * BUFF_W + (stun + slow + root) * CC_W
-			var vpc: float = value / maxf(casts, 1.0)
+			# Perushyökkäys ei kasvata casts-laskuria (casts=0) -> käytä osumia
+			# nimittäjänä, jotta arvo/k on per-isku eikä koko summa.
+			var denom: float = casts if casts > 0.0 else hits
+			var vpc: float = value / maxf(denom, 1.0)
 			off_v += dmg
 			sup_v += heal + shield + buff * BUFF_W
 			ctl_v += (stun + slow + root) * CC_W
@@ -295,12 +306,13 @@ static func _mean_dpm(agg: Dictionary, avg_min: float) -> float:
 	return total / maxf(n, 1)
 
 
-static func _arch_add(arch: Dictionary, name: String, won: bool, elapsed: float) -> void:
+static func _arch_add(arch: Dictionary, name: String, won: bool, elapsed: float, damage := 0.0) -> void:
 	if not arch.has(name):
 		arch[name] = {"name": name, "games": 0, "wins": 0, "time": 0.0, "damage": 0.0}
 	var a: Dictionary = arch[name]
 	a["games"] += 1
 	a["time"] += elapsed
+	a["damage"] += damage
 	if won:
 		a["wins"] += 1
 
