@@ -1061,8 +1061,13 @@ func _update_attack(hero: Hero, delta: float) -> void:
 			_hold_timer -= delta
 			_attack = _hold_timer > 0.0  # kun ajastin loppuu, release-reuna syntyy
 		elif _hold_pause <= 0.0:
-			_hold_timer = randf_range(0.4, 1.0)
-			_hold_pause = _hold_timer + 0.25
+			# Latauksen kesto skaalautuu vaikeustasolla: korkeat tasot lataavat
+			# lähes täyteen (>=0.9 s), matalat ampuvat vajaalla.
+			_hold_timer = randf_range(0.4, 0.7) + ability_chance * 0.4
+			# Tauko latauksen JÄLKEEN on yli perushyökkäyksen cd:n, ettei uusi
+			# lataus ala cd:n päällä (silloin lataus ei käynnisty -> ei ammu
+			# mitään joka toinen kierros, mikä puolitti Quillin vahingon).
+			_hold_pause = _hold_timer + float(hero.cd_max.basic) + 0.1
 			_attack = true
 	else:
 		_attack = _combat_engaged(delta)
@@ -1101,6 +1106,15 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 	if self_preserve > 0.05 and _in_danger(hero, arena) and randf() < self_preserve:
 		if _try_escape(hero, bb):
 			return
+
+	# Scout: lataa lipas RULLAAMALLA kun se on lähes tyhjä eikä ole välitöntä
+	# vaaraa (rulla lataa heti; muuten 2.5 s auto-lataus kesken taistelun syö
+	# perusvahingon). Vain tasoilla joilla on väistöosaamista.
+	if hero.hero_id == "scout" and dodge_chance > 0.2 and hero.cd.dodge <= 0.0 \
+			and not hero.reloading and hero.ammo <= maxi(1, hero.ammo_max / 5) \
+			and not _in_danger(hero, arena):
+		_flags.dodge = true
+		return
 
 	if _lurk:
 		return                          # väijyessä ei käytetä engage-kykyjä (a1/a2)
@@ -1210,7 +1224,7 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"bastion":
 			return dist < 260.0
 		"ember":
-			return dist > 180.0 and dist < 620.0
+			return dist > 120.0 and dist < 420.0   # tuliallas lentää ~360px -> ei jää lyhyeen
 		"luma":
 			return bb.lowest_ally != null \
 				and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.75 \
@@ -1222,17 +1236,24 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"quill":
 			return dist < 260.0
 		"boulder":
-			return dist > 200.0 and dist < 500.0 and (hero.carrying or _mode == Mode.ESCORT or randf() < 0.4)
+			# Vaatii panoksen (muuri kuluttaa ammoa, 3 latausta) eikä hukkaa niitä
+			# tiuhaan satunnaisheitolla.
+			return dist > 200.0 and dist < 500.0 and hero.ammo > 0 \
+				and (hero.carrying or _mode == Mode.ESCORT or randf() < 0.2)
 		"volt":
 			return dist < 450.0
 		"shade":
 			return dist > 150.0 and dist < 420.0
 		"tide":
-			return dist > 250.0 and dist < 600.0
+			# Syöksy kuluttaa ammoa (3 latausta); säästä yksi pakoon (_try_escape).
+			return dist > 250.0 and dist < 600.0 and hero.ammo > 1
 		"scout":
-			return dist > 200.0 and dist < 700.0
+			# Merkkitikka (+45 % otettu vahinko) on sankarikohde -> ei minioniin.
+			return dist > 200.0 and dist < 700.0 and _target_is_hero()
 		"maestro":
-			return dist < 500.0 and not arena.heroes_in_circle(pos, 240.0, hero.team, true, true).is_empty()
+			# ≥2 = itse + väh. 1 liittolainen (heroes_in_circle sisältää aina itsen,
+			# joten pelkkä "ei tyhjä" oli aina tosi -> buffi laukesi turhaan).
+			return dist < 500.0 and arena.heroes_in_circle(pos, 240.0, hero.team, true, true).size() >= 2
 		"prism":
 			return dist < 430.0
 		"rift":
@@ -1266,7 +1287,7 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"boulder":
 			return arena.heroes_in_circle(pos, 190.0, 1 - hero.team, true, true).size() >= 1
 		"volt":
-			return dist > 150.0 and dist < 450.0
+			return dist > 150.0 and dist < 400.0   # kenttä lentää 260px + r130
 		"shade":
 			return dist > 150.0 and dist < 450.0
 		"tide":
@@ -1276,7 +1297,11 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"maestro":
 			return dist < 200.0
 		"prism":
-			return bb.lowest_ally != null and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.7
+			# a2 ei paranna itseä -> kohteena Prisman OMA lowest (ei-itse) ja sen
+			# on oltava säteellä (430), muuten säde whiffaa.
+			var low: Hero = (hero as Prism)._lowest_ally()
+			return low != null and low.hp < low.max_hp * 0.7 \
+				and pos.distance_to(low.global_position) < 430.0
 		"rift":
 			# Räjäytä vain jos kohteessa on pinoja (muuten hukkaan).
 			return dist < 130.0 and _target != null and is_instance_valid(_target) \
