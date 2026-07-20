@@ -163,7 +163,9 @@ func _setup_walls() -> void:
 	# 360, y~660-720) peittävat nyt käytävän (y 352..1010) koko korkeuden, joten
 	# alakautta ei voi enää kävellä ohi torneista suoraan nexukselle. Täyttää
 	# kiinteänä kartan alareunaan asti (ei kuollutta kuljettavaa tilaa).
-	rect_walls.append(Rect2(-2200.0, 1010.0, 4400.0, 300.0))
+	# Korkeus 290 -> alareuna y=1300 = kartan reuna tasan (ei ylitä reunaa, mikä
+	# aiemmin sai clamp-työnnön heittämään hahmon kentän ulkopuolelle).
+	rect_walls.append(Rect2(-2200.0, 1010.0, 4400.0, 290.0))
 	# Pomo-alkovi (0,-800): seinat pohjoiseen ja sivuille, auki etelaan.
 	rect_walls.append(Rect2(-440.0, -1090.0, 880.0, 60.0))
 	rect_walls.append(Rect2(-440.0, -1030.0, 70.0, 380.0))
@@ -199,10 +201,14 @@ func tower_spots(team: int) -> Array:
 
 
 ## Minionien reittipisteet sinisestä oranssiin. Oranssi kulkee käänteisesti.
+## Reittipisteet linjaa pitkin. HUOM: pisteet on siirretty tornien ETELÄPUOLELLE
+## (y 800-900), pois tornien törmäysrunkojen (torni r46 + minion r15 = 61 px)
+## sisältä. Aiemmin pisteet olivat ~40 px tornin keskeltä -> minionit jäivät
+## jauhamaan tornin runkoa yrittäessään saavuttaa saavuttamatonta pistettä.
 func lane_path() -> Array:
 	return [
-		Vector2(-2000, 900), Vector2(-1480, 760), Vector2(-760, 700),
-		Vector2(0, 680), Vector2(760, 700), Vector2(1480, 760), Vector2(2000, 900)]
+		Vector2(-2000, 900), Vector2(-1480, 860), Vector2(-760, 840),
+		Vector2(0, 800), Vector2(760, 840), Vector2(1480, 860), Vector2(2000, 900)]
 
 
 func _draw() -> void:

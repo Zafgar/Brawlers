@@ -997,17 +997,31 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 ## suojaamattoman (ei omia minioneja lähellä) tornin kantamaan, työntää maalin
 ## juuri kantaman rajalle. Kaukotaistelijat (pref_range >= raja) eivät koske.
 func _moba_tower_safe(hero: Hero, arena, pos: Vector2, goal: Vector2) -> Vector2:
-	if arena.mode != "moba" or _pref_range >= Structure.SHOT_RANGE + 45.0:
+	if arena.mode != "moba":
 		return goal
-	var hold: float = Structure.SHOT_RANGE + 45.0
+	var tower_hold: float = Structure.SHOT_RANGE + 45.0
+	var skip_towers: bool = _pref_range >= tower_hold   # kaukotaistelija ampuu ulkoa
 	var out: Vector2 = goal
 	for st in arena.structures:
 		var s := st as Structure
 		if s == null or not s.alive or s.team == hero.team:
 			continue
-		if s.kind != Structure.Kind.TOWER:
+		if s.kind == Structure.Kind.NEXUS:
+			# Suojattu nexus polttaa laserilla (tappaa nopeasti) -> pysy AINA kaukana,
+			# myös kaukotaistelijana. Haavoittuvana laser sammuu -> saa lähestyä (tuho).
+			if not s.is_protected():
+				continue
+			var nhold: float = Structure.NEXUS_LASER_RANGE + 60.0
+			if out.distance_to(s.global_position) >= nhold:
+				continue
+			var naway: Vector2 = out - s.global_position
+			if naway.length() < 1.0:
+				naway = pos - s.global_position
+			if naway.length() < 1.0:
+				naway = Vector2.LEFT
+			out = s.global_position + naway.normalized() * nhold
 			continue
-		if out.distance_to(s.global_position) >= hold:
+		if skip_towers or out.distance_to(s.global_position) >= tower_hold:
 			continue
 		# Dive on sallittua VAIN jos oma aalto imee tornin: torni ei saa tähdätä
 		# juuri tähän sankariin. Jos torni on lukinnut TÄMÄN sankarin, työnnä ulos
@@ -1021,7 +1035,7 @@ func _moba_tower_safe(hero: Hero, arena, pos: Vector2, goal: Vector2) -> Vector2
 			away = pos - s.global_position
 		if away.length() < 1.0:
 			away = Vector2.LEFT
-		out = s.global_position + away.normalized() * hold
+		out = s.global_position + away.normalized() * tower_hold
 	return out
 
 
@@ -1253,7 +1267,10 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"maestro":
 			# ≥2 = itse + väh. 1 liittolainen (heroes_in_circle sisältää aina itsen,
 			# joten pelkkä "ei tyhjä" oli aina tosi -> buffi laukesi turhaan).
-			return dist < 500.0 and arena.heroes_in_circle(pos, 240.0, hero.team, true, true).size() >= 2
+			# _target_is_hero(): haste+kilpi-buffi on tiimibuffi oikeaa taistelua
+			# varten -> ei tuhlata viidakko-olentoa (Critter) vastaan farmatessa.
+			return _target_is_hero() and dist < 500.0 \
+				and arena.heroes_in_circle(pos, 240.0, hero.team, true, true).size() >= 2
 		"prism":
 			return dist < 430.0
 		"rift":

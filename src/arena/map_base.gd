@@ -121,23 +121,26 @@ func clamp_to_field(pos: Vector2, margin := 40.0) -> Vector2:
 		var diff: Vector2 = p - pillar.pos
 		if diff.length() < pillar.radius + margin:
 			p = pillar.pos + diff.normalized() * (pillar.radius + margin)
+	var lo := Vector2(-half.x + margin, -half.y + margin)
+	var hi := Vector2(half.x - margin, half.y - margin)
 	for wall_rect in rect_walls:
 		var grown: Rect2 = wall_rect.grow(margin)
 		if grown.has_point(p):
-			# Työnnä lähimmän reunan yli.
-			var left := p.x - grown.position.x
-			var right := grown.end.x - p.x
-			var top := p.y - grown.position.y
-			var bottom := grown.end.y - p.y
-			var m: float = min(min(left, right), min(top, bottom))
-			if m == left:
-				p.x = grown.position.x
-			elif m == right:
-				p.x = grown.end.x
-			elif m == top:
-				p.y = grown.position.y
-			else:
-				p.y = grown.end.y
+			# Työnnä lähimmän reunan yli, mutta VAIN reunalle joka pysyy kentän
+			# sisällä. Muuten reunaseina (esim. eteläseina) voi työntää hahmon
+			# kartan ulkopuolelle, mistä se ei enää pääse takaisin (jumi).
+			var cands := [
+				[p.x - grown.position.x, Vector2(grown.position.x, p.y)],
+				[grown.end.x - p.x, Vector2(grown.end.x, p.y)],
+				[p.y - grown.position.y, Vector2(p.x, grown.position.y)],
+				[grown.end.y - p.y, Vector2(p.x, grown.end.y)],
+			]
+			cands.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+			for c in cands:
+				var np: Vector2 = c[1]
+				if np.x >= lo.x and np.x <= hi.x and np.y >= lo.y and np.y <= hi.y:
+					p = np
+					break
 	return p
 
 

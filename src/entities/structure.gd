@@ -18,6 +18,14 @@ const AIM_LOCK_AT := 0.6       # missä latauksen vaiheessa kohde lukitaan
 const MUZZLE_TIME := 0.14      # piipun välähdyksen kesto
 const DEFEND_WINDOW := 2.5     # kuinka tuoreesta osumasta torni puolustaa liittolaista
 
+# Nexus-laser: suojattuna (tornit pystyssä) nexus polttaa lähialueella seisovat
+# viholliset nopeasti -> vihollisen tukikohta on kuolettava no-go-alue kunnes
+# tornit on kaadettu. Haavoittuvaksi muututtuaan laser sammuu (silloin nexuksen
+# KUULUU olla tuhottavissa).
+const NEXUS_LASER_RANGE := 480.0
+const NEXUS_LASER_DPS := 260.0    # tappaa nopeasti: älä loju suojatun nexuksen alueella
+const NEXUS_LASER_TICK := 0.35
+
 var kind := Kind.TOWER
 var _color := Color("4aa8ff")
 var _invuln := false          # nexus: suojattu kunnes tornit kaadettu
@@ -27,6 +35,8 @@ var _target_lock: Hero = null # lukittu kohde (asetetaan latauksen loppuvaiheess
 var _muzzle := 0.0            # piipun välähdyksen ajastin
 var _ramp_target: Hero = null # ramppaus: sama sankari peräkkäin -> kovemmin
 var _ramp := 0
+var _laser_t := 0.0           # nexus-laserin tikitys
+var _laser_target: Hero = null # nexus-laserin nykyinen kohde (visuaalia varten)
 
 
 func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2) -> void:
@@ -107,7 +117,8 @@ func is_protected() -> bool:
 ## loppuvaiheessa ja ampuu kun lataus on täynnä. Kohdejärjestys: liittolaisen
 ## puolustus (LoL) > minionit > lähin vihollissankari.
 func _passive_update(delta: float) -> void:
-	if kind != Kind.TOWER:
+	if kind == Kind.NEXUS:
+		_nexus_laser(delta)
 		return
 	_muzzle = maxf(_muzzle - delta, 0.0)
 	if _charge < 1.0:
@@ -211,6 +222,42 @@ func _defend_target() -> Hero:
 				continue
 			return h
 	return null
+
+
+## Nexus-laser: kun nexus on suojattu, se polttaa lähimmän vihollissankarin
+## kovalla jatkuvalla vahingolla -> tukikohdassa lojuminen tappaa nopeasti.
+## Kun nexus on haavoittuva (tornit kaadettu), laser sammuu jotta nexus voidaan
+## tuhota. Vahinko kirjautuu rakennusvahinkona (source on Structure -> taken_tower).
+func _nexus_laser(delta: float) -> void:
+	_muzzle = maxf(_muzzle - delta, 0.0)
+	if not is_protected():
+		_laser_target = null
+		return
+	var target := _nearest_enemy_hero(NEXUS_LASER_RANGE)
+	_laser_target = target
+	if target == null:
+		return
+	_laser_t -= delta
+	if _laser_t <= 0.0:
+		_laser_t = NEXUS_LASER_TICK
+		deal_damage_to(target, NEXUS_LASER_DPS * NEXUS_LASER_TICK, 0.0)
+		_muzzle = MUZZLE_TIME
+		if not Game.simulating:
+			AudioMgr.play("zap", 0.12, -3.0, global_position)
+
+
+func _nearest_enemy_hero(rng: float) -> Hero:
+	var foe: int = 1 - team
+	var best: Hero = null
+	var bd := rng
+	for h in arena.heroes:
+		if not is_instance_valid(h) or not h.alive or h.is_unit or h.team != foe:
+			continue
+		var d: float = h.global_position.distance_to(global_position)
+		if d < bd:
+			bd = d
+			best = h
+	return best
 
 
 ## Suojattu rakennus torjuu kaiken vahingon: nexus kunnes tornit kaatuneet,
@@ -413,6 +460,19 @@ class StructureVisual:
 		if s.is_protected():
 			draw_arc(Vector2.ZERO, r + 6.0, 0.0, TAU, 44,
 				Palette.with_alpha(Palette.SHIELD, 0.4 + 0.2 * pulse), 3.0)
+			# Vaara-alue: hohtava rengas laserin kantamalla -> näkyvä no-go-vyöhyke.
+			var danger := Palette.glow(Color("ff3b3b"), 1.3)
+			draw_arc(Vector2.ZERO, Structure.NEXUS_LASER_RANGE, 0.0, TAU, 64,
+				Palette.with_alpha(danger, 0.10 + 0.06 * pulse), 3.0)
+		# Laser-säde nykyiseen kohteeseen (tappava vahinko).
+		var lt: Hero = s._laser_target
+		if lt != null and is_instance_valid(lt) and lt.alive:
+			var to_t: Vector2 = lt.global_position - s.global_position
+			var beamc := Palette.glow(Color("ff3b3b"), 1.4)
+			var mf: float = clampf(s._muzzle / Structure.MUZZLE_TIME, 0.0, 1.0)
+			draw_line(Vector2.ZERO, to_t, Palette.with_alpha(beamc, 0.35 + 0.5 * mf), 5.0 + 7.0 * mf)
+			draw_line(Vector2.ZERO, to_t, Palette.with_alpha(Color.WHITE, 0.3 + 0.4 * mf), 2.0)
+			draw_circle(to_t, 15.0 + 9.0 * mf, Palette.with_alpha(beamc, 0.4 + 0.3 * mf))
 
 	func _hp_bar(s: Structure, r: float, col: Color) -> void:
 		var frac: float = clampf(hero.hp / hero.max_hp, 0.0, 1.0)

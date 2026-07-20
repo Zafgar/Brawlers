@@ -255,6 +255,15 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	move_dir = mv
 
+	# Turvaverkko: jos hahmo on jostain syystä paennut kentän ulkopuolelle
+	# (fysiikan tunnelointi, teleportti reunaseinän yli, kova töytäisy), vedä se
+	# takaisin kentälle ettei se jää loppuotteluksi jumiin reunan taakse.
+	if arena.map != null:
+		var fh: Vector2 = arena.map.size() / 2.0
+		if absf(global_position.x) > fh.x or absf(global_position.y) > fh.y:
+			global_position = arena.map.clamp_to_field(global_position, radius + 6.0)
+			velocity = Vector2.ZERO
+
 	# Syötepuskurit: painallukset jäävät hetkeksi muistiin, joten kyky laukeaa
 	# heti kun jäähdytys sallii vaikka nappi painettiin hiukan etuajassa tai
 	# tainnutuksen aikana. Tämä tekee ohjaimesta paljon luotettavamman.
