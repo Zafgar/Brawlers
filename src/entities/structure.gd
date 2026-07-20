@@ -115,7 +115,7 @@ func _passive_update(delta: float) -> void:
 	# Hiljaisempi + hajautunut viritys, ettei 4 tornia soi kimeästi unisonossa
 	# ~4×/s. Ei soi simulaatiossa (jatkuva tuli sotkisi nopean ajon).
 	if not Game.simulating:
-		AudioMgr.play("light", 0.2, -9.0)
+		AudioMgr.play("light", 0.2, -9.0, global_position)
 
 
 ## Lukitun kohteen validointi: pidä lukittu kohde jos se on yhä elossa ja

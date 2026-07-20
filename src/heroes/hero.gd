@@ -631,7 +631,7 @@ func _passive_update(_delta: float) -> void:
 ## Oletusväistö: nopea syöksy, lyhyet suojaruudut.
 func _dodge_action(dir: Vector2) -> void:
 	dash(dir, 950.0, 0.16, true)
-	AudioMgr.play("dash")
+	AudioMgr.play("dash", 0.08, 0.0, global_position)
 	Fx.dust(arena, global_position)
 
 
@@ -758,7 +758,7 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 			if res_type == "energy" and _channel_slot != "":
 				res = maxf(res - absorbed * 0.6, 0.0)
 			Fx.spark(arena, global_position + aim * radius, Palette.SHIELD)
-			AudioMgr.play("shield")
+			AudioMgr.play("shield", 0.08, 0.0, global_position)
 
 	# Suojakilpi imee ensin.
 	if shield_hp > 0.0:
@@ -783,7 +783,7 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 
 	visual.flash()
 	arena.popup(global_position + Vector2(0, -46), str(int(amount)), Color.WHITE, 20)
-	AudioMgr.play("hit")
+	AudioMgr.play("hit", 0.08, 0.0, global_position)
 	add_ult(amount * 0.14)
 
 	if source != null:
@@ -818,7 +818,7 @@ func add_shield(amount: float, duration: float, source: Hero) -> void:
 	shield_hp = maxf(shield_hp, amount)
 	shield_timer = duration
 	shield_source = source
-	AudioMgr.play("shield")
+	AudioMgr.play("shield", 0.08, 0.0, global_position)
 	Fx.ring(arena, global_position, Palette.SHIELD, radius + 14.0, 0.35)
 
 
@@ -853,7 +853,7 @@ func apply_root(duration: float) -> void:
 	var before := root_timer
 	root_timer = maxf(root_timer, duration)
 	arena.popup(global_position + Vector2(0, -60), "JUURTUNUT", Palette.BAD, 16)
-	AudioMgr.play("root")
+	AudioMgr.play("root", 0.08, 0.0, global_position)
 	_record_cc("root", root_timer - before)
 
 
@@ -956,7 +956,7 @@ func _knockout(source: Hero) -> void:
 	set_collision_layer_value(2, false)
 	set_collision_mask_value(2, false)
 	Fx.knockout_burst(arena, global_position, profile.color())
-	AudioMgr.play("ko")
+	AudioMgr.play("ko", 0.08, 0.0, global_position)
 	arena.shake(0.3)
 	knocked_out.emit(self, source)
 	arena.on_hero_ko(self, source)

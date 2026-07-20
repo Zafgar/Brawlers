@@ -4,8 +4,15 @@ extends Node
 ## play("nimi") toimii heti; jos synteesi on kesken, ääni jää vain väliin.
 
 const RATE := 22050
-const POOL_SIZE := 12
+const POOL_SIZE := 18            # samanaikaisten äänten katto (nostettu 12->18)
 const MUSIC_VOL := -8.0          # musiikin soittimien häivytystaso
+const MIN_REPEAT_MS := 28        # sama ääni ei soi tätä tiheämmin (ei kakofoniaa/klippausta)
+
+# Etäisyysvaimennus (positionaaliset äänet): täysi voimakkuus lähellä, sitten
+# hiipuu. Suuret kartat (esim. MOBA 4400x2600) eivät enää soi tasaisen kovaa.
+const AUDIO_NEAR := 520.0        # px: tähän asti täysi voimakkuus
+const AUDIO_FALLOFF := 34.0      # px per -1 dB tämän jälkeen
+const AUDIO_CUTOFF_DB := -38.0   # tätä hiljaisemmat ohitetaan (liian kaukana)
 
 # Biisipoolit: valikot ja taistelut arpovat vaihtelua näistä.
 const MUSIC_POOLS := {
@@ -26,10 +33,18 @@ var _music_enabled := true
 var _thread: Thread = null
 var _warned := {}
 
+# Kakofonian esto: viimeksi soitetun äänen aikaleima (ms) nimen mukaan.
+var _last_play := {}
+# Kuuntelijan (kameran/pelaajan) sijainti positionaalista vaimennusta varten.
+var listener_pos := Vector2.ZERO
+var listener_on := false
+
 
 func _ready() -> void:
 	_make_bus("SFX")
 	_make_bus("Music")
+	_setup_master_fx()
+	_setup_sfx_fx()
 	for i in range(POOL_SIZE):
 		var player := AudioStreamPlayer.new()
 		player.bus = "SFX"
@@ -60,14 +75,67 @@ func _make_bus(bus_name: String) -> void:
 	AudioServer.set_bus_send(idx, "Master")
 
 
+## Master-väylälle rajoitin: estää yhteenlaskettujen äänten klippauksen
+## (moni tehoste + musiikki yhtä aikaa) pehmeästi kattoon. HardLimiter on
+## 4.3+ suositeltu (vanha AudioEffectLimiter on vanhentunut).
+func _setup_master_fx() -> void:
+	if AudioServer.get_bus_effect_count(0) > 0:
+		return
+	var lim := AudioEffectHardLimiter.new()
+	lim.ceiling_db = -0.5
+	AudioServer.add_bus_effect(0, lim)
+
+
+## SFX-väylälle hienovarainen kaiku: tehosteet istuvat samaan tilaan
+## eivätkä kuulosta kuivilta/irrallisilta. Märkyys pidetään pienenä.
+func _setup_sfx_fx() -> void:
+	var idx := AudioServer.get_bus_index("SFX")
+	if idx < 0 or AudioServer.get_bus_effect_count(idx) > 0:
+		return
+	var verb := AudioEffectReverb.new()
+	verb.room_size = 0.4
+	verb.damping = 0.6
+	verb.spread = 0.7
+	verb.dry = 0.92
+	verb.wet = 0.1
+	AudioServer.add_bus_effect(idx, verb)
+
+
 # --- Julkinen rajapinta ---
 
-func play(sound_name: String, pitch_var := 0.08, volume_db := 0.0) -> void:
+## Soittaa tehosteen. pos-parametri (maailmakoordinaatti) tekee äänestä
+## positionaalisen: se vaimenee etäisyyden mukaan kuuntelijasta ja liian
+## kaukaiset ohitetaan kokonaan. Jätä pois = ei-positionaalinen (UI, musiikki-cue).
+func play(sound_name: String, pitch_var := 0.08, volume_db := 0.0, pos := Vector2.INF) -> void:
+	# Simulaatiossa (botti vs. botti, nopeutettu) äänet ovat turhia ja
+	# kuormittavat äänipoolia — vaimennetaan keskitetysti kaikki tehosteet.
+	if Game.simulating:
+		return
 	if not _streams.has(sound_name):
 		if not _streams.is_empty() and not _warned.has(sound_name):
 			_warned[sound_name] = true
 			push_warning("Tuntematon ääni: %s" % sound_name)
 		return
+
+	# Positionaalinen vaimennus: lähellä täysi voimakkuus, kaukana hiljenee.
+	# Tehdään ENNEN toistorajaa, jotta liian kaukainen (ohitettu) ääni ei
+	# "kuluta" toistoikkunaa ja vaienna heti perään tulevaa lähempää ääntä.
+	var db := volume_db
+	if listener_on and is_finite(pos.x):
+		var dist := listener_pos.distance_to(pos)
+		if dist > AUDIO_NEAR:
+			db -= (dist - AUDIO_NEAR) / AUDIO_FALLOFF
+			if db < AUDIO_CUTOFF_DB:
+				return
+
+	# Kakofonian/klippauksen esto: sama ääni ei käynnisty liian tiheään.
+	# Vain oikeasti soivat äänet lasketaan toistorajaan.
+	var now := Time.get_ticks_msec()
+	var last: int = _last_play.get(sound_name, -10000)
+	if now - last < MIN_REPEAT_MS:
+		return
+	_last_play[sound_name] = now
+
 	var player: AudioStreamPlayer = null
 	for p in _players:
 		if not p.playing:
@@ -77,7 +145,7 @@ func play(sound_name: String, pitch_var := 0.08, volume_db := 0.0) -> void:
 		player = _players[0]
 	player.stream = _streams[sound_name]
 	player.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
-	player.volume_db = volume_db
+	player.volume_db = db
 	player.play()
 
 

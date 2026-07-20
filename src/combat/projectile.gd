@@ -95,7 +95,7 @@ func _physics_process(delta: float) -> void:
 					zone.source.profile.stats.prevented += dmg
 					zone.source.profile.add_score(dmg * 0.08)
 				Fx.spark(arena, global_position, Palette.SHIELD)
-				AudioMgr.play("shield")
+				AudioMgr.play("shield", 0.08, 0.0, global_position)
 				queue_free()
 				return
 

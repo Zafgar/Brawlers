@@ -170,7 +170,7 @@ func _attack_control(_held: bool, _jp: bool, _jr: bool, dir: Vector2, delta: flo
 ## Perushyökkäys: lähialueen isku edessä. Osuu vain pelaajiin (joukkue 0/1).
 func _basic(dir: Vector2) -> void:
 	visual.attack_swing()
-	AudioMgr.play("swing", 0.12, -6.0 if kind != Kind.BOSS else -2.0)
+	AudioMgr.play("swing", 0.12, -6.0 if kind != Kind.BOSS else -2.0, global_position)
 	Fx.slash(arena, global_position, dir, attack_reach, 72.0, _color)
 	for enemy in arena.alive_enemies(team):
 		var to_e: Vector2 = enemy.global_position - global_position
@@ -201,7 +201,7 @@ func _passive_update(delta: float) -> void:
 		_slam_tell = SLAM_WINDUP
 		_slam_max = SLAM_WINDUP
 		_slam_origin = global_position
-		AudioMgr.play("quake", 0.05, -2.0)
+		AudioMgr.play("quake", 0.05, -2.0, global_position)
 		arena.popup(global_position + Vector2(0, -radius - 34.0),
 			"ISKU TULEE!", Palette.glow(Color("ff6a4a"), 1.4), 18)
 
@@ -229,7 +229,7 @@ func _player_near(r: float) -> bool:
 ## Alueisku telegrafoidusta pisteestä: vahinko + tainnutus + tönäisy.
 func _do_slam() -> void:
 	arena.shake(0.55)
-	AudioMgr.play("slam", 0.1, -2.0)
+	AudioMgr.play("slam", 0.1, -2.0, _slam_origin)
 	Fx.ring(arena, _slam_origin, Palette.glow(Color("b64ad6"), 1.6), SLAM_RADIUS, 0.5, 12.0)
 	Fx.ring(arena, _slam_origin, Palette.with_alpha(Color("ff6a4a"), 0.6), SLAM_RADIUS * 0.55, 0.4, 7.0)
 	Fx.dust(arena, _slam_origin)
@@ -264,7 +264,7 @@ func _knockout(source: Hero) -> void:
 	_recent_damagers.clear()
 	Fx.knockout_burst(arena, global_position, _color)
 	Fx.ring(arena, global_position, Palette.glow(_color, 1.5), radius + 40.0, 0.6, 7.0)
-	AudioMgr.play("ko", 0.12, -4.0 if kind != Kind.BOSS else -8.0)
+	AudioMgr.play("ko", 0.12, -4.0 if kind != Kind.BOSS else -8.0, global_position)
 	arena.shake(0.4 if kind == Kind.BOSS else 0.2)
 	if arena.has_method("on_critter_ko"):
 		arena.on_critter_ko(self, source)

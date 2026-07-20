@@ -54,6 +54,11 @@ func _process(delta: float) -> void:
 	var z: float = lerpf(zoom.x, target_zoom, 1.0 - exp(-ZOOM_SPEED * delta))
 	zoom = Vector2(z, z)
 
+	# Kamera on äänikuuntelija: positionaaliset tehosteet vaimenevat sen
+	# keskipisteestä. Suurilla kartoilla kaukaiset osumat kuuluvat hiljempaa.
+	AudioMgr.listener_pos = global_position
+	AudioMgr.listener_on = true
+
 	# Tärinä
 	_shake_strength = maxf(_shake_strength - delta * 2.2, 0.0)
 	if _shake_strength > 0.001 and Game.options.shake:
@@ -64,6 +69,13 @@ func _process(delta: float) -> void:
 			cos(_noise_t * 0.9) * amp)
 	else:
 		offset = Vector2.ZERO
+
+
+func _exit_tree() -> void:
+	# Areenasta poistuttaessa (valikot, tulokset) äänet palaavat
+	# ei-positionaalisiksi — muuten valikon UI-äänet vaimenisivat viimeisen
+	# kameran sijainnin mukaan.
+	AudioMgr.listener_on = false
 
 
 func add_shake(amount: float) -> void:
