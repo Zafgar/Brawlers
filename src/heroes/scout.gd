@@ -8,7 +8,7 @@ extends Hero
 const MAG_SIZE := 26                # lippaan koko (patruunat)
 const FIRE_INTERVAL := 0.09         # aika laukausten välillä (konekivääri)
 const RELOAD_TIME := 2.5            # automaattisen latauksen kesto
-const SHOT_DMG := 6.0
+const SHOT_DMG := 8.0               # buff (sim2: scout 33 vah/min = rikki-ali): 6 -> 8
 
 const MARK_DUR := 4.5
 const MARK_AMP := 1.45              # merkitty kohde ottaa +45 % vahinkoa (vahva)
@@ -72,7 +72,7 @@ func _fire_one(dir: Vector2) -> void:
 	Projectile.launch(self, global_position + dir * 28.0, dir.rotated(spread), {
 		"speed": 1000.0,
 		"dmg": SHOT_DMG,
-		"radius": 7.0,
+		"radius": 10.0,   # buff (sim2: perus osui harvoin boteilla): 7 -> 10 luotettavampi osuma
 		"life": 0.7,
 		"kb": 55.0,
 		"color": hero_color(),
@@ -120,7 +120,7 @@ func _ability1(dir: Vector2) -> void:
 	Projectile.launch(self, global_position + dir * 30.0, dir, {
 		"speed": 1300.0,
 		"dmg": 12.0,
-		"radius": 10.0,
+		"radius": 16.0,   # buff (sim2: merkki osui 8% boteilla): 10 -> 16, jotta merkki laukeaa
 		"life": 1.0,
 		"kb": 100.0,
 		"color": Palette.glow(Palette.GOLD, 1.3),
@@ -147,7 +147,7 @@ func _ability2(dir: Vector2) -> void:
 	Projectile.launch(self, global_position + dir * 30.0, dir, {
 		"speed": 900.0,
 		"dmg": 8.0,
-		"radius": 11.0,
+		"radius": 16.0,   # buff (sim2: tainnutus osui 8% boteilla): 11 -> 16, jotta stun laukeaa
 		"life": 0.85,
 		"kb": 60.0,
 		"color": Color("f2f5ff"),

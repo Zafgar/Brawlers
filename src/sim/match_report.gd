@@ -44,6 +44,7 @@ static func build(snapshots: Array, intro: Array) -> String:
 	lines.append("")
 	_hero_table(lines, agg, avg_min)
 	_survivability_table(lines, agg)
+	_tanking_table(lines, agg)
 	_ability_table(lines, agg)
 	return "\n".join(PackedStringArray(lines))
 
@@ -128,6 +129,7 @@ static func build_sweep(results: Array, intro: Array) -> String:
 	lines.append("")
 	_hero_table(lines, agg, avg_min)
 	_survivability_table(lines, agg)
+	_tanking_table(lines, agg)
 	_ability_table(lines, agg)
 	return "\n".join(PackedStringArray(lines))
 
@@ -195,6 +197,31 @@ static func _survivability_table(lines: Array, agg: Dictionary) -> void:
 		lines.append("  -- huomiot (AI ottaa turhia osumia) --")
 		for f in flags:
 			lines.append(str(f))
+
+
+## Etulinja / tankkaus: kuka imee vahinkoa tiimin puolesta. soak = otettu + estetty
+## (keho JA kilvet/torjunnat), eli koko määrä jonka sankari otti pois muilta.
+## soak/kuolema = kuinka paljon kestää ennen kaatumista (iso = kestävä etulinja).
+## Tankin arvo EI ole vahinko/min vaan tämä: paljon soakia, vähän kuolemia,
+## jolloin oma takalinja pysyy elossa. Näkee myös ketkä ottavat turhaan osumaa.
+static func _tanking_table(lines: Array, agg: Dictionary) -> void:
+	lines.append("")
+	lines.append("=== ETULINJA / TANKKAUS (kuka imee vahinkoa tiimin puolesta) ===")
+	lines.append("  soak = otettu + estetty (keho + kilvet). soak/kuol = paljonko kestää per elämä.")
+	lines.append("  sankari  | soak/peli | otettu | estetty | soak/kuol | kuol/peli")
+	var rows: Array = agg.values()
+	for a in rows:
+		var g: float = maxf(float(a["games"]), 1.0)
+		a["_soak"] = (float(a["taken"]) + float(a.get("mitigated", 0))) / g
+	rows.sort_custom(func(x, y): return float(x["_soak"]) > float(y["_soak"]))
+	for a in rows:
+		var g: float = maxf(float(a["games"]), 1.0)
+		var taken: float = float(a["taken"])
+		var mit: float = float(a.get("mitigated", 0))
+		var deaths: float = float(a["deaths"])
+		lines.append("  %-8s | %8d | %6d | %6d | %8d | %6.2f" % [
+			str(a["hero_id"]), int((taken + mit) / g), int(taken / g), int(mit / g),
+			int((taken + mit) / maxf(deaths, 1.0)), deaths / g])
 
 
 ## Kykykohtainen taulukko: per sankari per slot käytöt/osumat/vahinko/parannus/
