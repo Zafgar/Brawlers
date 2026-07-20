@@ -885,7 +885,12 @@ func _moba_tower_safe(hero: Hero, arena, pos: Vector2, goal: Vector2) -> Vector2
 			continue
 		if out.distance_to(s.global_position) >= hold:
 			continue
-		if _own_minions_near(hero, arena, s.global_position, 360.0) > 0:
+		# Dive on sallittua VAIN jos oma aalto imee tornin: torni ei saa tähdätä
+		# juuri tähän sankariin. Jos torni on lukinnut TÄMÄN sankarin, työnnä ulos
+		# kantamalta vaikka omia minioneja olisi lähellä -> ei enää facetankkia
+		# (torni ampuu minioneja ensin, joten lukitus meihin = aalto ei suojaa).
+		var tower_on_me: bool = s._target_lock == hero
+		if not tower_on_me and _own_minions_near(hero, arena, s.global_position, 360.0) > 0:
 			continue
 		var away: Vector2 = out - s.global_position
 		if away.length() < 1.0:
