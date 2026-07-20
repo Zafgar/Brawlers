@@ -111,7 +111,7 @@ func update(delta: float) -> void:
 	defender = null
 	if arena.mode == "moba":
 		var now: float = Time.get_ticks_msec() / 1000.0
-		var worst := -1.0
+		var worst_pri := -1.0
 		for st in arena.structures:
 			var s := st as Structure
 			if s == null or not s.alive or s.team != team:
@@ -126,16 +126,26 @@ func update(delta: float) -> void:
 			if not hit:
 				continue
 			var pri: float = s.max_hp   # nexus 1600 > torni 900 -> nexus etusijalla
-			if pri > worst:
-				worst = pri
+			if pri > worst_pri:
+				worst_pri = pri
 				threatened_structure = s
+		# Nimeä lähin TERVE liittolainen (matala hp vetäytyisi heti -> ei jäisi
+		# puolustamaan). Jos yksikään ei ole terve, valitse silti lähin.
 		if threatened_structure != null and not allies.is_empty():
+			var spos: Vector2 = threatened_structure.global_position
 			var best_d := 1.0e20
+			var best_any: Hero = null
+			var any_d := 1.0e20
 			for ally in allies:
-				var dd: float = ally.global_position.distance_to(threatened_structure.global_position)
-				if dd < best_d:
+				var dd: float = ally.global_position.distance_to(spos)
+				if dd < any_d:
+					any_d = dd
+					best_any = ally
+				if ally.hp > ally.max_hp * 0.42 and dd < best_d:
 					best_d = dd
 					defender = ally
+			if defender == null:
+				defender = best_any
 
 
 func on_relic_taken(_hero) -> void:
