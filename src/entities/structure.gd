@@ -264,6 +264,8 @@ func reset_for_round(_keep_ult_fraction := 0.5) -> void:
 	_charge = randf_range(0.0, 0.6)
 	_target_lock = null
 	_muzzle = 0.0
+	_ramp_target = null   # ei kanneta ramppausta erien yli
+	_ramp = 0
 	set_collision_layer_value(2, true)
 	set_collision_mask_value(2, true)
 	set_physics_process(true)
