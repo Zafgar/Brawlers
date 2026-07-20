@@ -472,7 +472,7 @@ func _moba_push_target(hero: Hero, arena) -> Hero:
 
 func _allies_near(hero: Hero, pos: Vector2, r: float) -> int:
 	var n := 0
-	for ally in arena.alive_allies(hero.team):
+	for ally in hero.arena.alive_allies(hero.team):
 		if ally == hero:
 			continue
 		if ally.global_position.distance_to(pos) < r:

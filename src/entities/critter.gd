@@ -381,7 +381,7 @@ class CritterVisual:
 		draw_arc(Vector2(0, r * 0.55), r + 12.0, 0.0, TAU, 40,
 			Palette.with_alpha(col, a), 3.0)
 
-	func _eyes(center: Vector2, spread: float, size: float, glow: Color, angry: bool) -> void:
+	func _critter_eyes(center: Vector2, spread: float, size: float, glow: Color, angry: bool) -> void:
 		var look: Vector2 = hero.aim * (size * 0.5)
 		for side in [-1.0, 1.0]:
 			var s: float = side
@@ -461,7 +461,7 @@ class CritterVisual:
 				base_t + Vector2(tf * 2.0, -r * 0.38 - tell * r * 0.15)]), Color("fff2d8"))
 		# Silmät — hehkuvat, vihaiset.
 		var eye_glow := Palette.glow(Color("ffd24a"), 1.3) if tell < 0.2 else Palette.glow(Color("ff5a3a"), 1.5)
-		_eyes(Vector2(0, -r * 0.18), r * 0.34, r * 0.16, eye_glow, true)
+		_critter_eyes(Vector2(0, -r * 0.18), r * 0.34, r * 0.16, eye_glow, true)
 
 	## Aarrepeto: kimalteleva kultainen aarrevahti jalokivineen.
 	func _paint_treasure(cr: Critter, r: float, col: Color, dark: Color) -> void:
@@ -494,7 +494,7 @@ class CritterVisual:
 				gp + Vector2(0, r * 0.16), gp + Vector2(-r * 0.12, 0)])
 			draw_colored_polygon(gem, Palette.with_alpha(Palette.glow(Color("7affd0"), 1.4), 0.6 + 0.4 * tw))
 		# Rauhalliset silmät.
-		_eyes(Vector2(0, -r * 0.16), r * 0.3, r * 0.14, Color("fffdf0"), false)
+		_critter_eyes(Vector2(0, -r * 0.16), r * 0.3, r * 0.14, Color("fffdf0"), false)
 
 	## Viidakkopomo: iso uhkaava hirviö — harja, sarvet, hehkuva ydin ja
 	## kolme silmää. Raivostuessaan punertava ja halkeileva.
@@ -554,6 +554,6 @@ class CritterVisual:
 				Vector2(fx * mw * 0.42, r * 0.28 + mh)]), Color("fff2e0"))
 		# Kolme hehkuvaa silmää.
 		var eye_glow := Palette.glow(Color("ff5a3a"), 1.7) if eng else Palette.glow(Color("ffe14a"), 1.5)
-		_eyes(Vector2(0, -r * 0.2), r * 0.38, r * 0.15, eye_glow, true)
+		_critter_eyes(Vector2(0, -r * 0.2), r * 0.38, r * 0.15, eye_glow, true)
 		draw_circle(Vector2(0, -r * 0.42), r * 0.12, eye_glow)
 		draw_circle(Vector2(0, -r * 0.42), r * 0.05, Color("28101a"))
