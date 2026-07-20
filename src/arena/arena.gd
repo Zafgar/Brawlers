@@ -611,7 +611,21 @@ func _setup_moba() -> void:
 			heroes.append(tw)
 			structures.append(tw)
 			_towers[t].append(tw)
+		_chain_towers(t)
 	_wave_timer = WAVE_FIRST
+
+
+## Kytkee joukkueen tornit immuniteettiketjuun: uloin (kauimpana nexuksesta)
+## on heti haavoittuva, sisemmät suojattuja kunnes edellinen kaatuu. Pakottaa
+## hyökkäysjärjestyksen (uloin -> sisin -> nexus), kuten oikeassa MOBAssa.
+func _chain_towers(t: int) -> void:
+	var nexus_pos: Vector2 = _nexus[t].global_position
+	var list: Array = _towers[t].duplicate()
+	list.sort_custom(func(a, b):
+		return a.global_position.distance_to(nexus_pos) > b.global_position.distance_to(nexus_pos))
+	for i in range(list.size()):
+		var tw := list[i] as Structure
+		tw.set_guard(null if i == 0 else list[i - 1])
 
 
 func _moba_physics(delta: float) -> void:
@@ -692,6 +706,12 @@ func on_structure_destroyed(structure, source) -> void:
 			Palette.glow(Palette.team(1 - s.team), 1.4), 20)
 		hud.ko_feed("%s menetti tornin" % Game.team_name(s.team))
 		_sim_event("%s torni kaatui (%d jäljellä)" % [Game.team_name(s.team), _towers[s.team].size()])
+		# Uloomman tornin kaaduttua sen suojaama sisätorni avautuu (ei enää immuuni).
+		for other in _towers[s.team]:
+			var ot := other as Structure
+			if ot != null and ot._guard == s:
+				popup(ot.global_position + Vector2(0, -90), "TORNI AVATTU",
+					Palette.glow(Palette.team(1 - s.team), 1.3), 18)
 		if _towers[s.team].is_empty():
 			var nx := _nexus[s.team] as Structure
 			if nx != null and is_instance_valid(nx):

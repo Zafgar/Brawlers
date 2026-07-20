@@ -390,7 +390,9 @@ func _pick_push_target(hero: Hero, arena) -> Hero:
 		var s := st as Structure
 		if s == null or not s.alive or s.team != foe:
 			continue
-		if s.kind == Structure.Kind.NEXUS and s._invuln:
+		# Ohita suojatut (immuunit) rakennukset: kohdista uloin torni ensin,
+		# ettei botti kävele turhaan sisemmän tornin/nexuksen alueelle.
+		if s.is_protected():
 			continue
 		var d: float = hero.global_position.distance_to(s.global_position)
 		if d < best_d:
@@ -408,8 +410,8 @@ func _nearest_enemy(hero: Hero, arena, max_dist: float) -> Hero:
 		if enemy.team > 1:
 			continue
 		var st := enemy as Structure
-		if st != null and st.kind == Structure.Kind.NEXUS and st._invuln:
-			continue
+		if st != null and st.is_protected():
+			continue   # suojattua nexusta/sisätornia ei voi vahingoittaa -> ohita
 		var d: float = enemy.global_position.distance_to(hero.global_position)
 		if d < best_d:
 			best_d = d

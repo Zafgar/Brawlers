@@ -169,6 +169,10 @@ class MinionBrain:
 			if d >= aggro_radius:
 				continue
 			if h.is_unit:
+				# Ohita suojattu (immuuni) torni/nexus -> minioni ei jää jauhamaan
+				# sisätornia jota ei voi vahingoittaa, vaan hyökkää järjestyksessä.
+				if h is Structure and (h as Structure).is_protected():
+					continue
 				if d < bu:
 					bu = d
 					best_unit = h

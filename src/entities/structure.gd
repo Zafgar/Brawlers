@@ -10,7 +10,9 @@ extends Hero
 enum Kind { TOWER, NEXUS }
 
 const SHOT_RANGE := 360.0
-const SHOT_DMG := 42.0
+const SHOT_DMG := 88.0         # kova: tornin alla EI kannata ottaa iskuja (turva-alue)
+const RAMP_STEP := 0.30        # sama sankari peräkkäin -> +30 % / isku (LoL-ramppaus)
+const RAMP_MAX := 3            # ramppauksen katto (enintään ~1.9x)
 const CHARGE_TIME := 1.05      # latausaika ennen laukausta (näkyvä telegrafi)
 const AIM_LOCK_AT := 0.6       # missä latauksen vaiheessa kohde lukitaan
 const MUZZLE_TIME := 0.14      # piipun välähdyksen kesto
@@ -19,9 +21,12 @@ const DEFEND_WINDOW := 2.5     # kuinka tuoreesta osumasta torni puolustaa liitt
 var kind := Kind.TOWER
 var _color := Color("4aa8ff")
 var _invuln := false          # nexus: suojattu kunnes tornit kaadettu
+var _guard: Structure = null  # torni joka suojaa tätä: immuuni kunnes _guard kaatuu
 var _charge := 0.0            # latausvaihe 0..1 (visuaalinen telegrafi)
 var _target_lock: Hero = null # lukittu kohde (asetetaan latauksen loppuvaiheessa)
 var _muzzle := 0.0            # piipun välähdyksen ajastin
+var _ramp_target: Hero = null # ramppaus: sama sankari peräkkäin -> kovemmin
+var _ramp := 0
 
 
 func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2) -> void:
@@ -83,6 +88,21 @@ func set_vulnerable() -> void:
 	_invuln = false
 
 
+## Asettaa tornin "suojaajan": tämä torni on immuuni kunnes suojaaja (edessä
+## oleva, uloompi torni) on tuhottu. Pakottaa hyökkäysjärjestyksen (uloin ensin),
+## kuten nexus on suojattu kunnes kaikki tornit ovat alhaalla.
+func set_guard(g) -> void:
+	_guard = g as Structure
+
+
+## Onko rakennus juuri nyt vahingoittumaton? Nexus: kunnes tornit kaatuneet.
+## Torni: kunnes sitä suojaava uloompi torni on tuhottu.
+func is_protected() -> bool:
+	if kind == Kind.NEXUS:
+		return _invuln
+	return _guard != null and is_instance_valid(_guard) and _guard.alive
+
+
 ## Torni lataa ensin näkyvästi (telegrafi), lukitsee kohteen latauksen
 ## loppuvaiheessa ja ampuu kun lataus on täynnä. Kohdejärjestys: liittolaisen
 ## puolustus (LoL) > minionit > lähin vihollissankari.
@@ -108,10 +128,20 @@ func _passive_update(delta: float) -> void:
 		return   # valmis mutta ei kohdetta -> pysyy ladattuna, ampuu heti kun kohde tulee
 	_charge = 0.0
 	_muzzle = MUZZLE_TIME
+	# Ramppaus: peräkkäiset iskut SAMAAN sankariin kovenevat (minionit kuolevat
+	# yhdellä joka tapauksessa -> ne eivät ramppaa eivätkä nollaa toisen ramppia).
+	var dmg := SHOT_DMG
+	if not target.is_unit:
+		if target == _ramp_target:
+			_ramp = mini(_ramp + 1, RAMP_MAX)
+		else:
+			_ramp_target = target
+			_ramp = 0
+		dmg *= 1.0 + RAMP_STEP * float(_ramp)
 	var dir: Vector2 = (target.global_position - global_position).normalized()
 	Projectile.launch(self, global_position + dir * (radius + 6.0), dir, {
 		"speed": 880.0,
-		"dmg": SHOT_DMG,
+		"dmg": dmg,
 		"radius": 12.0,
 		"life": 0.55,
 		"kb": 40.0,
@@ -183,9 +213,10 @@ func _defend_target() -> Hero:
 	return null
 
 
-## Nexus torjuu kaiken vahingon kunnes sen tornit on kaadettu.
+## Suojattu rakennus torjuu kaiken vahingon: nexus kunnes tornit kaatuneet,
+## sisätorni kunnes sitä suojaava uloompi torni on tuhottu.
 func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO) -> float:
-	if kind == Kind.NEXUS and _invuln:
+	if is_protected():
 		if arena != null:
 			arena.popup(global_position + Vector2(0, -radius - 22.0),
 				"SUOJATTU", Palette.SHIELD, 16)
@@ -337,8 +368,15 @@ class StructureVisual:
 			var mf: float = s._muzzle / Structure.MUZZLE_TIME
 			draw_circle(tip, crys + r * 0.34 * mf, Color(1, 1, 1, 0.6 * mf))
 
+		# Suojakupu kun torni on immuuni (edessä oleva torni yhä pystyssä) -> ei
+		# kannata hyökätä tähän vielä, kaada uloin ensin.
+		if s.is_protected():
+			var sp: float = 0.4 + 0.2 * sin(_time * 4.0)
+			draw_arc(Vector2.ZERO, r + 8.0, 0.0, TAU, 40,
+				Palette.with_alpha(Palette.SHIELD, sp), 3.0)
+
 	func _paint_nexus(s: Structure, r: float, col: Color, dark: Color) -> void:
-		var vuln: bool = not s._invuln
+		var vuln: bool = not s.is_protected()
 		var glow: Color = Palette.glow(col, 1.45)
 		var pulse: float = 0.6 + 0.4 * sin(_time * (6.0 if vuln else 3.0))
 		# Iso jalusta-hehku (voiton kohde erottuu sivutavoitteista).
@@ -370,7 +408,7 @@ class StructureVisual:
 		# Kirkas ydin.
 		draw_circle(Vector2.ZERO, r * 0.3 * (0.9 + 0.2 * pulse),
 			Palette.with_alpha(Color.WHITE, (0.55 if vuln else 0.3) + 0.25 * pulse))
-		if s._invuln:
+		if s.is_protected():
 			draw_arc(Vector2.ZERO, r + 6.0, 0.0, TAU, 44,
 				Palette.with_alpha(Palette.SHIELD, 0.4 + 0.2 * pulse), 3.0)
 
