@@ -548,8 +548,10 @@ func _grant_boss_boost(team: int) -> void:
 	for ally in alive_allies(team):
 		ally.red_buff = maxf(ally.red_buff, BOSS_BOOST)
 		ally.blue_buff = maxf(ally.blue_buff, BOSS_BOOST)
-		ally.apply_haste(1.2, BOSS_BOOST)
-		ally.add_shield(60.0, BOSS_BOOST, ally)
+		# record=false: pomobuffi on neutraali palkinto, ei kirjata kyvyn ansioksi
+		# (muuten se kirjautuisi pomon viime hetkellä tappaneen sankarin kyvylle).
+		ally.apply_haste(1.2, BOSS_BOOST, false)
+		ally.add_shield(60.0, BOSS_BOOST, ally, false)
 		Fx.ring(self, ally.global_position, Palette.glow(Palette.GOLD, 1.5), ally.radius + 26.0, 0.6, 6.0)
 
 

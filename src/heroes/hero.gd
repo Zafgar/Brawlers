@@ -872,13 +872,15 @@ func heal_hp(amount: float, source: Hero) -> float:
 	return healed
 
 
-func add_shield(amount: float, duration: float, source: Hero) -> void:
+## record=false: kilpi on neutraali palkinto (pomobuffi) eikä kuulu millekään
+## kyvylle -> shield_slot jää tyhjäksi eikä imetty vahinko sotke kyky­telemetriaa.
+func add_shield(amount: float, duration: float, source: Hero, record := true) -> void:
 	shield_hp = maxf(shield_hp, amount)
 	shield_timer = duration
 	shield_source = source
 	# Kirjaa antajan aktiivinen kykypaikka -> imetty vahinko osataan kohdistaa
 	# oikealle kyvylle (esim. Luman kupla vs. Maestron kilpi).
-	shield_slot = source._cast_context if (source != null and is_instance_valid(source)) else ""
+	shield_slot = source._cast_context if (record and source != null and is_instance_valid(source)) else ""
 	AudioMgr.play("shield", 0.08, 0.0, global_position)
 	Fx.ring(arena, global_position, Palette.SHIELD, radius + 14.0, 0.35)
 
@@ -905,11 +907,15 @@ func apply_slow(factor: float, duration: float) -> void:
 	_record_cc("slow", slow_timer - before)
 
 
-func apply_haste(factor: float, duration: float) -> void:
+## record=false: buffi tulee neutraalista lähteestä (pomobuffi, raivostuminen)
+## eikä kuulu millekään kykypaikalle -> ei kirjata telemetriaan (muuten se
+## kirjautuisi vahingossa sille sankarille joka sattuu olemaan kesken kykyään).
+func apply_haste(factor: float, duration: float, record := true) -> void:
 	var before := haste_timer
 	haste_factor = maxf(haste_factor, factor)
 	haste_timer = maxf(haste_timer, duration)
-	_record_buff(haste_timer - before)   # buffi-hyöty kirjataan antajan kyvylle
+	if record:
+		_record_buff(haste_timer - before)   # buffi-hyöty kirjataan antajan kyvylle
 
 
 func apply_root(duration: float) -> void:

@@ -211,7 +211,7 @@ func _passive_update(delta: float) -> void:
 ## respawn palautuu puhtaasti).
 func _enrage() -> void:
 	_enraged = true
-	apply_haste(1.4, 99999.0)
+	apply_haste(1.4, 99999.0, false)   # oma raivo, ei kirjata kykytelemetriaan
 	_color = _base_color.lerp(Color("ff425a"), 0.45)
 	arena.popup(global_position + Vector2(0, -radius - 44.0),
 		"RAIVOSTUU!", Palette.glow(Color("ff425a"), 1.6), 22)
