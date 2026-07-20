@@ -27,6 +27,8 @@ var _cur_ba := ""
 var _cur_oa := ""
 var _match_index := 0
 var _orig_max_steps := 8
+var _progress_layer: CanvasLayer = null   # pysyvä "Ottelu X/Y" -näyttö (yli ottelunvaihtojen)
+var _progress_label: Label = null
 
 # Kokoonpanotyypit: kukin määrittää roolikuvion (kierrätetään joukkuekokoon).
 # damage = kaikki vahinkoroolit (mage/assassin/fighter/ranger).
@@ -52,7 +54,24 @@ func start() -> void:
 	Engine.time_scale = float(speed)
 	Engine.max_physics_steps_per_frame = maxi(8, speed + 6)
 	Game.mode_id = "moba"
+	_make_progress_overlay()
 	_start_match()
+
+
+## Pysyvä etenemisnäyttö: elää Game-autoloadin lapsena, joten se säilyy vaikka
+## areena vaihtuu ottelusta toiseen. Näyttää aina "Ottelu X/Y" reaaliajassa.
+func _make_progress_overlay() -> void:
+	_progress_layer = CanvasLayer.new()
+	_progress_layer.layer = 128
+	var lbl := Label.new()
+	lbl.position = Vector2(22.0, 14.0)
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.add_theme_color_override("font_color", Color.WHITE)
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	lbl.add_theme_constant_override("outline_size", 6)
+	_progress_layer.add_child(lbl)
+	_progress_label = lbl
+	Game.add_child(_progress_layer)
 
 
 func _start_match() -> void:
@@ -68,13 +87,18 @@ func _start_match() -> void:
 
 
 ## Näyttää etenemisen ruudulla (ottelut ovat näkyvissä, vain nopeutettuna).
+## Pysyvä yläkulman laskuri + lyhyt banneri ottelun vaihtuessa.
 func _announce_progress() -> void:
+	var sub: String = "%s vs %s" % [_cur_ba, _cur_oa] if sweep else "Bot vs bot"
+	var pct := int(round(100.0 * float(_match_index) / float(maxi(match_count, 1))))
+	if _progress_label != null and is_instance_valid(_progress_label):
+		_progress_label.text = "SIMULAATIO  Ottelu %d/%d  (%d%%)\n%s" % [
+			_match_index + 1, match_count, pct, sub]
 	if Game.arena == null or not is_instance_valid(Game.arena):
 		return
 	var hud = Game.arena.hud
 	if hud == null:
 		return
-	var sub: String = "%s vs %s" % [_cur_ba, _cur_oa] if sweep else "Bot vs bot"
 	hud.show_banner("SIMULAATIO  %d/%d" % [_match_index + 1, match_count], sub, 1.4)
 
 
@@ -93,11 +117,27 @@ func on_match_done() -> void:
 		_finish()
 
 
-func _finish() -> void:
+## Palauttaa nopeutuksen ja siivoaa simulaatiotilan (aikaskaalaus, lippu,
+## etenemisnäyttö). Sekä normaalin lopun että keskeytyksen yhteinen siivous.
+func _teardown() -> void:
 	Engine.time_scale = 1.0
 	Engine.max_physics_steps_per_frame = _orig_max_steps
 	Game.simulating = false
 	Game.sim_runner = null
+	if _progress_layer != null and is_instance_valid(_progress_layer):
+		_progress_layer.queue_free()
+	_progress_layer = null
+	_progress_label = null
+
+
+## Keskeytys (esim. taukovalikon "Päävalikkoon" kesken sweepin): siivoa tila
+## ilman raporttinäkymää — muuten peli jäisi jumiin nopeutettuun sim-tilaan.
+func abort() -> void:
+	_teardown()
+
+
+func _finish() -> void:
+	_teardown()
 	var results := SimResults.new()
 	if sweep:
 		var intro := [
@@ -140,25 +180,36 @@ func _build_sweep_roster(bi: int, oi: int) -> Array:
 	return _assemble_roster(blue_set, orange_set)
 
 
-## Rakentaa yhden joukkueen kokoonpanotyypin roolikuvion mukaan. Valitsee eri
-## herot samaan joukkueeseen jos poolissa riittää, muuten kierrättää.
+## Rakentaa yhden joukkueen kokoonpanotyypin roolikuvion mukaan. SAMAA heroa ei
+## koskaan tule joukkueeseen kahdesti: ensin yritetään roolin pooli, ja jos se
+## on loppu (esim. 4 tankkia mutta vain 3 tankkiheroa), täytetään millä tahansa
+## käyttämättömällä herolla — ei enää tuplaa (kuten lobbyn lukituksessa).
 func _build_arch_team(arch: Dictionary) -> Array:
 	var pattern: Array = arch["pattern"]
 	var used: Dictionary = {}
 	var out: Array = []
 	for i in range(team_size):
 		var cat: String = str(pattern[i % pattern.size()])
-		var pool: Array = _role_pool(cat)
-		var shuffled: Array = pool.duplicate()
-		shuffled.shuffle()
-		var pick: String = str(shuffled[0])
-		for cand in shuffled:
-			if not used.has(cand):
-				pick = str(cand)
-				break
+		var pick: String = _pick_unused(_role_pool(cat), used)
+		if pick == "":
+			# Roolipooli loppui -> ota mikä tahansa käyttämätön hero.
+			pick = _pick_unused(HeroDef.ORDER, used)
+		if pick == "":
+			pick = str(_role_pool(cat)[0])   # varasyy (ei osu 4v4:ssä, 17 heroa)
 		used[pick] = true
 		out.append(pick)
 	return out
+
+
+## Palauttaa satunnaisen käyttämättömän heron poolista, tai "" jos kaikki on jo
+## käytetty.
+func _pick_unused(pool: Array, used: Dictionary) -> String:
+	var shuffled: Array = pool.duplicate()
+	shuffled.shuffle()
+	for cand in shuffled:
+		if not used.has(cand):
+			return str(cand)
+	return ""
 
 
 func _role_pool(cat: String) -> Array:

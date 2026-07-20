@@ -125,6 +125,10 @@ func _swap(node: Node) -> void:
 # --- Ruutujen vaihto ---
 
 func go_menu() -> void:
+	# Kesken oleva simulaatio keskeytetään siististi (palauttaa aikaskaalauksen
+	# ja siivoaa etenemisnäytön) ettei peli jää jumiin nopeutettuun tilaan.
+	if sim_runner != null:
+		sim_runner.abort()
 	_swap(MainMenu.new())
 
 
