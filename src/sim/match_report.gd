@@ -189,17 +189,26 @@ static func _survivability_table(lines: Array, agg: Dictionary) -> void:
 			lines.append(str(f))
 
 
-## Kykykohtainen taulukko: per sankari per slot käytöt/osumat/vahinko/parannus ja
-## CC-sekunnit (stun/slow/root). Näyttää perus- ja kaikkien kykyjen toiminnan ja
-## kuinka kauan mikäkin vaikutus teki -> rikkinäiset kyvyt erottuvat.
+## Kykykohtainen taulukko: per sankari per slot käytöt/osumat/vahinko/parannus/
+## kilpi/buffi ja CC-sekunnit (stun/slow/root). "arvo/k" = yhden käytön tuoma arvo
+## (vahinko-ekvivalentti) -> näkee tuottaako kyky/ultti oikeasti hyötyä per lataus.
+## Roolipofiili näyttää menikö panos vahinkoon, tukeen vai kontrolliin (esim.
+## kuinka paljon healer healasi vs. teki vahinkoa).
 static func _ability_table(lines: Array, agg: Dictionary) -> void:
+	# Arvopainot: buffi-sekunti ja CC-sekunti muunnetaan vahinko-ekvivalentiksi,
+	# jotta tuki-/kontrollikykyjen arvoa voi verrata vahinkokykyihin yhtenä lukuna.
+	const BUFF_W := 22.0
+	const CC_W := 35.0
 	lines.append("")
-	lines.append("=== KYVYT JA VAIKUTUKSET (per sankari, koko otanta; aika = sekunteja) ===")
-	lines.append("  slotit: perus=perushyökkäys, a1/a2=kyvyt, ult=ultti, väis=väistö")
-	lines.append("  sankari  slot | käytöt osumat |  vahinko | paran | stun s | slow s | root s | töyt")
+	lines.append("=== KYVYT JA ARVO (per sankari, koko otanta; aika = sek, arvo = vahinko-ekv.) ===")
+	lines.append("  arvo/k = (vahinko+paran+kilpi+buff*%d+CC*%d) / käytöt -> yhden käytön hyöty" % [
+		int(BUFF_W), int(CC_W)])
+	lines.append("  sankari  slot | käyt osui | vahin| paran| kilpi| buff| stun| slow| root|töyt| arvo/k")
 	var order := ["basic", "a1", "a2", "ult", "dodge"]
 	var names := {"basic": "perus", "a1": "a1", "a2": "a2", "ult": "ult", "dodge": "väis"}
 	var suspects: Array = []
+	var profiles: Array = []
+	var ult_flags: Array = []
 	var ids: Array = agg.keys()
 	ids.sort()
 	for id in ids:
@@ -207,6 +216,12 @@ static func _ability_table(lines: Array, agg: Dictionary) -> void:
 		if not a.has("agg_slots"):
 			continue
 		var slots: Dictionary = a["agg_slots"]
+		var off_v := 0.0     # vahinkoarvo
+		var sup_v := 0.0     # paran + kilpi + buffi
+		var ctl_v := 0.0     # kontrolli (CC)
+		var abil_vpc: Array = []
+		var ult_vpc := -1.0
+		var ult_casts := 0.0
 		for sname in order:
 			if not slots.has(sname):
 				continue
@@ -219,21 +234,53 @@ static func _ability_table(lines: Array, agg: Dictionary) -> void:
 			var slow: float = float(s["slow"])
 			var root: float = float(s["root"])
 			var kbn: float = float(s["kb"])
+			var shield: float = float(s.get("shield", 0))
+			var buff: float = float(s.get("buff", 0))
+			var value: float = dmg + heal + shield + buff * BUFF_W + (stun + slow + root) * CC_W
+			var vpc: float = value / maxf(casts, 1.0)
+			off_v += dmg
+			sup_v += heal + shield + buff * BUFF_W
+			ctl_v += (stun + slow + root) * CC_W
 			var used: bool = casts > 2.0 or hits > 2.0
-			var effect: bool = dmg > 1.0 or heal > 1.0 or stun > 0.05 or slow > 0.05 or root > 0.05 or kbn > 0.0
+			var effect: bool = value > 1.0 or kbn > 0.0
 			var flag: String = "*" if used and not effect else " "
 			if used and not effect:
 				suspects.append("%s/%s" % [id, str(names.get(sname, sname))])
-			lines.append("%s %-8s %-4s | %5d  %5d  | %8d | %5d | %6.1f | %6.1f | %6.1f | %4d" % [
+			if sname == "ult":
+				ult_vpc = vpc
+				ult_casts = casts
+			elif (sname == "a1" or sname == "a2") and casts > 1.0:
+				abil_vpc.append(vpc)
+			lines.append("%s %-8s %-4s | %4d %4d | %5d| %5d| %5d| %4.1f| %4.1f| %4.1f| %4.1f|%3d| %6d" % [
 				flag, id, str(names.get(sname, sname)),
-				int(casts), int(hits), int(dmg), int(heal), stun, slow, root, int(kbn)])
+				int(casts), int(hits), int(dmg), int(heal), int(shield),
+				buff, stun, slow, root, int(kbn), int(vpc)])
+		var tot_v: float = maxf(off_v + sup_v + ctl_v, 1.0)
+		profiles.append("  %-8s | vahinko %3.0f%% | tuki(heal/kilpi/buff) %3.0f%% | kontrolli %3.0f%%" % [
+			id, 100.0 * off_v / tot_v, 100.0 * sup_v / tot_v, 100.0 * ctl_v / tot_v])
+		if ult_vpc >= 0.0 and ult_casts >= 2.0 and not abil_vpc.is_empty():
+			var abil_mean := 0.0
+			for v in abil_vpc:
+				abil_mean += float(v)
+			abil_mean /= float(abil_vpc.size())
+			if abil_mean > 0.0 and ult_vpc < abil_mean:
+				ult_flags.append("  '%s': ult arvo/käyttö %d < kykyjen ka %d — ult tuottaa vähän per lataus?" % [
+					id, int(ult_vpc), int(abil_mean)])
+	lines.append("")
+	lines.append("  -- roolipofiili (mihin panos meni; vastaa: healasiko vai teki vahinkoa) --")
+	for p in profiles:
+		lines.append(str(p))
+	if not ult_flags.is_empty():
+		lines.append("")
+		lines.append("  -- ultit joiden arvo/käyttö jää perus-kykyjen alle (harkitse tehostusta) --")
+		for f in ult_flags:
+			lines.append(str(f))
 	lines.append("")
 	if suspects.is_empty():
-		lines.append("  Kaikki käytetyt kyvyt tuottivat mitattavaa vaikutusta.")
+		lines.append("  Kaikki käytetyt kyvyt tuottivat mitattavaa arvoa (vahinko/CC/paran/kilpi/buff).")
 	else:
-		lines.append("  * = käytetty >=3 kertaa mutta EI mitattavaa vahinkoa/CC/parannusta.")
-		lines.append("      Tarkista: rikki VAI tarkoituksella liikkumis-/asemointi-/suoja-/")
-		lines.append("      buffikyky (esim. teleportti, kilpi, haste): " + ", ".join(PackedStringArray(suspects)))
+		lines.append("  * = käytetty >=3 kertaa mutta EI mitattavaa arvoa (vahinko/CC/paran/kilpi/buff).")
+		lines.append("      Tarkista rikki VAI tarkoituksella liikkumis-/asemointikyky: " + ", ".join(PackedStringArray(suspects)))
 
 
 static func _mean_dpm(agg: Dictionary, avg_min: float) -> float:
@@ -298,9 +345,11 @@ static func _accumulate(agg: Dictionary, h: Dictionary, winner: int) -> void:
 			var sr: Dictionary = h["slots"][sname]
 			if not asl.has(sname):
 				asl[sname] = {"casts": 0.0, "hits": 0.0, "damage": 0.0,
-					"heal": 0.0, "stun": 0.0, "slow": 0.0, "root": 0.0, "kb": 0.0}
+					"heal": 0.0, "stun": 0.0, "slow": 0.0, "root": 0.0, "kb": 0.0,
+					"shield": 0.0, "buff": 0.0}
 			var dst: Dictionary = asl[sname]
-			for key in ["casts", "hits", "damage", "heal", "stun", "slow", "root", "kb"]:
+			for key in ["casts", "hits", "damage", "heal", "stun", "slow", "root", "kb",
+					"shield", "buff"]:
 				dst[key] += float(sr.get(key, 0))
 	if int(h["team"]) == winner:
 		a["wins"] += 1

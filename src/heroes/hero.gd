@@ -50,6 +50,7 @@ var cd_max := {"basic": 0.5, "a1": 8.0, "a2": 8.0, "dodge": 4.0}
 var shield_hp := 0.0
 var shield_timer := 0.0
 var shield_source: Hero = null
+var shield_slot := ""                # antajan kykypaikka (telemetria: kilven arvo)
 var slow_timer := 0.0
 var slow_factor := 1.0
 var haste_timer := 0.0
@@ -71,6 +72,7 @@ var guard_timer := 0.0
 var guard_absorb := 0.7
 var guard_arc_deg := 80.0
 var guard_radius := 0.0             # > 0 = piirrä leveä kilpivalli tälle säteelle
+var guard_slot := ""                # torjunnan kykypaikka (telemetria: torjunnan arvo)
 
 # Tartunta (Titaani pitää kiinni): kohde ei törmää muihin sankareihin oteen
 # aikana, jottei se estä/tönäise kantajaa. Ote vapautuu itsestään jos sitä ei
@@ -695,7 +697,8 @@ func _act_end() -> void:
 func _slot_rec(slot: String) -> Dictionary:
 	if not profile.stats.slots.has(slot):
 		profile.stats.slots[slot] = {"casts": 0, "hits": 0, "damage": 0.0,
-			"heal": 0.0, "stun": 0.0, "slow": 0.0, "root": 0.0, "kb": 0}
+			"heal": 0.0, "stun": 0.0, "slow": 0.0, "root": 0.0, "kb": 0,
+			"shield": 0.0, "buff": 0.0}
 	return profile.stats.slots[slot]
 
 
@@ -716,6 +719,21 @@ func _record_cc(kind: String, duration: float) -> void:
 	if slot == "":
 		return
 	actor._slot_rec(slot)[kind] += duration
+
+
+## Kirjaa buffi-sekunnit (haste/nopeus/vahinkobuffi-ikkuna) toimijan kykypaikalle,
+## kuten _record_cc. Vain LISÄTTY aika (uusi-vanha) -> ei paisu kun buffia uusitaan.
+## Näyttää raportissa paljonko hyötyä buffikyvyt oikeasti tuottivat.
+func _record_buff(duration: float) -> void:
+	if duration <= 0.0 or arena == null:
+		return
+	var actor: Hero = arena._act_hero
+	if actor == null or not is_instance_valid(actor):
+		return
+	var slot: String = arena._act_slot
+	if slot == "":
+		return
+	actor._slot_rec(slot)["buff"] += duration
 
 
 func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZERO) -> float:
@@ -777,6 +795,8 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 			amount -= absorbed
 			profile.stats.prevented += absorbed
 			profile.add_score(absorbed * 0.08)
+			if guard_slot != "":
+				_slot_rec(guard_slot)["shield"] += absorbed
 			# Energiakilpi (Bastion): torjuminen kuluttaa energiaa vahingon mukaan.
 			if res_type == "energy" and _channel_slot != "":
 				res = maxf(res - absorbed * 0.6, 0.0)
@@ -791,6 +811,8 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 		if shield_source != null and is_instance_valid(shield_source):
 			shield_source.profile.stats.prevented += soak
 			shield_source.profile.add_score(soak * 0.08)
+			if shield_slot != "":
+				shield_source._slot_rec(shield_slot)["shield"] += soak
 		arena.popup(global_position + Vector2(0, -46), str(int(soak)), Palette.SHIELD, 18)
 		# Kilven imemä osuma kuuluu (aiemmin täysin vaimennettu osuma oli mykkä).
 		if soak > 0.0:
@@ -854,6 +876,9 @@ func add_shield(amount: float, duration: float, source: Hero) -> void:
 	shield_hp = maxf(shield_hp, amount)
 	shield_timer = duration
 	shield_source = source
+	# Kirjaa antajan aktiivinen kykypaikka -> imetty vahinko osataan kohdistaa
+	# oikealle kyvylle (esim. Luman kupla vs. Maestron kilpi).
+	shield_slot = source._cast_context if (source != null and is_instance_valid(source)) else ""
 	AudioMgr.play("shield", 0.08, 0.0, global_position)
 	Fx.ring(arena, global_position, Palette.SHIELD, radius + 14.0, 0.35)
 
@@ -881,8 +906,10 @@ func apply_slow(factor: float, duration: float) -> void:
 
 
 func apply_haste(factor: float, duration: float) -> void:
+	var before := haste_timer
 	haste_factor = maxf(haste_factor, factor)
 	haste_timer = maxf(haste_timer, duration)
+	_record_buff(haste_timer - before)   # buffi-hyöty kirjataan antajan kyvylle
 
 
 func apply_root(duration: float) -> void:
@@ -912,6 +939,7 @@ func start_guard(duration: float, absorb := 0.7, arc_deg := 80.0, radius := 0.0)
 	guard_absorb = absorb
 	guard_arc_deg = arc_deg
 	guard_radius = radius
+	guard_slot = _cast_context   # telemetria: torjuttu vahinko kirjataan tälle kyvylle
 
 
 ## Merkitsee sankarin tartutuksi (Titaani): poistaa sankari-sankari-törmäyksen
