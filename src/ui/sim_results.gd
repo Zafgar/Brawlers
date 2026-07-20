@@ -13,12 +13,17 @@ func _ready() -> void:
 	AudioMgr.play_music_pool("lobby")
 	add_child(MenuBackdrop.new())
 
-	# Tallenna tiedostoon ja tulosta konsoliin.
+	# Tallenna tiedostoon ja tulosta konsoliin. Näytetään OIKEA absoluuttinen
+	# polku (globalize_path) — "user://" on virtuaalipolku jota ei löydä käsin.
+	var abs_path := ProjectSettings.globalize_path(SAVE_PATH)
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f != null:
 		f.store_string(report_text)
 		f.close()
-	print("\n" + report_text + "\n")
+	print("\n===== SIMULAATIORAPORTTI =====")
+	print("Tallennettu: %s" % abs_path)
+	print("(Editorissa: Project -> Open User Data Folder)\n")
+	print(report_text + "\n")
 
 	var root := VBoxContainer.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -31,8 +36,9 @@ func _ready() -> void:
 
 	root.add_child(UiKit.title("RAPORTTI", 44))
 	var saved := UiKit.dim_label(
-		"Tallennettu: %s  ·  myös Godotin konsolissa. Kopioi ja liitä kehittäjälle." % SAVE_PATH, 16)
+		"Tallennettu: %s  ·  myös Godotin konsolissa." % abs_path, 15)
 	saved.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	saved.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	root.add_child(saved)
 
 	# Vieritettävä raporttinäkymä monospace-fontilla.
@@ -63,12 +69,21 @@ func _ready() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 20)
 	root.add_child(row)
+	var copy := UiKit.button("Kopioi raportti", _copy_report, 26)
+	copy.custom_minimum_size = Vector2(320, 52)
+	row.add_child(copy)
 	var again := UiKit.button("Uusi simulaatio", func(): Game.go_sim(), 26)
 	again.custom_minimum_size = Vector2(320, 52)
 	row.add_child(again)
 	var back := UiKit.button("Päävalikkoon", func(): Game.go_menu(), 26)
 	back.custom_minimum_size = Vector2(320, 52)
 	row.add_child(back)
+
+
+## Kopioi koko raportti leikepöydälle — ei tarvitse etsiä tiedostoa lainkaan.
+func _copy_report() -> void:
+	DisplayServer.clipboard_set(report_text)
+	AudioMgr.play("ui_ok")
 
 
 func _unhandled_input(event: InputEvent) -> void:
