@@ -45,17 +45,32 @@ func _setup() -> void:
 	map_size = Vector2(4400, 2600)
 	var half := map_size / 2.0
 
-	# Aloituspaikat tukikohtien luo. Pidetään käytävän sisällä (y < ~960),
-	# eteläseinän yläpuolella, ja sivussa nexuksesta ettei synny osumaa.
+	# Aloituspaikat tukikohtien luo. Vedetty SISÄTORNIN kantamalle (x=∓1800,
+	# nexuksesta 200 px): torni puolustaa spawnia, joten vihollinen ei voi
+	# rauhassa spawn-campata. Pysyvät käytävässä (y<~960), eteläseinän yläpuolella.
 	var blue: Array = []
 	var orange: Array = []
 	for i in range(4):
 		var oy := -84.0 + i * 72.0
-		blue.append(Vector2(-2000.0 + 120.0, 820.0 + oy))
-		orange.append(Vector2(2000.0 - 120.0, 820.0 + oy))
+		blue.append(Vector2(-2000.0 + 200.0, 820.0 + oy))
+		orange.append(Vector2(2000.0 - 200.0, 820.0 + oy))
 	spawn_slots = [blue, orange]
 
-	# Puita/kiviä suojaksi viidakkoon; linja pidetään avoimena.
+	# --- Viidakon suojaesteet: SYMMETRINEN setti (peilattu x=0 yli) reiluuden
+	# takaamiseksi. Aiemmin 10 satunnaiskiveä ei ollut peilattu -> toinen puoli
+	# saattoi saada paremmat suojat. Nyt kaikki kivet ovat pareittain peilattuja.
+	# 1) Deliberaatit suojaparit: pistereirin sivustat + kiertoreitin kapeikot.
+	var cover_pairs := [
+		{"x": 260.0, "y": -340.0, "r": 56.0},   # pistereirin sivusuoja (sivusta voi kiistää)
+		{"x": 640.0, "y": -520.0, "r": 64.0},   # pomo<->linja kiertoreitin kapeikko
+	]
+	for c in cover_pairs:
+		var cr: float = c.r
+		pillars.append({"pos": Vector2(-float(c.x), float(c.y)), "radius": cr})
+		pillars.append({"pos": Vector2(float(c.x), float(c.y)), "radius": cr})
+
+	# 2) Peilatut satunnaiskivet (tekstuuria, mutta reilusti): arvo vasen puoli,
+	# lisaa aina myos peilikuva. Valta camp/objektiivit ja pida 320 px valistys.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20260720
 	var blocked: Array = [_boss, _points, _dmg_left, _dmg_right,
@@ -65,21 +80,25 @@ func _setup() -> void:
 	for t in _tower_orange:
 		blocked.append(t)
 	var tries := 0
-	while pillars.size() < 10 and tries < 260:
+	while pillars.size() < 12 and tries < 320:
 		tries += 1
-		var p := Vector2(rng.randf_range(-half.x + 300.0, half.x - 300.0),
-			rng.randf_range(-half.y + 260.0, -120.0))   # vain yläpuoli (viidakko)
+		var p := Vector2(rng.randf_range(-half.x + 300.0, -180.0),
+			rng.randf_range(-half.y + 260.0, -120.0))   # vain vasen viidakko -> peilataan
+		var mir := Vector2(-p.x, p.y)
 		var ok := true
 		for b in blocked:
-			if p.distance_to(b) < 360.0:
-				ok = false
-				break
-		for existing in pillars:
-			if p.distance_to(existing.pos) < 320.0:
+			if p.distance_to(b) < 360.0 or mir.distance_to(b) < 360.0:
 				ok = false
 				break
 		if ok:
-			pillars.append({"pos": p, "radius": rng.randf_range(46.0, 76.0)})
+			for existing in pillars:
+				if p.distance_to(existing.pos) < 320.0 or mir.distance_to(existing.pos) < 320.0:
+					ok = false
+					break
+		if ok:
+			var pr := rng.randf_range(46.0, 76.0)
+			pillars.append({"pos": p, "radius": pr})
+			pillars.append({"pos": mir, "radius": pr})
 
 	# Suojaesteet LINJALLE (symmetriset kivet tien pohjoispuolelle): antavat
 	# suojaa taisteluihin ja gankkeihin tukkimatta tietä, torneja, gank-aukkoja
@@ -87,6 +106,13 @@ func _setup() -> void:
 	for cx in [-920.0, -760.0, -380.0, 380.0, 760.0, 920.0]:
 		var cy := 470.0 if absf(cx) > 500.0 else 500.0
 		pillars.append({"pos": Vector2(cx, cy), "radius": 50.0})
+
+	# Suojaa myos tien ETELApuolelle (puolustajalle): pienet nyppylat ohueen
+	# eteläkaistaan. r<=30 ettei botti tartu eteläseinään.
+	for sx in [570.0, 1150.0]:
+		var sy := 860.0 if sx < 1000.0 else 880.0
+		pillars.append({"pos": Vector2(-sx, sy), "radius": 28.0})
+		pillars.append({"pos": Vector2(sx, sy), "radius": 28.0})
 
 	_setup_walls()
 	_setup_decor(half)
@@ -126,11 +152,13 @@ func _setup_walls() -> void:
 	var t := 64.0
 	var dy := 320.0 - t / 2.0
 	# Viidakon ja linjan erottava seina; gank-aukot kohdissa x = -1150 / 0 / +1150.
-	# Paadyt jaavat auki tukikohtien puolelle (oma viidakko/linja yhteydessa).
-	rect_walls.append(Rect2(-1900.0, dy, 600.0, t))
+	# Paadyt kavennettu ~200 px kapeikoiksi (ennen 300+ auki): tukikohtaan pääsee
+	# viidakosta yha, mutta ahtaammin -> puolustaja saa pitopisteen eikä spawnia
+	# voi flankata leveaa reittia. (Spawnit ovat lisaksi nyt sisatornin kantamalla.)
+	rect_walls.append(Rect2(-2000.0, dy, 700.0, t))
 	rect_walls.append(Rect2(-1000.0, dy, 850.0, t))
 	rect_walls.append(Rect2(150.0, dy, 850.0, t))
-	rect_walls.append(Rect2(1300.0, dy, 600.0, t))
+	rect_walls.append(Rect2(1300.0, dy, 700.0, t))
 	# ETELÄSEINÄ: sulkee linjakäytävän alareunan koko leveydeltä. Tornit (kantama
 	# 360, y~660-720) peittävat nyt käytävän (y 352..1010) koko korkeuden, joten
 	# alakautta ei voi enää kävellä ohi torneista suoraan nexukselle. Täyttää
@@ -340,8 +368,8 @@ func _chevron(p: Vector2, dir: Vector2, size: float, col: Color) -> void:
 
 ## Roihut linjan varrella tornien kohdilla (tunnelmaa, ei törmäystä).
 func _draw_braziers() -> void:
-	var spots := [Vector2(-760, 560), Vector2(-1480, 620),
-		Vector2(760, 560), Vector2(1480, 620)]
+	var spots := [Vector2(-760, 620), Vector2(-1480, 620),
+		Vector2(760, 620), Vector2(1480, 620)]
 	for sp in spots:
 		var p: Vector2 = sp
 		var f: float = 0.6 + 0.4 * sin(_time * 8.0 + p.x * 0.05)
