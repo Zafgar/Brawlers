@@ -206,9 +206,12 @@ func tower_spots(team: int) -> Array:
 ## sisältä. Aiemmin pisteet olivat ~40 px tornin keskeltä -> minionit jäivät
 ## jauhamaan tornin runkoa yrittäessään saavuttaa saavuttamatonta pistettä.
 func lane_path() -> Array:
+	# y ~795-815: tornien eteläpuolella (torni y660/720, >90px selvä) MUTTA myös
+	# etelänyppylöiden (±570,860 / ±1150,880 r28) yläpuolella niin ettei linjan
+	# VÄLIsegmentti raapaise niitä (tarve 28+15=43px; nyt ~50-67px).
 	return [
-		Vector2(-2000, 900), Vector2(-1480, 860), Vector2(-760, 840),
-		Vector2(0, 800), Vector2(760, 840), Vector2(1480, 860), Vector2(2000, 900)]
+		Vector2(-2000, 900), Vector2(-1480, 815), Vector2(-760, 810),
+		Vector2(0, 795), Vector2(760, 810), Vector2(1480, 815), Vector2(2000, 900)]
 
 
 func _draw() -> void:
