@@ -4,6 +4,11 @@ extends MapBase
 ## jota pitkin minionit marssivat. Kummallakin puolella on tukikohta (nexus) ja
 ## kaksi tornia linjalla. Voitto = tuhoa vihollisen nexus (tornit ensin).
 ##
+## LINJA ON KÄYTÄVÄ, ei avoin kenttä: yläreuna on viidakkoseinä (gank-aukoin),
+## alareuna on eteläseinä. Näin tornit peittävät käytävän koko leveyden eikä
+## alakautta voi enää kävellä ohi torneista suoraan nexukselle. Käytävässä on
+## suojaesteitä (kivet) taisteluihin ja gankkeihin.
+##
 ## Sininen (joukkue 0) vasemmalla, oranssi (joukkue 1) oikealla.
 
 const FLOOR := Color("15321f")
@@ -33,19 +38,21 @@ var _tower_orange := [Vector2(760, 660), Vector2(1480, 720)]
 # sävytetty joukkuepuolen mukaan, jotta sininen/oranssi puoli erottuu.
 var _patches: Array = []   # [{pos, r, col}]
 var _foliage: Array = []   # [{pos, s}]
+var _cliff: Array = []     # [{pos, r}] eteläseinän lohkareet (esilaskettu)
 
 
 func _setup() -> void:
 	map_size = Vector2(4400, 2600)
 	var half := map_size / 2.0
 
-	# Aloituspaikat tukikohtien luo.
+	# Aloituspaikat tukikohtien luo. Pidetään käytävän sisällä (y < ~960),
+	# eteläseinän yläpuolella, ja sivussa nexuksesta ettei synny osumaa.
 	var blue: Array = []
 	var orange: Array = []
 	for i in range(4):
-		var oy := -60.0 + i * 90.0
-		blue.append(Vector2(-2000.0 + 90.0, 820.0 + oy))
-		orange.append(Vector2(2000.0 - 90.0, 820.0 + oy))
+		var oy := -84.0 + i * 72.0
+		blue.append(Vector2(-2000.0 + 120.0, 820.0 + oy))
+		orange.append(Vector2(2000.0 - 120.0, 820.0 + oy))
 	spawn_slots = [blue, orange]
 
 	# Puita/kiviä suojaksi viidakkoon; linja pidetään avoimena.
@@ -74,6 +81,13 @@ func _setup() -> void:
 		if ok:
 			pillars.append({"pos": p, "radius": rng.randf_range(46.0, 76.0)})
 
+	# Suojaesteet LINJALLE (symmetriset kivet tien pohjoispuolelle): antavat
+	# suojaa taisteluihin ja gankkeihin tukkimatta tietä, torneja, gank-aukkoja
+	# tai nexuksia. y~470-500 on tien (y660-900) yläpuolella.
+	for cx in [-920.0, -760.0, -380.0, 380.0, 760.0, 920.0]:
+		var cy := 470.0 if absf(cx) > 500.0 else 500.0
+		pillars.append({"pos": Vector2(cx, cy), "radius": 50.0})
+
 	_setup_walls()
 	_setup_decor(half)
 
@@ -95,6 +109,14 @@ func _setup_decor(half: Vector2) -> void:
 			drng.randf_range(-half.y + 200.0, 60.0))
 		var s := drng.randf_range(14.0, 30.0)
 		_foliage.append({"pos": fp, "s": s})
+	# Eteläseinän lohkareet (linjan alareunan kalliojono, ei törmäystä).
+	drng.seed = 4711
+	var cx := -half.x + 120.0
+	while cx < half.x - 60.0:
+		var cr := drng.randf_range(40.0, 82.0)
+		var cy := 1010.0 + drng.randf_range(6.0, 48.0)
+		_cliff.append({"pos": Vector2(cx, cy), "r": cr})
+		cx += drng.randf_range(150.0, 260.0)
 
 
 ## Sisaseinat (rect_walls): viidakon ja linjan erottava seina gank-aukoin,
@@ -109,6 +131,11 @@ func _setup_walls() -> void:
 	rect_walls.append(Rect2(-1000.0, dy, 850.0, t))
 	rect_walls.append(Rect2(150.0, dy, 850.0, t))
 	rect_walls.append(Rect2(1300.0, dy, 600.0, t))
+	# ETELÄSEINÄ: sulkee linjakäytävän alareunan koko leveydeltä. Tornit (kantama
+	# 360, y~660-720) peittävat nyt käytävän (y 352..1010) koko korkeuden, joten
+	# alakautta ei voi enää kävellä ohi torneista suoraan nexukselle. Täyttää
+	# kiinteänä kartan alareunaan asti (ei kuollutta kuljettavaa tilaa).
+	rect_walls.append(Rect2(-2200.0, 1010.0, 4400.0, 300.0))
 	# Pomo-alkovi (0,-800): seinat pohjoiseen ja sivuille, auki etelaan.
 	rect_walls.append(Rect2(-440.0, -1090.0, 880.0, 60.0))
 	rect_walls.append(Rect2(-440.0, -1030.0, 70.0, 380.0))
@@ -191,6 +218,7 @@ func _draw() -> void:
 
 	# Sisaseinat (kivi + lehtiharja) ja gank-aukkojen hehkumerkit.
 	_draw_moba_walls()
+	_draw_south_cliff()
 	_draw_gank_markers()
 
 	# Latvuston lehtiläikät esteiden päällä.
@@ -394,6 +422,25 @@ func _draw_moba_walls() -> void:
 		# Lehtiharja yläreunaan.
 		draw_rect(Rect2(w.position - Vector2(0, 7), Vector2(w.size.x, 12)),
 			Palette.with_alpha(CANOPY, 0.85))
+
+
+## Eteláseinä kalliojonona: reunavalo linjan alalaitaan + esilasketut lohkareet,
+## jotta seinä lukee tarkoituksellisena kallioseinänä eikä litteänä palkkina.
+func _draw_south_cliff() -> void:
+	var half := map_size / 2.0
+	var top := 1010.0
+	# Kallion reunavalo (linjan eteläraja erottuu selkeästi).
+	draw_rect(Rect2(-half.x, top - 3.0, map_size.x, 6.0),
+		Palette.with_alpha(Palette.glow(LEAF, 1.1), 0.4))
+	draw_rect(Rect2(-half.x, top, map_size.x, half.y - top),
+		Palette.with_alpha(Color("0a1410"), 0.5))
+	for b in _cliff:
+		var p: Vector2 = b.pos
+		var r: float = b.r
+		draw_circle(p + Vector2(0, 5), r + 4.0, Color(0.02, 0.06, 0.04, 0.6))
+		draw_circle(p, r, Palette.darker(Color("2c3d2e"), 0.15))
+		draw_circle(p + Vector2(-r * 0.3, -r * 0.3), r * 0.5,
+			Palette.with_alpha(Color("3d523d"), 0.6))
 
 
 ## Hehkumerkit viidakko/linja-seinan gank-aukkojen kohdalle (nakyva kulkuaukko).

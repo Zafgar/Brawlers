@@ -686,9 +686,17 @@ func _spawn_wave(team: int) -> void:
 		path = path.duplicate()
 		path.reverse()
 	var base: Vector2 = path[0] if not path.is_empty() else Vector2.ZERO
+	# Hajota minionit linjaa pitkin KOHTI KESKUSTAA (etelä on nyt eteläseinä).
+	# Näin ne eivät synny nexuksen päälle eivätkä seinän sisään.
+	var lead: Vector2 = Vector2.RIGHT
+	if path.size() > 1:
+		var p1: Vector2 = path[1]
+		if p1 != base:
+			lead = (p1 - base).normalized()
+	var side: Vector2 = lead.orthogonal()
 	for i in range(WAVE_SIZE):
 		var m := Minion.new()
-		var offset := Vector2(0.0, 8.0 + i * 26.0)   # etelään, ei nexuksen alustan päälle
+		var offset: Vector2 = lead * (120.0 + float(i) * 24.0) + side * (-30.0 + float(i % 3) * 30.0)
 		m.setup_minion(self, team, base + offset, path)
 		add_child(m)
 		heroes.append(m)
