@@ -570,13 +570,17 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 			_reaction_left = reaction
 		return
 
+	# Oikeat vihollissankarit ENSIN: MOBAssa "enemies" sisältää myös minionit ja
+	# rakennukset, eikä botti (etenkään assassin) saa näykkiä aaltoa sankarin
+	# sijaan taistelussa. Yksiköt jäävät varasyyksi jos sankaria ei ole lähellä.
+	var hero_enemies: Array = arena.enemy_heroes(hero.team)
 	if _mode == Mode.ATTACK_CARRIER and bb.enemy_carrier != null \
 			and is_instance_valid(bb.enemy_carrier):
 		pick = bb.enemy_carrier
 	elif _is_assassin:
-		# Assassinit suosivat heikkoja takalinjan sankareita.
+		# Assassinit suosivat heikkoja takalinjan SANKAREITA (eivät minioneja).
 		var best_score := -1e20
-		for enemy in enemies:
+		for enemy in hero_enemies:
 			var d: float = enemy.global_position.distance_to(pos)
 			if d > 700.0:
 				continue
@@ -588,11 +592,11 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 				best_score = score
 				pick = enemy
 		if pick == null:
-			pick = _nearest(enemies, pos)
+			pick = _nearest(hero_enemies, pos)
 	else:
 		# Tankki suojaa: jos joku uhkaa suojeltavaa, käännytään sitä vastaan.
 		if _is_tank and bb.protect_ally != null and bb.protect_ally != hero:
-			var threat := _nearest_to(enemies, bb.protect_ally.global_position, 240.0)
+			var threat := _nearest_to(hero_enemies, bb.protect_ally.global_position, 240.0)
 			if threat != null:
 				pick = threat
 		if pick == null:
@@ -603,7 +607,12 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 					and pos.distance_to(bb.focus_target.global_position) < _pref_range + 380.0:
 				pick = bb.focus_target
 			else:
-				pick = _nearest(enemies, pos)
+				pick = _nearest(hero_enemies, pos)
+
+	# Varasyy: jos yhtään vihollissankaria ei ollut valittavissa (esim. puhdas
+	# työntötilanne), iske lähintä EI-suojattua yksikköä/rakennusta.
+	if pick == null:
+		pick = _nearest_attackable(enemies, pos)
 
 	if pick != _target:
 		_target = pick
@@ -625,6 +634,24 @@ func _nearest_to(list: Array, from: Vector2, max_dist: float) -> Hero:
 	var best: Hero = null
 	var best_d := max_dist
 	for h in list:
+		var d: float = h.global_position.distance_to(from)
+		if d < best_d:
+			best_d = d
+			best = h
+	return best
+
+
+## Lähin lyötävä kohde: ohittaa suojatut (immuunit) rakennukset, ettei botti
+## lukitu iskemään sisätornia/nexusta joka torjuu kaiken (0 vahinkoa).
+func _nearest_attackable(list: Array, from: Vector2) -> Hero:
+	var best: Hero = null
+	var best_d := 1e20
+	for h in list:
+		if not is_instance_valid(h) or not h.alive:
+			continue
+		var s := h as Structure
+		if s != null and s.is_protected():
+			continue
 		var d: float = h.global_position.distance_to(from)
 		if d < best_d:
 			best_d = d
@@ -870,6 +897,10 @@ func _support_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vecto
 		var d: float = _target.global_position.distance_to(pos)
 		if d < 200.0:
 			goal = pos + (pos - _target.global_position).normalized() * 200.0
+	# MOBA: älä seuraa sukeltavaa etulinjaa vihollistornin kantamalle (tuki kestää
+	# huonosti torni-iskuja) — sama kantamaklamppi kuin muullakin liikkeellä.
+	if arena.mode == "moba":
+		goal = _moba_tower_safe(hero, arena, pos, goal)
 	return goal
 
 
@@ -1142,7 +1173,7 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 		"ember", "bramble":
 			return near_enemies >= 2
 		"blink":
-			return dist < 450.0 and hero.hp > hero.max_hp * 0.4
+			return dist < 450.0 and hero.hp > hero.max_hp * 0.4 and near_enemies >= 1
 		"luma":
 			var hurt := 0
 			for ally in arena.heroes_in_circle(pos, 300.0, hero.team, true, true):
@@ -1156,7 +1187,7 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 		"volt":
 			return near_enemies >= 2 or (dist < 400.0 and near_enemies >= 1)
 		"shade":
-			return dist < 350.0 and hero.hp > hero.max_hp * 0.35
+			return dist < 350.0 and hero.hp > hero.max_hp * 0.35 and near_enemies >= 1
 		"scout":
 			return arena.heroes_in_circle(pos, 640.0, 1 - hero.team, true, true).size() >= 2
 		"maestro":
@@ -1205,10 +1236,17 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"prism":
 			return dist < 430.0
 		"rift":
-			return dist > 220.0 and dist < 700.0
+			# VoidMark lentää yksiköiden läpi -> vain oikeaa sankaria vastaan.
+			return dist > 220.0 and dist < 700.0 and _target_is_hero()
 		"titan":
-			return dist < 150.0
+			# Tartunta ei tartu yksiköihin (torni/minioni) -> vain sankaria vastaan.
+			return dist < 150.0 and _target_is_hero()
 	return false
+
+
+## Onko nykyinen kohde oikea vihollissankari (ei minioni/torni/nexus/olento)?
+func _target_is_hero() -> bool:
+	return _target != null and is_instance_valid(_target) and not _target.is_unit
 
 
 func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) -> bool:
