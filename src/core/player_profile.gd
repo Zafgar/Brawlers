@@ -25,7 +25,16 @@ func reset_stats() -> void:
 		"assists": 0,         # avustukset
 		"deaths": 0,          # omat tyrmäytymiset
 		"damage": 0.0,        # aiheutettu vahinko (sankareihin/yksiköihin)
-		"taken": 0.0,         # otettu vahinko
+		"taken": 0.0,         # otettu vahinko (yhteensä)
+		# Otettu vahinko LÄHTEEN mukaan (näkee ottaako AI turhia torni-/mob-osumia):
+		"taken_hero": 0.0,    # vihollissankareilta
+		"taken_tower": 0.0,   # torneilta/nexukselta
+		"taken_minion": 0.0,  # minioneilta
+		"taken_neutral": 0.0, # viidakko-olennoilta (leirit/pomo)
+		"deaths_tower": 0,    # tornin tappamana kaatunut
+		"deaths_neutral": 0,  # viidakko-olennon tappamana kaatunut
+		"cc_suffered": 0.0,   # kärsityn CC:n sekunnit (stun+root+freeze)
+		"time_dead": 0.0,     # kuolleena vietetty aika sekunteina (respawn-odotus)
 		"structure_damage": 0.0,  # vahinko rakennuksiin (tornit/nexus)
 		"jungle_damage": 0.0, # vahinko viidakko-olentoihin (leirit/pomo)
 		"minion_kills": 0,    # kaadetut minionit (CS)

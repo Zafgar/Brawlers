@@ -79,12 +79,14 @@ func _ability1(dir: Vector2) -> void:
 	var from := global_position
 	var chain: Array = []
 	var target := first
-	var dmg := 24.0
+	# Nerf (sim: volt oli 2.5x keskiarvo, a1 ~70% sen vahingosta): 24 -> 18 ja
+	# lievempi hidastus (0.8/0.8s -> 0.85/0.55s).
+	var dmg := 18.0
 	while target != null and chain.size() < 3:
 		Fx.bolt(arena, from, target.global_position, hero_color())
 		Fx.flash(arena, target.global_position, Palette.glow(hero_color(), 1.5), 38.0, 0.25)
 		deal_damage_to(target, dmg, 120.0, (target.global_position - from).normalized())
-		target.apply_slow(0.8, 0.8)
+		target.apply_slow(0.85, 0.55)
 		chain.append(target)
 		from = target.global_position
 		dmg *= 0.8

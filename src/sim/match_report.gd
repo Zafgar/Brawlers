@@ -43,6 +43,7 @@ static func build(snapshots: Array, intro: Array) -> String:
 	lines.append("Keskimääräinen kesto: %s   (* = ihmispelaaja)" % _fmt(total_time / float(count)))
 	lines.append("")
 	_hero_table(lines, agg, avg_min)
+	_survivability_table(lines, agg)
 	_ability_table(lines, agg)
 	return "\n".join(PackedStringArray(lines))
 
@@ -105,14 +106,20 @@ static func build_sweep(results: Array, intro: Array) -> String:
 			lines.append("  Sankari '%s': vahinko/min %d (yli 2x keskiarvo %d) — mahd. yli" % [
 				id, int(dpm), int(mean_dpm)])
 		elif mean_dpm > 0.0 and dpm < mean_dpm * 0.4:
-			flagged = true
-			lines.append("  Sankari '%s': vahinko/min %d (alle 0.4x keskiarvo %d) — mahd. ali" % [
-				id, int(dpm), int(mean_dpm)])
+			# Rooli-tietoinen: tuki/tankki tekee vähän vahinkoa mutta parantaa/estää,
+			# joten matala vahinko ei ole "ali" jos utility (paran+vaimennus)/peli riittää.
+			var role: String = str(HeroDef.get_def(id).get("role", ""))
+			var util: float = (float(a["healing"]) + float(a["mitigated"])) / maxf(float(a["games"]), 1.0)
+			if not ((role == "Tuki" or role == "Tankki") and util >= 150.0):
+				flagged = true
+				lines.append("  Sankari '%s': vahinko/min %d (alle 0.4x keskiarvo %d) — mahd. ali (%s)" % [
+					id, int(dpm), int(mean_dpm), role if role != "" else "?"])
 	if not flagged:
 		lines.append("  Ei selkeitä anomalioita.")
 
 	lines.append("")
 	_hero_table(lines, agg, avg_min)
+	_survivability_table(lines, agg)
 	_ability_table(lines, agg)
 	return "\n".join(PackedStringArray(lines))
 
@@ -145,6 +152,41 @@ static func _hero_table(lines: Array, agg: Dictionary, avg_min: float) -> void:
 			int(float(a["jungle_damage"]) / g), int(float(a["healing"]) / g),
 			int(float(a["mitigated"]) / g), float(a["minion_kills"]) / g,
 			int(round(100.0 * float(a["wins"]) / g))])
+
+
+## Vahingon lähteet + selviytyminen: paljonko OTETTUA vahinkoa tuli sankareilta
+## vs torneilta vs minioneilta vs viidakko-olennoilta, kuka tappoi ja paljonko
+## CC:tä kärsittiin. Näkee ottaako AI turhia torni-/mob-osumia ja jää lukkoon.
+static func _survivability_table(lines: Array, agg: Dictionary) -> void:
+	lines.append("")
+	lines.append("=== VAHINGON LÄHTEET JA SELVIYTYMINEN (per sankari, per peli) ===")
+	lines.append("  OTETTU vahinko lähteittäin + tappajan tyyppi -> osaako AI varoa torneja/mobeja")
+	lines.append("  sankari  |otettu|sankar| torni| minio| neutr|%torni|%neutr| CC s |kuolT|kuolN|kuoll_s")
+	var rows: Array = agg.values()
+	rows.sort_custom(func(x, y): return float(x.get("taken_tower", 0)) > float(y.get("taken_tower", 0)))
+	var flags: Array = []
+	for a in rows:
+		var g: float = maxf(float(a["games"]), 1.0)
+		var taken: float = float(a["taken"])
+		var tower: float = float(a.get("taken_tower", 0))
+		var neutral: float = float(a.get("taken_neutral", 0))
+		var pct_t: float = 100.0 * tower / maxf(taken, 1.0)
+		var pct_n: float = 100.0 * neutral / maxf(taken, 1.0)
+		lines.append("  %-8s |%5d |%5d |%5d |%5d |%5d | %3.0f%% | %3.0f%% |%5.1f |%5.2f|%5.2f|%6.1f" % [
+			str(a["hero_id"]), int(taken / g), int(float(a.get("taken_hero", 0)) / g),
+			int(tower / g), int(float(a.get("taken_minion", 0)) / g), int(neutral / g),
+			pct_t, pct_n, float(a.get("cc_suffered", 0)) / g,
+			float(a.get("deaths_tower", 0)) / g, float(a.get("deaths_neutral", 0)) / g,
+			float(a.get("time_dead", 0)) / g])
+		if int(a["games"]) >= 3 and taken > 1.0:
+			if pct_t >= 22.0:
+				flags.append("  '%s': %.0f%% vahingosta TORNEILTA — dive-turva/positiointi?" % [str(a["hero_id"]), pct_t])
+			if pct_n >= 18.0:
+				flags.append("  '%s': %.0f%% vahingosta VIIDAKOSTA — varoo mobeja huonosti?" % [str(a["hero_id"]), pct_n])
+	if not flags.is_empty():
+		lines.append("  -- huomiot (AI ottaa turhia osumia) --")
+		for f in flags:
+			lines.append(str(f))
 
 
 ## Kykykohtainen taulukko: per sankari per slot käytöt/osumat/vahinko/parannus ja
@@ -222,7 +264,10 @@ static func _accumulate(agg: Dictionary, h: Dictionary, winner: int) -> void:
 		agg[id] = {"hero_id": id, "games": 0, "kos": 0.0, "deaths": 0.0,
 			"assists": 0.0, "damage": 0.0, "taken": 0.0, "structure_damage": 0.0,
 			"jungle_damage": 0.0, "mitigated": 0.0, "minion_kills": 0.0,
-			"healing": 0.0, "wins": 0}
+			"healing": 0.0, "wins": 0,
+			"taken_hero": 0.0, "taken_tower": 0.0, "taken_minion": 0.0,
+			"taken_neutral": 0.0, "deaths_tower": 0.0, "deaths_neutral": 0.0,
+			"cc_suffered": 0.0, "time_dead": 0.0}
 	var a: Dictionary = agg[id]
 	a["games"] += 1
 	a["kos"] += float(h["kos"])
@@ -235,6 +280,15 @@ static func _accumulate(agg: Dictionary, h: Dictionary, winner: int) -> void:
 	a["mitigated"] += float(h.get("mitigated", 0))
 	a["minion_kills"] += float(h["minion_kills"])
 	a["healing"] += float(h["healing"])
+	# Otetun vahingon lähteet + selviytyminen (.get -> vanhat snapshotit kelpaavat).
+	a["taken_hero"] += float(h.get("taken_hero", 0))
+	a["taken_tower"] += float(h.get("taken_tower", 0))
+	a["taken_minion"] += float(h.get("taken_minion", 0))
+	a["taken_neutral"] += float(h.get("taken_neutral", 0))
+	a["deaths_tower"] += float(h.get("deaths_tower", 0))
+	a["deaths_neutral"] += float(h.get("deaths_neutral", 0))
+	a["cc_suffered"] += float(h.get("cc_suffered", 0))
+	a["time_dead"] += float(h.get("time_dead", 0))
 	# Kykytelemetria per slot (basic/a1/a2/ult/dodge).
 	if h.has("slots"):
 		if not a.has("agg_slots"):

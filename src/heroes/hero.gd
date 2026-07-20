@@ -574,6 +574,7 @@ func apply_freeze(dur: float) -> void:
 	var before := frozen
 	frozen = maxf(frozen, dur)
 	_record_cc("stun", frozen - before)   # jäädytys = kova CC, kirjataan stuniksi
+	profile.stats.cc_suffered += frozen - before
 
 
 ## Kanavoitavat kykypaikat (pito ylläpitää). Oletuksena ei mitään.
@@ -801,6 +802,16 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 	hp -= amount
 	since_damage = 0.0
 	profile.stats.taken += amount
+	# Otettu vahinko lähteen mukaan (telemetria: ottaako AI turhia torni-/mob-osumia).
+	if source != null and is_instance_valid(source):
+		if source is Structure:
+			profile.stats.taken_tower += amount
+		elif source is Critter:
+			profile.stats.taken_neutral += amount
+		elif source is Minion:
+			profile.stats.taken_minion += amount
+		else:
+			profile.stats.taken_hero += amount
 	if res_type == "rage":
 		gain_res(amount * 0.6)
 	if kb > 0.0 and kb_dir != Vector2.ZERO:
@@ -880,12 +891,14 @@ func apply_root(duration: float) -> void:
 	arena.popup(global_position + Vector2(0, -60), "JUURTUNUT", Palette.BAD, 16)
 	AudioMgr.play("root", 0.08, 0.0, global_position)
 	_record_cc("root", root_timer - before)
+	profile.stats.cc_suffered += root_timer - before
 
 
 func apply_stun(duration: float) -> void:
 	var before := stun_timer
 	stun_timer = maxf(stun_timer, duration)
 	_record_cc("stun", stun_timer - before)
+	profile.stats.cc_suffered += stun_timer - before
 
 
 func apply_mark(duration: float, amp := 1.25) -> void:
@@ -950,6 +963,13 @@ func _knockout(source: Hero) -> void:
 	frozen = 0.0
 	respawn_timer = _respawn_delay()
 	profile.stats.deaths += 1
+	profile.stats.time_dead += respawn_timer   # kuolleena vietetty aika (snowball-mittari)
+	# Tappajan tyyppi (näkee kaatuvatko AI-unitit torneille/mobeille turhaan).
+	if source != null and is_instance_valid(source):
+		if source is Structure:
+			profile.stats.deaths_tower += 1
+		elif source is Critter:
+			profile.stats.deaths_neutral += 1
 	velocity = Vector2.ZERO
 	shield_hp = 0.0
 	guard_timer = 0.0
