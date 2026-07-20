@@ -58,6 +58,7 @@ var _mode: int = Mode.FIGHT
 var _target: Hero = null
 var _buff_target = null          # tavoiteltu FieldBuff (GET_BUFF-tilassa)
 var _jungle_target: Hero = null  # tavoiteltu viidakko-olento (leiri/pomo)
+var _defend_pos := Vector2.INF   # MOBA: uhatun oman rakennuksen sijainti (jos nimetty puolustaja)
 var _move := Vector2.ZERO
 var _aim := Vector2.RIGHT
 
@@ -218,9 +219,10 @@ func _assassin_should_dive(hero: Hero, arena) -> bool:
 ## Valitsee toimintatilan roolin ja tilanteen mukaan.
 func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	_lurk = false
-	# Nollaa viidakko-objektiivi joka päätöksessä; vain _decide_jungle asettaa
-	# sen uudelleen (esim. vetäytyvä botti ei jää hyökkäämään leiriä).
+	# Nollaa viidakko-objektiivi ja puolustuspiste joka päätöksessä; vain
+	# _decide_* asettaa ne uudelleen (esim. vetäytyvä botti ei jää leirille).
 	_jungle_target = null
+	_defend_pos = Vector2.INF
 	if hero.carrying:
 		_mode = Mode.CARRY
 		return
@@ -245,9 +247,9 @@ func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 		return
 
 	# MOBA: taistele lähellä olevia vihollisia, muuten työnnä linjaa kohti
-	# vihollisen tornia/nexusta.
+	# vihollisen tornia/nexusta (tai puolusta uhattua omaa rakennusta).
 	if arena.mode == "moba":
-		_decide_moba(hero, arena)
+		_decide_moba(hero, arena, bb)
 		return
 
 	# Kenttäbuffit: hae oman tiimin arvokas buffi tai riko vihollisen buffi.
@@ -365,8 +367,16 @@ func _jungle_value(hero: Hero, cr: Critter) -> float:
 
 ## MOBA-päätöksenteko: lähellä oleva vihollinen -> taistele; muuten työnnä
 ## linjaa hyökkäämällä lähintä tuhottavissa olevaa vihollisrakennusta.
-func _decide_moba(hero: Hero, arena) -> void:
+func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	_jungle_target = null
+	# PUOLUSTUS: jos oma rakennus on uhattu ja OLEN nimetty (lähin) puolustaja,
+	# kääerry puolustamaan — taistele viholliset pois rakennuksen luota. Vain yksi
+	# botti kerrallaan, joten koko joukkue ei hylkää linjaa.
+	if bb.defender == hero and bb.threatened_structure != null \
+			and is_instance_valid(bb.threatened_structure):
+		_defend_pos = bb.threatened_structure.global_position
+		_mode = Mode.FIGHT
+		return
 	if _is_support:
 		_mode = Mode.SUPPORT
 		return
@@ -377,8 +387,59 @@ func _decide_moba(hero: Hero, arena) -> void:
 	if enemy_hero != null:
 		_mode = Mode.FIGHT
 		return
-	_jungle_target = _pick_push_target(hero, arena)
+	# Viidakko-objektiivi (pomo = iso tiimibuffi, leirit = buffit) jos vaikeustaso
+	# tunnistaa sen ja se on arvokas & lähellä — MUUTEN työnnä linjaa. Näin
+	# jungle_focus vaikuttaa vihdoin MOBAssa: matalat tasot vain työntävät,
+	# korkeat kiistävät pomon ja buffit (osa botteista, ei koko joukkue kerralla).
+	_jungle_target = _pick_moba_objective(hero, arena)
+	if _jungle_target == null:
+		_jungle_target = _pick_push_target(hero, arena)
 	_mode = Mode.FIGHT
+
+
+## Viidakko-objektiivin valinta MOBAssa: PAIKALLINEN (ei koko kartan yli), jottei
+## botti hylkää linjaa. Pomo on iso palkinto (tiimibuffi) ja vaatii terveyden +
+## ryhmän; leirit ovat opportunistisia lähibuffeja. jungle_focus (vaikeustaso)
+## säätää sekä kantaman että sen uskaltaako pomon kimppuun.
+func _pick_moba_objective(hero: Hero, arena) -> Hero:
+	if jungle_focus < 0.05 or arena.critters.is_empty():
+		return null
+	var pos: Vector2 = hero.global_position
+	var max_travel: float = 350.0 + jungle_focus * 700.0
+	var best: Hero = null
+	var best_score := 0.0
+	for c in arena.critters:
+		var cr := c as Critter
+		if cr == null or not cr.alive:
+			continue
+		var d: float = pos.distance_to(cr.global_position)
+		if d > max_travel:
+			continue
+		var val: float = _moba_objective_value(hero, cr)
+		if val <= 0.0:
+			continue
+		var score: float = val - d * 0.12
+		if score > best_score:
+			best_score = score
+			best = cr
+	return best
+
+
+func _moba_objective_value(hero: Hero, cr: Critter) -> float:
+	match cr.kind:
+		Critter.Kind.BOSS:
+			# Iso tiimibuffi -> korkein prioriteetti, mutta vaarallinen: vain
+			# terveenä ja mieluiten ryhmässä (vain korkein taso uskaltaa yksin).
+			var strong: bool = hero.hp > hero.max_hp * 0.55 and jungle_focus >= 0.4
+			var grouped: bool = _allies_near(hero, cr.global_position, 460.0) >= 1
+			if strong and (grouped or jungle_focus >= 0.85):
+				return 300.0
+			return 0.0
+		Critter.Kind.DAMAGE_CAMP:
+			return 110.0 if hero.hp > hero.max_hp * 0.5 else 0.0   # opportunistinen buffi
+		Critter.Kind.POINTS_CAMP:
+			return 60.0   # pisteet vain 3. tason tiebreak -> matala prioriteetti
+	return 0.0
 
 
 ## Lähin tuhottavissa oleva vihollisrakennus (torni ensin, nexus vasta avattuna).
@@ -732,6 +793,20 @@ func _retreat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vecto
 		away = pos - _target.global_position
 	elif bb.threat_center != Vector2.ZERO:
 		away = pos - bb.threat_center
+	# MOBA: vetäydy kohti OMAA tukikohtaa — ei reliikin piilopaikkaan (0,0) eikä
+	# "pois uhasta" -suuntaan joka voi viedä SYVEMMÄLLE vihollisen alueelle.
+	# Sekoita pako + kotisuunta -> palaa käytävää pitkin kotiin.
+	if arena.mode == "moba":
+		var home: Vector2 = arena.map.spawn_point(hero.team, 0)
+		var to_home: Vector2 = home - pos
+		var dir: Vector2 = to_home
+		if away.length() > 1.0 and to_home.length() > 1.0:
+			dir = away.normalized() * 0.5 + to_home.normalized()
+		if dir.length() < 1.0:
+			dir = to_home
+		if dir.length() < 1.0:
+			return home
+		return arena.map.clamp_to_field(pos + dir.normalized() * 300.0, 100.0)
 	if away.length() < 1.0:
 		# Ei uhkaa: palaa peliin (reliikki/keskusta), älä jää nurkkaan.
 		return arena.relic.global_position
@@ -833,6 +908,20 @@ func _moba_frontline_ally(hero: Hero, arena, aim_pos: Vector2) -> Hero:
 
 ## Taisteluasemointi: lähesty kohdetta roolin ihannematkalle. Tankki peelaa.
 func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector2:
+	# PUOLUSTUS (MOBA): pysy uhatun oman rakennuksen luona. Taistele kohdetta vain
+	# jos se on lähellä rakennusta; muuten asetu rakennuksen ja uhkasuunnan väliin
+	# (odota hyökkääjää siellä, älä lähde perään syvälle).
+	if is_finite(_defend_pos.x):
+		var enemy_at_base: bool = _target != null and is_instance_valid(_target) \
+			and _target.global_position.distance_to(_defend_pos) < 520.0
+		if not enemy_at_base:
+			var d2: Vector2 = bb.threat_center - _defend_pos
+			if d2.length() < 1.0:
+				d2 = Vector2.ZERO - _defend_pos   # kohti keskustaa jos ei uhkapistettä
+			if d2.length() < 1.0:
+				return _defend_pos
+			return _defend_pos + d2.normalized() * 140.0
+
 	# Tankin peel: jos vihollinen uhkaa suojeltavaa, asetu väliin. Ei rakennuksia
 	# vastaan (tornia ei "peelata" — sitä työnnetään).
 	if _is_tank and bb.protect_ally != null and bb.protect_ally != hero \
@@ -845,6 +934,8 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 	if _target == null or not is_instance_valid(_target):
 		if bb.own_carrier != null and is_instance_valid(bb.own_carrier):
 			return bb.own_carrier.global_position
+		if arena.mode == "moba":
+			return arena.map.spawn_point(hero.team, 0)   # ei reliikkiä (0,0) MOBAssa
 		return arena.relic.global_position
 
 	var dist: float = pos.distance_to(_target.global_position)

@@ -16,6 +16,8 @@ var focus_target: Hero = null      # joukkueen keskitetyn tulen kohde (focus fir
 var threat_center := Vector2.ZERO  # elossa olevien vihollisten painopiste
 var retreat_pos := Vector2.ZERO
 var alert_timer := 0.0             # hetkellinen hälytystila (reliikki vaihtoi omistajaa)
+var threatened_structure = null    # oma rakennus jota vihollissankari juuri uhkaa (MOBA)
+var defender: Hero = null          # lähin liittolainen nimetty puolustamaan sitä
 
 
 func setup(p_arena, p_team: int) -> void:
@@ -101,6 +103,39 @@ func update(delta: float) -> void:
 			if score > best_score:
 				best_score = score
 				focus_target = enemy
+
+	# MOBA: uhattu oma rakennus + nimetty puolustaja. Rakennus on "uhattu" jos
+	# vihollissankari on juuri (viim. 3 s) osunut siihen. Nimetään VAIN lähin
+	# liittolainen puolustamaan -> koko joukkue ei romahda kotiin.
+	threatened_structure = null
+	defender = null
+	if arena.mode == "moba":
+		var now: float = Time.get_ticks_msec() / 1000.0
+		var worst := -1.0
+		for st in arena.structures:
+			var s := st as Structure
+			if s == null or not s.alive or s.team != team:
+				continue
+			var hit := false
+			for entry in s._recent_damagers:
+				var h = entry.hero
+				if is_instance_valid(h) and h.alive and not h.is_unit \
+						and h.team != team and now - float(entry.time) < 3.0:
+					hit = true
+					break
+			if not hit:
+				continue
+			var pri: float = s.max_hp   # nexus 1600 > torni 900 -> nexus etusijalla
+			if pri > worst:
+				worst = pri
+				threatened_structure = s
+		if threatened_structure != null and not allies.is_empty():
+			var best_d := 1.0e20
+			for ally in allies:
+				var dd: float = ally.global_position.distance_to(threatened_structure.global_position)
+				if dd < best_d:
+					best_d = dd
+					defender = ally
 
 
 func on_relic_taken(_hero) -> void:
