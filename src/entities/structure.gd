@@ -9,7 +9,9 @@ extends Hero
 
 enum Kind { TOWER, NEXUS }
 
-const SHOT_RANGE := 360.0
+const SHOT_RANGE := 440.0      # kasvatettu (oli 360: liian moni pystyi pokettamaan
+                              # tornia turvassa ulkopuolelta). Ei ylety silti pisimmän
+                              # kantaman piiritykseen (scout/quill) — se on tarkoituksellista.
 const SHOT_DMG := 88.0         # kova: tornin alla EI kannata ottaa iskuja (turva-alue)
 const RAMP_STEP := 0.30        # sama sankari peräkkäin -> +30 % / isku (LoL-ramppaus)
 const RAMP_MAX := 3            # ramppauksen katto (enintään ~1.9x)
@@ -40,6 +42,7 @@ var _ramp_target: Hero = null # ramppaus: sama sankari peräkkäin -> kovemmin
 var _ramp := 0
 var _laser_t := 0.0           # nexus-laserin tikitys
 var _laser_target: Hero = null # nexus-laserin nykyinen kohde (visuaalia varten)
+var _anchor := Vector2.ZERO   # kiinnityspiste: rakennus ei liiku KOSKAAN tästä
 
 
 func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2) -> void:
@@ -87,6 +90,7 @@ func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2) -> void:
 	add_child(vis)
 
 	global_position = pos
+	_anchor = pos
 
 
 func _sname() -> String:
@@ -120,6 +124,11 @@ func is_protected() -> bool:
 ## loppuvaiheessa ja ampuu kun lataus on täynnä. Kohdejärjestys: liittolaisen
 ## puolustus (LoL) > minionit > lähin vihollissankari.
 func _passive_update(delta: float) -> void:
+	# Rakennus ei liiku KOSKAAN: peru mahdollinen töytäisy/depenetraatio joka
+	# ruudulla (yksiköt/sankarit tunkeutuvat törmäyskehään -> move_and_slide
+	# nyhtäisi rakennusta). Aiemmin tornit/nexus saattoivat valua paikoiltaan.
+	global_position = _anchor
+	velocity = Vector2.ZERO
 	if kind == Kind.NEXUS:
 		_nexus_laser(delta)
 		return
