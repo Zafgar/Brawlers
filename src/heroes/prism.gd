@@ -92,11 +92,14 @@ func _ability1(dir: Vector2) -> void:
 
 
 ## Botti-vara: kertapurske hoitosädettä heikoimman liittolaisen suuntaan.
-func _ability2(dir: Vector2) -> void:
-	var beam_dir := dir
+## HUOM: hoitosäde tähdätään AINA liittolaiseen. Jos parannettavaa liittolaista
+## ei ole, sädettä EI ammuta lainkaan — ettei vihreä hoitosäde lähde vihollista
+## tai viidakko-olentoa kohti (näytti "healaavan hirviötä" + hukkasi loitsun).
+func _ability2(_dir: Vector2) -> void:
 	var low := _lowest_ally()
-	if low != null:
-		beam_dir = (low.global_position - global_position).normalized()
+	if low == null:
+		return
+	var beam_dir: Vector2 = (low.global_position - global_position).normalized()
 	AudioMgr.play("heal", 0.1)
 	Fx.beam(arena, global_position + beam_dir * 20.0, global_position + beam_dir * BEAM_RANGE,
 		Color("6affa0"), 8.0)
