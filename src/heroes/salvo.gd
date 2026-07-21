@@ -7,7 +7,9 @@ extends Hero
 
 const MAX_MINES := 5
 const THROW_DIST := 210.0
-const MINE_DMG := 52.0
+# Sweepissä Salvo yhdisti korkeimman vahinko/min-arvon, 79 % voitot ja vähäiset
+# kuolemat. Pieni noin 10 % vahinkoleikkaus säilyttää kitin mutta laskee burstia.
+const MINE_DMG := 47.0
 const MINE_BLAST := 132.0
 const MINE_TRIGGER := 80.0
 
@@ -15,7 +17,7 @@ const HOVER_DUR := 1.2
 const HOVER_SLOW := 0.6
 
 const ROCKET_LIFE := 8.0
-const ROCKET_DMG := 155.0
+const ROCKET_DMG := 140.0
 const ROCKET_BLAST := 215.0
 const ROCKET_SPEED := 270.0
 const ROCKET_TURN := 3.4
