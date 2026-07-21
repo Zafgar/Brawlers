@@ -59,6 +59,22 @@ func setup(p_arena) -> void:
 	_feed_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_feed_box)
 
+	# LoL-tyylinen kykypalkki (oman hahmon HP/resurssi/ulti + kyvyt jäähdytyksineen)
+	# alakeskelle, ja minimap oikeaan alakulmaan.
+	var abil := AbilityBar.new()
+	abil.arena = arena
+	abil.size = Vector2(540.0, 118.0)
+	abil.position = Vector2(960.0 - 270.0, 1080.0 - 118.0 - 10.0)
+	abil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(abil)
+
+	var mini := Minimap.new()
+	mini.arena = arena
+	mini.size = Vector2(216.0, 216.0)
+	mini.position = Vector2(1920.0 - 216.0 - 12.0, 1080.0 - 216.0 - 12.0)
+	mini.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(mini)
+
 
 ## Iso banneri ruudun yläkolmanteen: "ERÄ 1", "SININEN VOITTAA ERÄN!" jne.
 func show_banner(big: String, small := "", dur := 2.0) -> void:
@@ -278,3 +294,203 @@ class BuffStrip:
 		draw_colored_polygon(PackedVector2Array([
 			c + Vector2(0, -6), c + Vector2(5, 0), c + Vector2(0, 6), c + Vector2(-5, 0)]),
 			Palette.glow(col, 1.4))
+
+
+## LoL-tyylinen kykypalkki oman hahmon alle: HP + resurssi + ultti-palkit ja viisi
+## kykyruutua (perus/a1/a2/ult/väistö) jäähdytyksineen, näppäinvihjeineen ja
+## nimineen. Näyttää PAIKALLISEN ihmispelaajan hahmon (näppäimistö etusijalla).
+class AbilityBar:
+	extends Control
+
+	var arena = null
+	var _time := 0.0
+
+	func _process(delta: float) -> void:
+		_time += delta
+		queue_redraw()
+
+	func _local_hero():
+		if arena == null:
+			return null
+		var kb = null
+		var first = null
+		for h in arena.heroes:
+			if not is_instance_valid(h) or h.profile == null or h.profile.is_bot:
+				continue
+			if first == null:
+				first = h
+			if h.profile.device == -1:
+				kb = h
+		return kb if kb != null else first
+
+	func _draw() -> void:
+		var hero = _local_hero()
+		if hero == null or not is_instance_valid(hero):
+			return
+		var w := size.x
+		var h := size.y
+		var c: Color = hero.hero_color()
+		var bg := StyleBoxFlat.new()
+		bg.bg_color = Palette.with_alpha(Palette.UI_PANEL, 0.82)
+		bg.set_corner_radius_all(14)
+		bg.border_color = Palette.with_alpha(c, 0.55)
+		bg.set_border_width_all(2)
+		bg.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
+
+		# Muotokuva (väripallo) vasemmalle.
+		var pc := Vector2(40.0, h / 2.0)
+		draw_circle(pc, 30.0, Palette.darker(c, 0.55))
+		draw_circle(pc, 25.0, c)
+		draw_arc(pc, 30.0, 0.0, TAU, 30, Palette.glow(c, 1.3), 2.5)
+		var initial: String = str(hero.hero_id).substr(0, 1).to_upper()
+		UiKit.draw_text(self, pc, initial, 24, Palette.TEXT_MAIN, true, 3)
+
+		# Palkit (HP, resurssi, ultti) muotokuvan oikealle.
+		var bx := 80.0
+		var bw := w - bx - 14.0
+		var by := 12.0
+		var hp_frac: float = clampf(hero.hp / maxf(hero.max_hp, 1.0), 0.0, 1.0)
+		draw_rect(Rect2(bx, by, bw, 13.0), Color(0, 0, 0, 0.5))
+		draw_rect(Rect2(bx, by, bw * hp_frac, 13.0), _hp_color(hp_frac))
+		UiKit.draw_text(self, Vector2(bx + bw / 2.0, by + 6.5),
+			"%d / %d" % [int(hero.hp), int(hero.max_hp)], 11, Palette.TEXT_MAIN, true)
+		by += 17.0
+		if hero.res_type != "" and hero.res_max > 0.0:
+			var rf: float = clampf(hero.res / hero.res_max, 0.0, 1.0)
+			draw_rect(Rect2(bx, by, bw, 8.0), Color(0, 0, 0, 0.5))
+			draw_rect(Rect2(bx, by, bw * rf, 8.0), _res_color(hero.res_type))
+			by += 11.0
+		var uf: float = hero.ult_charge / 100.0
+		draw_rect(Rect2(bx, by, bw, 6.0), Color(0, 0, 0, 0.5))
+		var uc: Color = Palette.GOLD if uf < 1.0 else Palette.glow(Palette.GOLD, 1.3 + 0.3 * sin(_time * 6.0))
+		draw_rect(Rect2(bx, by, bw * uf, 6.0), Palette.with_alpha(uc, 0.95))
+
+		# Kykyruudut (perus/a1/a2/ult/väistö).
+		var slots := _slot_data(hero)
+		var n := slots.size()
+		var sz := 46.0
+		var gap := 9.0
+		var total := n * sz + (n - 1) * gap
+		var sx := bx + (bw - total) / 2.0
+		var sy := h - sz - 18.0
+		for i in range(n):
+			_draw_slot(Vector2(sx + i * (sz + gap), sy), sz, slots[i])
+
+	func _slot_data(hero) -> Array:
+		var pad: bool = hero.profile.device >= 0
+		var ab: Dictionary = HeroDef.get_def(hero.hero_id)["abilities"]
+		var c: Color = hero.hero_color()
+		var keys := {
+			"basic": "R2" if pad else "Hiiri V", "a1": "R1" if pad else "Hiiri O",
+			"a2": "L1" if pad else "Q", "ult": "L2" if pad else "E",
+			"dodge": "X" if pad else "Väli"}
+		var out: Array = []
+		for slot in ["basic", "a1", "a2", "ult", "dodge"]:
+			var col: Color = c
+			var frac: float
+			var cd: float = 0.0
+			if slot == "ult":
+				col = Palette.GOLD
+				frac = hero.ult_charge / 100.0
+			else:
+				col = Palette.glow(c, 1.15) if slot == "dodge" else c
+				var cur: float = hero.cd[slot]
+				var mx: float = maxf(hero.cd_max[slot], 0.001)
+				frac = clampf(1.0 - cur / mx, 0.0, 1.0)
+				cd = cur
+			out.append({"name": str(ab[slot]["name"]), "key": str(keys[slot]),
+				"frac": frac, "cd": cd, "color": col, "ult": slot == "ult"})
+		return out
+
+	func _draw_slot(pos: Vector2, sz: float, d: Dictionary) -> void:
+		var base: Color = d["color"]
+		var frac: float = clampf(float(d["frac"]), 0.0, 1.0)
+		var ready: bool = frac >= 0.999
+		var box := StyleBoxFlat.new()
+		box.bg_color = Palette.with_alpha(Palette.darker(base, 0.5), 0.92) if ready \
+			else Color(0.05, 0.06, 0.11, 0.92)
+		box.set_corner_radius_all(9)
+		box.border_color = Palette.glow(base, 1.3) if ready else Palette.with_alpha(base, 0.5)
+		box.set_border_width_all(2)
+		box.draw(get_canvas_item(), Rect2(pos, Vector2(sz, sz)))
+		var cen := pos + Vector2(sz / 2.0, sz / 2.0)
+		if not ready:
+			# Jäähdytys: tumma peitto alhaalta + latauskaari + sekuntiluku.
+			var cover: float = (1.0 - frac) * sz
+			draw_rect(Rect2(pos.x, pos.y, sz, cover), Color(0, 0, 0, 0.55))
+			draw_arc(cen, sz * 0.42, -PI * 0.5, -PI * 0.5 + TAU * frac, 24,
+				Palette.with_alpha(base, 0.8), 2.5)
+			if float(d["cd"]) > 0.3:
+				UiKit.draw_text(self, cen, str(int(ceil(float(d["cd"])))), 18,
+					Palette.TEXT_MAIN, true, 3)
+		elif bool(d["ult"]):
+			draw_arc(cen, sz * 0.46, 0.0, TAU, 28,
+				Palette.glow(Palette.GOLD, 1.35 + 0.25 * sin(_time * 6.0)), 2.5)
+		# Näppäinvihje ruudun sisään alas, nimi ruudun alle.
+		UiKit.draw_text(self, pos + Vector2(sz / 2.0, sz - 9.0), str(d["key"]), 10,
+			Palette.TEXT_DIM, true)
+		UiKit.draw_text(self, pos + Vector2(sz / 2.0, sz + 8.0), str(d["name"]), 9,
+			Palette.with_alpha(Palette.TEXT_DIM, 0.85), true)
+
+	func _hp_color(frac: float) -> Color:
+		if frac > 0.5:
+			return Color("5fd07a")
+		return Color("e0a13a") if frac > 0.25 else Color("e05a5a")
+
+	func _res_color(t: String) -> Color:
+		match t:
+			"mana":
+				return Color("5b8cff")
+			"energy":
+				return Color("4ad4ff")
+			"rage":
+				return Color("ff6b3d")
+		return Palette.TEXT_DIM
+
+
+## Minimap oikeaan alakulmaan: kartan alue + sankaripisteet (joukkuevärit) +
+## rakennukset (MOBA). Omat ihmispelaajat korostettu renkaalla.
+class Minimap:
+	extends Control
+
+	var arena = null
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		if arena == null or arena.map == null:
+			return
+		var bg := StyleBoxFlat.new()
+		bg.bg_color = Palette.with_alpha(Palette.UI_PANEL, 0.82)
+		bg.set_corner_radius_all(10)
+		bg.border_color = Palette.UI_STROKE
+		bg.set_border_width_all(2)
+		bg.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
+
+		var msz: Vector2 = arena.map.size()
+		var pad := 8.0
+		var inner: Vector2 = size - Vector2(pad * 2.0, pad * 2.0)
+		var sc: float = minf(inner.x / msz.x, inner.y / msz.y)
+		var origin: Vector2 = Vector2(pad, pad) + (inner - msz * sc) * 0.5
+		# Kartan lattia.
+		draw_rect(Rect2(origin, msz * sc), Color(0, 0, 0, 0.3))
+
+		# Rakennukset (MOBA): neliöt joukkuevärillä.
+		if "structures" in arena:
+			for st in arena.structures:
+				if not is_instance_valid(st) or not st.alive:
+					continue
+				var sp: Vector2 = origin + (st.global_position + msz * 0.5) * sc
+				draw_rect(Rect2(sp - Vector2(3.0, 3.0), Vector2(6.0, 6.0)),
+					Palette.glow(Palette.team(st.team), 1.2))
+
+		# Sankarit: pisteet joukkuevärillä; omat pelaajat korostettu.
+		for hh in arena.heroes:
+			if not is_instance_valid(hh) or not hh.alive or hh.is_unit:
+				continue
+			var p: Vector2 = origin + (hh.global_position + msz * 0.5) * sc
+			var col: Color = Palette.team(hh.team)
+			draw_circle(p, 4.0, col)
+			if hh.profile != null and not hh.profile.is_bot:
+				draw_arc(p, 6.5, 0.0, TAU, 14, Palette.glow(col, 1.4), 1.5)
