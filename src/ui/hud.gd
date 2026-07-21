@@ -10,6 +10,8 @@ var arena = null
 var _root: Control = null
 var _score_panel: Control = null
 var _feed_box: VBoxContainer = null
+var _pane_bars: Array = []         # jaettu ruutu: kykypalkki per ruutu
+var _pane_minis: Array = []        # jaettu ruutu: minimap per ruutu
 
 
 func setup(p_arena) -> void:
@@ -61,19 +63,65 @@ func setup(p_arena) -> void:
 
 	# LoL-tyylinen kykypalkki (oman hahmon HP/resurssi/ulti + kyvyt jäähdytyksineen)
 	# alakeskelle, ja minimap oikeaan alakulmaan.
-	var abil := AbilityBar.new()
-	abil.arena = arena
-	abil.size = Vector2(540.0, 118.0)
-	abil.position = Vector2(960.0 - 270.0, 1080.0 - 118.0 - 10.0)
-	abil.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(abil)
+	if arena.hosted:
+		# Jaettu ruutu: yksi kykypalkki + minimap PER RUUTU, sidottuna kyseisen
+		# ruudun pelaajaan. SplitView asemoi ne layout_panes-kutsulla.
+		for i in range(4):
+			var pb := AbilityBar.new()
+			pb.arena = arena
+			pb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			pb.visible = false
+			_root.add_child(pb)
+			_pane_bars.append(pb)
+			var pm := Minimap.new()
+			pm.arena = arena
+			pm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			pm.visible = false
+			_root.add_child(pm)
+			_pane_minis.append(pm)
+	else:
+		var abil := AbilityBar.new()
+		abil.arena = arena
+		abil.size = Vector2(540.0, 118.0)
+		abil.position = Vector2(960.0 - 270.0, 1080.0 - 118.0 - 10.0)
+		abil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_root.add_child(abil)
 
-	var mini := Minimap.new()
-	mini.arena = arena
-	mini.size = Vector2(216.0, 216.0)
-	mini.position = Vector2(1920.0 - 216.0 - 12.0, 1080.0 - 216.0 - 12.0)
-	mini.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(mini)
+		var mini := Minimap.new()
+		mini.arena = arena
+		mini.size = Vector2(216.0, 216.0)
+		mini.position = Vector2(1920.0 - 216.0 - 12.0, 1080.0 - 216.0 - 12.0)
+		mini.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_root.add_child(mini)
+
+
+## Jaettu ruutu: asemoi ja sido per-ruutu kykypalkit + minimapit. rects = ruutujen
+## suorakulmiot ruudulla, heroes = kunkin ruudun pelaaja (sama indeksointi).
+## Kutsutaan SplitViewistä kun ruutujako muuttuu.
+func layout_panes(rects: Array, heroes: Array) -> void:
+	for i in range(_pane_bars.size()):
+		var bar: Control = _pane_bars[i]
+		var mini: Control = _pane_minis[i]
+		var active: bool = i < rects.size()
+		bar.visible = active
+		mini.visible = active
+		if not active:
+			continue
+		var rect: Rect2 = rects[i]
+		bar.bound_hero = heroes[i] if i < heroes.size() else null
+		# Kykypalkki: skaalaa ruudun leveyteen, alakeskelle.
+		var bw: float = clampf(rect.size.x * 0.62, 300.0, 540.0)
+		var bh: float = clampf(bw * 0.22, 78.0, 118.0)
+		bar.size = Vector2(bw, bh)
+		bar.position = Vector2(
+			rect.position.x + (rect.size.x - bw) / 2.0,
+			rect.position.y + rect.size.y - bh - 10.0)
+		# Minimap: skaalaa ruudun kokoon, oikeaan alakulmaan.
+		var ms: float = clampf(minf(rect.size.x, rect.size.y) * 0.24, 132.0, 216.0)
+		mini.size = Vector2(ms, ms)
+		mini.position = Vector2(
+			rect.position.x + rect.size.x - ms - 12.0,
+			rect.position.y + rect.size.y - ms - 12.0)
 
 
 ## Iso banneri ruudun yläkolmanteen: "ERÄ 1", "SININEN VOITTAA ERÄN!" jne.
@@ -303,6 +351,7 @@ class AbilityBar:
 	extends Control
 
 	var arena = null
+	var bound_hero = null            # jaetussa ruudussa: sidottu kyseisen ruudun pelaajaan
 	var _time := 0.0
 
 	func _process(delta: float) -> void:
@@ -310,6 +359,9 @@ class AbilityBar:
 		queue_redraw()
 
 	func _local_hero():
+		# Jaetussa ruudussa palkki on sidottu tietyn ruudun pelaajaan.
+		if bound_hero != null and is_instance_valid(bound_hero):
+			return bound_hero
 		if arena == null:
 			return null
 		var kb = null

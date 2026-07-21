@@ -122,6 +122,19 @@ func _apply_layout() -> void:
 		if active:
 			_conts[i].position = rects[i].position
 			_conts[i].size = rects[i].size
+	_layout_pane_huds(rects)
+
+
+## Asemoi per-ruutu-HUDit (kykypalkki + minimap) kunkin ruudun rectiin ja sitoo
+## palkin kyseisen ruudun pelaajaan. Kutsutaan aina kun ruutujako muuttuu.
+func _layout_pane_huds(rects: Array) -> void:
+	if arena == null or arena.hud == null or not arena.hud.has_method("layout_panes"):
+		return
+	var cs := _clusters()
+	var heroes: Array = []
+	for g in cs:
+		heroes.append(g[0] if not g.is_empty() else null)
+	arena.hud.layout_panes(rects, heroes)
 
 
 ## Ruutujen suorakulmiot annetulle määrälle: 1 = koko ruutu, 2 = vasen/oikea,
