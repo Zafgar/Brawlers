@@ -697,9 +697,14 @@ func dash(dir: Vector2, speed: float, duration: float, with_iframes := false, ph
 	dash_velocity = dir.normalized() * speed
 	if with_iframes:
 		iframes = maxf(iframes, duration + 0.05)
-	if phase_walls and not _phase_walls:
-		_phase_walls = true
-		set_collision_mask_value(1, false)   # ohita seinät syöksyn ajaksi
+	# Sovita seinä-faasi TÄHÄN syöksyyn (ei peritä edellisestä): faasi-syöksy
+	# ottaa faasin päälle, ei-faasi-syöksy keskeyttää mahdollisen aiemman faasin.
+	if phase_walls:
+		if not _phase_walls:
+			_phase_walls = true
+			set_collision_mask_value(1, false)   # ohita seinät syöksyn ajaksi
+	elif _phase_walls:
+		_end_phase()
 	visual.squash(0.75, 1.25)
 
 
@@ -1146,6 +1151,8 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 		cd[slot] = 0.0
 	set_collision_layer_value(2, true)
 	set_collision_mask_value(2, true)
+	set_collision_mask_value(1, true)   # varmista seinätörmäys (jos erä vaihtui syöksyn aikana)
+	_phase_walls = false
 	_recent_damagers.clear()
 	global_position = arena.map.spawn_point(team, profile.index)
 
