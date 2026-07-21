@@ -47,6 +47,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_obsidian(ci, center, r)
 		"lance":
 			_lance(ci, center, r)
+		"salvo":
+			_salvo(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -347,6 +349,37 @@ static func _scout(ci: CanvasItem, center: Vector2, r: float) -> void:
 		var d := Vector2.RIGHT.rotated(ang)
 		ci.draw_line(center + d * r * 0.5, center + d * r * 1.0, INK, r * 0.1)
 	ci.draw_circle(center, r * 0.15, INK)
+
+
+## Salvo: pystyssä oleva ohjus — kärki, runko, evät ja peräliekki.
+static func _salvo(ci: CanvasItem, center: Vector2, r: float) -> void:
+	var s := r * 0.9
+	# Runko
+	var body := PackedVector2Array([
+		center + Vector2(0, -0.95) * s,
+		center + Vector2(0.32, -0.5) * s,
+		center + Vector2(0.32, 0.45) * s,
+		center + Vector2(-0.32, 0.45) * s,
+		center + Vector2(-0.32, -0.5) * s,
+	])
+	var shadow := PackedVector2Array()
+	for p in body:
+		shadow.append(p + Vector2(0, s * 0.05))
+	ci.draw_colored_polygon(shadow, SHADE)
+	ci.draw_colored_polygon(body, INK)
+	# Evät
+	ci.draw_colored_polygon(PackedVector2Array([
+		center + Vector2(-0.32, 0.12) * s, center + Vector2(-0.66, 0.5) * s,
+		center + Vector2(-0.32, 0.45) * s]), INK)
+	ci.draw_colored_polygon(PackedVector2Array([
+		center + Vector2(0.32, 0.12) * s, center + Vector2(0.66, 0.5) * s,
+		center + Vector2(0.32, 0.45) * s]), INK)
+	# Ikkuna
+	ci.draw_circle(center + Vector2(0, -0.35) * s, s * 0.16, SHADE)
+	# Peräliekki
+	ci.draw_colored_polygon(PackedVector2Array([
+		center + Vector2(-0.2, 0.45) * s, center + Vector2(0, 0.95) * s,
+		center + Vector2(0.2, 0.45) * s]), Color("ff9b3a"))
 
 
 ## Lance: vinottain kulkeva keihäs, jonka kärjessä on kaksintaistelumerkki.

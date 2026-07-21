@@ -6,7 +6,7 @@ class_name HeroDef
 const ORDER := [
 	"bastion", "ember", "luma", "blink", "bramble", "quill",
 	"boulder", "volt", "maestro", "shade", "tide", "scout",
-	"prism", "rift", "titan", "hush", "obsidian", "lance",
+	"prism", "rift", "titan", "hush", "obsidian", "lance", "salvo",
 ]
 
 const HEROES := {
@@ -350,6 +350,25 @@ const HEROES := {
 			"a2": {"name": "Pyörremyrsky", "desc": "Pyörivä keihäs vahingoittaa ja vaimentaa lähiviholliset sekä merkitsee heidät. Kuluttaa raivoa.", "cd": 8.0},
 			"dodge": {"name": "Sivuloikka", "desc": "Nopea väistöloikka.", "cd": 4.0},
 			"ult": {"name": "Taivaankeihäs", "desc": "Loikkaa kaukaa tähdättyyn pisteeseen ja iskee alas aluevahingolla ja tainnutuksella; Lance saa iskunopeusbuffin. Tähtää pitämällä ulttinappi pohjassa.", "cd": 0.0},
+		},
+	},
+	"salvo": {
+		"name": "Salvo",
+		"role": "Ranger",
+		"difficulty": 3,
+		"hp": 175.0,
+		"speed": 330.0,
+		"ratings": {"kesto": 2, "liike": 3, "vahinko": 5, "tuki": 2},
+		"weapon": "Miinanheitin",
+		"desc": "Tuhotyöläinen. Kylvää miinoja ja räjäyttää ne kerralla, leijuu kohdistamattomana ja ohjaa ultissa maan alta hidasta ohjusta.",
+		"color": Color("e8722e"),
+		"color_b": Color("5c2a10"),
+		"abilities": {
+			"basic": {"name": "Kranaatti", "desc": "Suora kranaattiammus.", "cd": 0.45},
+			"a1": {"name": "Miina", "desc": "Heittää miinan, joka laukeaa vihollisen lähestyessä. Enintään 5 kentällä; kun raja täyttyy, vanhin räjähtää tehden tilaa.", "cd": 1.3},
+			"a2": {"name": "Räjäytä kaikki", "desc": "Laukaisee kaikki kentällä olevat miinat kerralla.", "cd": 5.0},
+			"dodge": {"name": "Leijunta", "desc": "Nousee ilmaan kohdistamattomaksi (immuuni) hetkeksi ja liikkuu kelluen — voi käyttää kykyjä ilmassa. Pitkä jäähdytys.", "cd": 8.0},
+			"ult": {"name": "Ohjusisku", "desc": "Kaivautuu maan alle ja ohjaa hidasta ohjusta, joka kulkee seinien ja tornien läpi ja osuu vain vihollisiin ja viidakko-olentoihin. Valtava aluevahinko. Ohjaa liikenäppäimillä.", "cd": 0.0},
 		},
 	},
 }

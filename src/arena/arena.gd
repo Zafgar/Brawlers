@@ -229,6 +229,8 @@ func _make_hero(id: String) -> Hero:
 			return Obsidian.new()
 		"lance":
 			return Lance.new()
+		"salvo":
+			return Salvo.new()
 	return Hero.new()
 
 

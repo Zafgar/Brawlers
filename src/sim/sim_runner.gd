@@ -225,9 +225,9 @@ func _role_pool(cat: String) -> Array:
 		"fighter":
 			return ["bramble", "tide", "lance"]
 		"ranger":
-			return ["quill", "scout"]
+			return ["quill", "scout", "salvo"]
 		"damage":
-			return ["ember", "volt", "blink", "shade", "rift", "bramble", "tide", "lance", "quill", "scout"]
+			return ["ember", "volt", "blink", "shade", "rift", "bramble", "tide", "lance", "quill", "scout", "salvo"]
 	return HeroDef.ORDER.duplicate()
 
 

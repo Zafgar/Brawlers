@@ -1244,6 +1244,9 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 		"lance":
 			# Taivaankeihäs: loikkaa kohteeseen kun se on kantamalla (ult-range ~520).
 			return dist < 540.0 and (near_enemies >= 1 or _target_is_hero())
+		"salvo":
+			# Ohjusisku: laukaise kun vihollisia on lähistöllä (ohjus ohjautuu niitä kohti).
+			return near_enemies >= 1 or dist < 520.0
 	return near_enemies >= 2
 
 
@@ -1304,6 +1307,9 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"lance":
 			# Lävistyssyöksy: syöksy vihollisen läpi keskietäisyydeltä (merkit).
 			return dist > 120.0 and dist < 460.0
+		"salvo":
+			# Miina: kylvä miinoja vihollisen suuntaan keskietäisyydeltä.
+			return dist > 100.0 and dist < 450.0
 	return false
 
 
@@ -1357,8 +1363,11 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 			# Kiviho: kertakäyttöinen torjunta/heijastus kun vihollinen on lähellä.
 			return dist < 220.0 and hero.res > 35.0
 		"lance":
-			# Pyörremyrsky: lähitaistelun AoE + vaimennus + merkit.
-			return dist < 175.0 and hero.res > 38.0
+			# Pyörremyrsky: lähitaistelun AoE + vaimennus + merkit (maksaa 40 raivoa).
+			return dist < 175.0 and hero.res >= 40.0
+		"salvo":
+			# Räjäytä kaikki: kun miinoja on kentällä ja vihollinen lähellä niitä.
+			return dist < 320.0 and (hero as Salvo)._mines.size() >= 2
 	return false
 
 

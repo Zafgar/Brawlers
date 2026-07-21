@@ -149,6 +149,7 @@ var duel_marks := 0
 var duel_mark_timer := 0.0
 var duel_marker: Hero = null
 var frozen := 0.0                  # ajanpysäytys: > 0 = ei voi liikkua/toimia
+var piloting := false              # ohjaa ohjattavaa ammusta (Salvon raketti): maan alla, ei toimi
 
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
@@ -230,6 +231,16 @@ func _physics_process(delta: float) -> void:
 	controller.update(self, delta)
 	_tick_status(delta)
 	_tick_resource(delta)
+
+	# Ohjaustila (Salvon ohjattava raketti): sankari on maan alla — ei liiku eikä
+	# käytä muita kykyjä, mutta ohjain päivittyy (jotta raketti ohjautuu) ja
+	# _passive_update ajetaan (siellä raketti liikkuu). Muu toiminta ohitetaan.
+	if piloting:
+		velocity = Vector2.ZERO
+		_aim_active = false
+		_aiming_slot = ""
+		_passive_update(delta)
+		return
 
 	# Tartunnan itsevapautus: jos otetta ei virkistetä (kantaja kuoli, pudotti
 	# otteen tms.), palauta törmäys ettei kohde jää haamuksi.
@@ -696,6 +707,12 @@ func _move_speed_mult() -> float:
 	return 1.0
 
 
+## Kameran seurantapiste (oletus: sankarin sijainti). Salvo ylikirjoittaa
+## palauttamaan ohjattavan raketin sijainnin, jotta näkymä seuraa rakettia.
+func camera_focus() -> Vector2:
+	return global_position
+
+
 func _basic(_dir: Vector2) -> void:
 	pass
 
@@ -1131,6 +1148,7 @@ func _knockout(source: Hero) -> void:
 	duel_marker = null
 	cc_immune_timer = 0.0
 	frozen = 0.0
+	piloting = false
 	respawn_timer = _respawn_delay()
 	profile.stats.deaths += 1
 	profile.stats.time_dead += respawn_timer   # kuolleena vietetty aika (snowball-mittari)
@@ -1221,6 +1239,7 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	duel_marker = null
 	cc_immune_timer = 0.0
 	frozen = 0.0
+	piloting = false
 	hp = max_hp
 	shield_hp = 0.0
 	carrying = false

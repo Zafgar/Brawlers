@@ -312,7 +312,7 @@ func _update_camera(cam: Camera2D, vp: SubViewport, cluster: Array, delta: float
 	if cluster.size() == 1 and is_instance_valid(cluster[0]):
 		# PER-PELAAJA: kiinteä näkymä oman hahmon ympärillä (ei laajene vihollisista).
 		var hero: Hero = cluster[0]
-		var focus: Vector2 = hero.global_position
+		var focus: Vector2 = hero.camera_focus()
 		rect = Rect2(focus.x - VIEW_HALF, focus.y - VIEW_HALF, VIEW_HALF * 2.0, VIEW_HALF * 2.0)
 		# Tähdättäessä skillshottia näytön yli: laajenna näkymä KÄRJEN (max range)
 		# asti, jotta tähtäys pysyy kokonaan ruudulla -> zoomaa ulos vain tarpeeksi.
