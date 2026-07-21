@@ -36,10 +36,10 @@ func _process(delta: float) -> void:
 		if hero.is_unit:
 			continue   # olennot/minionit/rakennukset eivät venytä kameraa
 		if not any:
-			rect = Rect2(hero.camera_focus(), Vector2.ONE)
+			rect = Rect2(hero.global_position, Vector2.ONE)
 			any = true
 		else:
-			rect = rect.expand(hero.camera_focus())
+			rect = rect.expand(hero.global_position)
 	# Reliikki rajataan mukaan vain kun se on näkyvissä (viidakossa se on
 	# piilotettu keskelle, eikä kameran pidä venyä sen sijaintiin).
 	if arena.relic != null and is_instance_valid(arena.relic) and arena.relic.visible:

@@ -55,6 +55,9 @@ func _physics_process(delta: float) -> void:
 	if pilot == null or not is_instance_valid(pilot) or not pilot.piloting:
 		_detonate()   # lentäjä katosi -> räjäytä (surface hoidetaan _detonatessa)
 		return
+	# Erän tauko/loppu: raketti jää paikoilleen (ei räjähdä). Erän nollaus siivoaa.
+	if arena == null or arena.state != arena.State.PLAY:
+		return
 	_t += delta
 	life -= delta
 

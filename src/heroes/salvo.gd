@@ -133,9 +133,9 @@ func _ultimate(dir: Vector2) -> void:
 func surface() -> void:
 	piloting = false
 	_rocket = null
-	set_collision_layer_value(2, true)
 	if not alive:
-		return   # tyrmätty ohjauksen aikana (harvinaista) -> ei nosteta näkyviin
+		return   # tyrmätty ohjauksen aikana (harvinaista) -> _respawn palauttaa törmäyksen
+	set_collision_layer_value(2, true)
 	visible = true
 	iframes = 0.4   # nollaa maan-alla-immuniteetti: pinnalla vain lyhyt suoja-aika
 	if arena != null:
@@ -158,6 +158,10 @@ func _passive_update(delta: float) -> void:
 	# Turvaverkko: jos ohjaus jäi päälle mutta raketti katosi, nouse pintaan.
 	if piloting and (_rocket == null or not is_instance_valid(_rocket)):
 		surface()
+	# Pidä miinalista ajan tasalla (räjähtäneet/vanhentuneet pois) — botin
+	# "räjäytä kaikki" -portti lukee koon, joten ei lasketa kuolleita miinoja.
+	elif not _mines.is_empty():
+		_prune_mines()
 
 
 ## Miinat ja ohjaustila nollataan tyrmäyksestä ja erän vaihtuessa.

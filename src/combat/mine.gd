@@ -50,6 +50,9 @@ func _physics_process(delta: float) -> void:
 	if source == null or not is_instance_valid(source):
 		queue_free()
 		return
+	# Erän tauko/loppu: miina lepää (ei laukea). Siivotaan erän nollauksessa.
+	if arena == null or arena.state != arena.State.PLAY:
+		return
 	_t += delta
 	_life -= delta
 	if _life <= 0.0:
