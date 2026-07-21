@@ -9,6 +9,8 @@ const SPEAR_DMG := 17.0
 
 const DASH_CHARGES := 3             # syöksylatauksia yhtä aikaa varastossa
 const DASH_RECHARGE := 5.0          # yhden latauksen palautuminen (hidas)
+const DASH_SHIELD := 48.0           # syöksyn lyhyt vesikilpi (selviytyminen vs assassin)
+const DASH_SHIELD_DUR := 1.4
 
 # Ultti: vesiryntäys eteen, nostaa viholliset vesipatsaan päälle ja iskee alas.
 const RUSH_SPEED := 1150.0
@@ -65,7 +67,10 @@ func _ability1(dir: Vector2) -> void:
 		_dash_recharge = DASH_RECHARGE  # aloita palautuslaskuri täydestä
 	ammo -= 1
 	AudioMgr.play("water", 0.1, -3.0)
-	dash(dir, 950.0, 0.32, false)
+	dash(dir, 950.0, 0.32, false, true)   # phase_walls: vesisyöksy menee sisäseinien läpi
+	# Lyhyt vesikilpi: ottaa vastaan hetken vahinkoa -> selviää assassinin avaukselta.
+	add_shield(DASH_SHIELD, DASH_SHIELD_DUR, self)
+	Fx.ring(arena, global_position, Palette.glow(Color("4ad4ff"), 1.4), radius + 12.0, 0.35)
 	_water_trail()
 
 
@@ -111,15 +116,25 @@ func _dodge_action(dir: Vector2) -> void:
 	Fx.burst(arena, global_position, Palette.with_alpha(Color("4ad4ff"), 0.5), 8, 140.0, 0.4, 4.0)
 
 
-## Ultimate: Vesipatsas — ryntää vedellä eteen (tähtäyssuuntaan), nostaa
-## lähiviholliset vesipatsaan päälle ja iskee heidät alas vahingolla ja
+## Ultti tähdätään: pidä ultti pohjassa niin näet ryntäysviivan (minne se vie)
+## ennen kuin päästät. Botit ja varapolku käyttävät välittömästi.
+func _ult_is_held() -> bool:
+	return true
+
+
+func _ult_preview_line() -> float:
+	return RUSH_SPEED * RUSH_DUR
+
+
+## Ultimate: Vesipatsas — ryntää vedellä eteen (tähtäyssuuntaan, sisäseinien läpi),
+## nostaa lähiviholliset vesipyörteeseen ja iskee heidät alas vahingolla ja
 ## tainnutuksella.
 func _ultimate(dir: Vector2) -> void:
 	var d: Vector2 = dir if dir.length() > 0.1 else aim
 	arena.popup(global_position + Vector2(0, -84), "VESIPATSAS!", Palette.glow(Color("4ad4ff"), 1.6), 26)
 	AudioMgr.play("wave", 0.05, -2.0)
 	arena.shake(0.35)
-	dash(d, RUSH_SPEED, RUSH_DUR, true)
+	dash(d, RUSH_SPEED, RUSH_DUR, true, true)   # phase_walls: ryntäys menee seinien läpi
 	Fx.burst(arena, global_position, Palette.glow(Color("4ad4ff"), 1.5), 16, 300.0, 0.5, 6.0)
 	_rush_slam()
 
@@ -132,6 +147,9 @@ func _rush_slam() -> void:
 	var center := global_position
 	arena.shake(0.3)
 	AudioMgr.play("wave", 0.1, 1.0)
+	# Näkyvä vesipyörre: imee viholliset keskelle. Kestää nosto- + iskuvaiheen yli,
+	# joten tainnutuksen aikana näkee selvästi mitä tapahtuu.
+	Fx.vortex(arena, center, Color("4ad4ff"), RUSH_RADIUS * 0.9, 1.05)
 	# Nosta viholliset vesipatsaan päälle: vedä keskelle, tainnuta, "ilmaan".
 	var lifted: Array = []
 	for enemy in arena.heroes_in_circle(center, RUSH_RADIUS):

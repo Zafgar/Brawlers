@@ -41,6 +41,18 @@ static func ring(parent: Node, pos: Vector2, color: Color, max_radius := 60.0,
 	parent.add_child(node)
 
 
+## Pyörre (esim. Tiden vesipyörre): kierteiset varret imevät keskelle + hehkuva
+## ydin. Näyttää selvästi missä tainnutus/imu tapahtuu.
+static func vortex(parent: Node, pos: Vector2, color: Color, radius := 120.0,
+		duration := 0.9) -> void:
+	var node := VortexFx.new()
+	node.position = pos
+	node.color = color
+	node.radius = radius
+	node.duration = duration
+	parent.add_child(node)
+
+
 static func flash(parent: Node, pos: Vector2, color: Color, radius := 40.0,
 		duration := 0.25) -> void:
 	var node := FlashFx.new()
@@ -223,6 +235,46 @@ class BoltFx:
 		var fade: float = 1.0 - _t / LIFE
 		draw_polyline(_points, Palette.with_alpha(Palette.glow(color, 1.8), fade), 3.5 * fade)
 		draw_circle(to_point, 6.0 * fade, Palette.with_alpha(Color.WHITE, fade * 0.8))
+
+
+class VortexFx:
+	extends Node2D
+	var color := Color("4ad4ff")
+	var radius := 120.0
+	var duration := 0.9
+	var arms := 4
+	var _t := 0.0
+
+	func _ready() -> void:
+		z_index = 29
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if _t >= duration:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		var f: float = clampf(_t / duration, 0.0, 1.0)
+		var a: float = (1.0 - f) * 0.9
+		var spin: float = _t * 10.0
+		# Ulkorengas (litistetty top-down-perspektiiviin).
+		draw_arc(Vector2.ZERO, radius * (0.55 + 0.45 * (1.0 - f)), 0.0, TAU, 40,
+			Palette.with_alpha(color, a * 0.45), 4.0)
+		# Kierteiset varret imevät keskelle.
+		for arm in range(arms):
+			var base: float = TAU * float(arm) / float(arms) + spin
+			var pts := PackedVector2Array()
+			for i in range(23):
+				var tt: float = float(i) / 22.0
+				var rr: float = radius * (1.0 - tt) * (0.4 + 0.6 * (1.0 - f))
+				var ang: float = base + tt * 3.6
+				pts.append(Vector2(cos(ang), sin(ang) * 0.72) * rr)
+			draw_polyline(pts, Palette.with_alpha(Palette.glow(color, 1.4), a), 3.0)
+		# Hehkuva ydin.
+		draw_circle(Vector2.ZERO, radius * 0.13 * (0.7 + 0.3 * sin(_t * 22.0)),
+			Palette.with_alpha(Color("bfeaf7"), a))
 
 
 class RingFx:

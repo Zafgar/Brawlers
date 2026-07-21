@@ -83,6 +83,7 @@ var _grab_hold_timer := 0.0
 # Väistösyöksy
 var dash_timer := 0.0
 var dash_velocity := Vector2.ZERO
+var _phase_walls := false          # syöksy sisäseinien läpi (Tide) — reunat rajataan
 
 var visual: HeroVisual = null
 var _recent_damagers: Array = []    # [{hero, time}]
@@ -249,11 +250,21 @@ func _physics_process(delta: float) -> void:
 		velocity = dash_velocity
 	else:
 		velocity = velocity.move_toward(mv * speed, ACCEL * delta)
+		if _phase_walls:
+			_end_phase()   # syöksy loppui -> palauta seinätörmäys
 
 	if arena.map != null:
 		velocity += arena.map.conveyor_push(global_position)
 	move_and_slide()
 	move_dir = mv
+
+	# Seinien-läpi-syöksy: rajaa vain kartan reunoihin (sisäseinät ohitetaan,
+	# mutta kentältä ei pääse ulos).
+	if _phase_walls and arena.map != null:
+		var ph: Vector2 = arena.map.size() / 2.0
+		global_position = Vector2(
+			clampf(global_position.x, -ph.x + radius, ph.x - radius),
+			clampf(global_position.y, -ph.y + radius, ph.y - radius))
 
 	# Turvaverkko: jos hahmo on jostain syystä paennut kentän ulkopuolelle
 	# (fysiikan tunnelointi, teleportti reunaseinän yli, kova töytäisy), vedä se
@@ -677,14 +688,30 @@ func _dodge_action(dir: Vector2) -> void:
 
 # --- Taisteluapurit ---
 
-func dash(dir: Vector2, speed: float, duration: float, with_iframes := false) -> void:
+## phase_walls: syöksy menee sisäseinien läpi (mutta EI kartan ulkopuolelle;
+## reunat rajataan _physics_processissa). Esim. Tiden vesisyöksy ja ultti.
+func dash(dir: Vector2, speed: float, duration: float, with_iframes := false, phase_walls := false) -> void:
 	if dir.length() < 0.1:
 		dir = aim
 	dash_timer = duration
 	dash_velocity = dir.normalized() * speed
 	if with_iframes:
 		iframes = maxf(iframes, duration + 0.05)
+	if phase_walls and not _phase_walls:
+		_phase_walls = true
+		set_collision_mask_value(1, false)   # ohita seinät syöksyn ajaksi
 	visual.squash(0.75, 1.25)
+
+
+## Lopeta seinien-läpi-tila: palauta seinätörmäys ja työnnä ulos jos jäätiin
+## seinän sisään (ettei jää jumiin).
+func _end_phase() -> void:
+	if not _phase_walls:
+		return
+	_phase_walls = false
+	set_collision_mask_value(1, true)
+	if arena != null and arena.map != null:
+		global_position = arena.map.clamp_to_field(global_position, radius)
 
 
 # --- Kykytelemetria (kuka/mikä kykypaikka juuri toimii) ---
@@ -1067,6 +1094,8 @@ func _respawn() -> void:
 	guard_radius = 0.0
 	set_collision_layer_value(2, true)
 	set_collision_mask_value(2, true)
+	set_collision_mask_value(1, true)   # varmista seinätörmäys (jos kuoli syöksyn aikana)
+	_phase_walls = false
 	for slot in cd:
 		cd[slot] = 0.0
 	_dodge_was_cooling = false   # ei valheellista "väistö valmis" -piippausta respawnissa
