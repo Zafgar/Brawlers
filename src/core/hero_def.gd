@@ -6,7 +6,7 @@ class_name HeroDef
 const ORDER := [
 	"bastion", "ember", "luma", "blink", "bramble", "quill",
 	"boulder", "volt", "maestro", "shade", "tide", "scout",
-	"prism", "rift", "titan",
+	"prism", "rift", "titan", "hush",
 ]
 
 const HEROES := {
@@ -293,6 +293,25 @@ const HEROES := {
 			"a2": {"name": "Raivosuoja", "desc": "Pidä pohjassa: kuluttaa raivoa, vähentää otettua vahinkoa joka suunnasta ja palauttaa elämää.", "cd": 6.0},
 			"dodge": {"name": "Syöksyrynnäkkö", "desc": "Raskas syöksy, joka tönäisee ja hidastaa osuessaan.", "cd": 4.5},
 			"ult": {"name": "Raivotila", "desc": "Muuttuu hetkeksi berserkiksi: nopeampi liike, iskunopeus ja vahinko nousevat, ja Tartu ja heitä muuttuu alueen ilmaanheitoksi.", "cd": 0.0},
+		},
+	},
+	"hush": {
+		"name": "Hush",
+		"role": "Tuki",
+		"difficulty": 3,
+		"hp": 205.0,
+		"speed": 320.0,
+		"ratings": {"kesto": 3, "liike": 3, "vahinko": 2, "tuki": 5},
+		"weapon": "Vaimennuskello",
+		"desc": "Kontrollituki. Suojaa liittolaisia isoilla kilvillä (paljon enemmän kuin parantaa) ja tukahduttaa vihollisten liikkeen ja kyvyt. Käyttää manaa.",
+		"color": Color("a678f0"),
+		"color_b": Color("4a2d78"),
+		"abilities": {
+			"basic": {"name": "Kaikuisku", "desc": "Läpäisevä ääniammus, joka nakuttaa vihollisia.", "cd": 0.5},
+			"a1": {"name": "Suojasointu", "desc": "Iso suojakilpi eniten kärsineelle liittolaiselle ja pieni paikkaus päälle. Kilpiää paljon enemmän kuin parantaa.", "cd": 7.0},
+			"a2": {"name": "Dissonanssikenttä", "desc": "Heittää alueen, joka hidastaa voimakkaasti ja kalvaa vihollisia. Tähtää pitämällä nappia pohjassa.", "cd": 8.0},
+			"dodge": {"name": "Haamukello", "desc": "Hetkellinen immuniteetti ja nopea haamuliuku seinien läpi, jättää pienen suojakilven. Pitkä jäähdytys.", "cd": 7.0},
+			"ult": {"name": "Suuri Vaimennus", "desc": "Iso alue, joka tainnuttaa, juurruttaa ja vaimentaa viholliset — ei vahinkoa, pelkkää kovaa kontrollia. Tähtää pitämällä ulttinappi pohjassa.", "cd": 0.0},
 		},
 	},
 }

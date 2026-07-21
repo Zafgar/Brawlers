@@ -41,6 +41,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_rift(ci, center, r)
 		"titan":
 			_titan(ci, center, r)
+		"hush":
+			_hush(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -341,6 +343,33 @@ static func _scout(ci: CanvasItem, center: Vector2, r: float) -> void:
 		var d := Vector2.RIGHT.rotated(ang)
 		ci.draw_line(center + d * r * 0.5, center + d * r * 1.0, INK, r * 0.1)
 	ci.draw_circle(center, r * 0.15, INK)
+
+
+## Hush: vaimennuskello — kellon runko, kieli ja vaimennuskaari yli.
+static func _hush(ci: CanvasItem, center: Vector2, r: float) -> void:
+	var s := r * 0.86
+	# Kellon runko: kapea yläosa, leviää alas.
+	var bell := PackedVector2Array([
+		center + Vector2(-0.16, -0.78) * s,
+		center + Vector2(0.16, -0.78) * s,
+		center + Vector2(0.44, 0.1) * s,
+		center + Vector2(0.66, 0.5) * s,
+		center + Vector2(-0.66, 0.5) * s,
+		center + Vector2(-0.44, 0.1) * s,
+	])
+	var shadow := PackedVector2Array()
+	for p in bell:
+		shadow.append(p + Vector2(0, s * 0.05))
+	ci.draw_colored_polygon(shadow, SHADE)
+	ci.draw_colored_polygon(bell, INK)
+	# Nuppi ylhäällä ja suun reunapalkki.
+	ci.draw_circle(center + Vector2(0, -0.86) * s, s * 0.14, INK)
+	ci.draw_line(center + Vector2(-0.66, 0.5) * s, center + Vector2(0.66, 0.5) * s, SHADE, s * 0.14)
+	# Kieli (clapper).
+	ci.draw_circle(center + Vector2(0, 0.42) * s, s * 0.13, SHADE)
+	# Vaimennuskaari kellon yli (mute-viiva).
+	ci.draw_line(center + Vector2(-0.8, 0.7) * s, center + Vector2(0.8, -0.7) * s,
+		Color(1, 1, 1, 0.55), s * 0.12)
 
 
 ## Pisaramainen liekkimuoto: kärki ylhäällä, pyöreä alaosa.

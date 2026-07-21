@@ -57,6 +57,7 @@ var haste_timer := 0.0
 var haste_factor := 1.0
 var root_timer := 0.0
 var stun_timer := 0.0
+var silence_timer := 0.0            # ei voi käyttää kykyjä (a1/a2/ult/väistö); voi liikkua
 var mark_timer := 0.0               # merkitty kohde ottaa lisävahinkoa (Scout)
 var mark_amp := 1.25                # merkin vahinkokerroin (asetetaan apply_markissa)
 var kb_resist := 0.0                # 0..1, tankeille
@@ -297,10 +298,12 @@ func _physics_process(delta: float) -> void:
 		_cast_context = _prev_ctx
 		# Kyvyt toimivat myös reliikkiä kannettaessa (kuten väistökin).
 		# Tähdättävät kyvyt (pito -> vapautus) hoidetaan _run_ability_slotissa.
-		_run_ability_slot("a1", 1, delta)
-		_run_ability_slot("a2", 2, delta)
+		# VAIMENNUS (silence) estää kyvyt (a1/a2/ult/väistö), perus sallitaan.
+		if silence_timer <= 0.0:
+			_run_ability_slot("a1", 1, delta)
+			_run_ability_slot("a2", 2, delta)
 		# Ultimate: välitön (oletus) tai pidä-ja-vapauta (esim. Prisman alue).
-		if _ult_is_held() and not controller.is_bot():
+		if silence_timer <= 0.0 and _ult_is_held() and not controller.is_bot():
 			if _ult_holding:
 				# Viivaesikatselu ultille (esim. Quillin tähdättävä supernuoli).
 				var ul: float = _ult_preview_line()
@@ -315,10 +318,10 @@ func _physics_process(delta: float) -> void:
 					_ult_holding = false
 			elif controller.ult_held() and ult_charge >= 100.0:
 				_ult_holding = true
-		elif _buf.ult > 0.0 and ult_charge >= 100.0:
+		elif silence_timer <= 0.0 and _buf.ult > 0.0 and ult_charge >= 100.0:
 			_buf.ult = 0.0
 			_fire_ult()
-		if _buf.dodge > 0.0 and cd.dodge <= 0.0:
+		if silence_timer <= 0.0 and _buf.dodge > 0.0 and cd.dodge <= 0.0:
 			_buf.dodge = 0.0
 			cd.dodge = cd_max.dodge * (1.5 if carrying else 1.0)
 			var dodge_dir := mv if mv.length() > 0.2 else aim
@@ -369,6 +372,7 @@ func _tick_status(delta: float) -> void:
 		haste_factor = 1.0
 	root_timer = maxf(root_timer - delta, 0.0)
 	stun_timer = maxf(stun_timer - delta, 0.0)
+	silence_timer = maxf(silence_timer - delta, 0.0)
 	mark_timer = maxf(mark_timer - delta, 0.0)
 	guard_timer = maxf(guard_timer - delta, 0.0)
 	shield_timer -= delta
@@ -981,6 +985,17 @@ func apply_stun(duration: float) -> void:
 	profile.stats.cc_suffered += stun_timer - before
 
 
+## Vaimennus: kohde ei voi käyttää kykyjä (a1/a2/ult/väistö) mutta voi liikkua.
+func apply_silence(duration: float) -> void:
+	var before := silence_timer
+	silence_timer = maxf(silence_timer, duration)
+	if silence_timer - before > 0.0:
+		_record_cc("stun", silence_timer - before)   # vaimennus = kova CC, kirjataan stuniksi
+		profile.stats.cc_suffered += silence_timer - before
+		if arena != null:
+			arena.popup(global_position + Vector2(0, -60), "VAIMENNETTU", Color("b06aff"), 15)
+
+
 func apply_mark(duration: float, amp := 1.25) -> void:
 	mark_timer = maxf(mark_timer, duration)
 	mark_amp = amp
@@ -1061,6 +1076,7 @@ func _knockout(source: Hero) -> void:
 	slow_timer = 0.0
 	root_timer = 0.0
 	stun_timer = 0.0
+	silence_timer = 0.0
 	mark_timer = 0.0
 
 	var now := Time.get_ticks_msec() / 1000.0
@@ -1138,6 +1154,7 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	haste_timer = 0.0
 	root_timer = 0.0
 	stun_timer = 0.0
+	silence_timer = 0.0
 	mark_timer = 0.0
 	guard_timer = 0.0
 	guard_radius = 0.0

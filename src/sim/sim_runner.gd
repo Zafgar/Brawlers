@@ -219,7 +219,7 @@ func _role_pool(cat: String) -> Array:
 		"mage":
 			return ["ember", "volt"]
 		"support":
-			return ["luma", "maestro", "prism"]
+			return ["luma", "maestro", "prism", "hush"]
 		"assassin":
 			return ["blink", "shade", "rift"]
 		"fighter":

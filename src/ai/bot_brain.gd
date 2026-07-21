@@ -1233,6 +1233,10 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 			return near_enemies >= 2
 		"titan":
 			return dist < 380.0 and near_enemies >= 1
+		"hush":
+			# Suuri Vaimennus on itsekeskinen alue-lukitus: laukaise kun 2+
+			# vihollista on lähellä (ult-säde 260).
+			return arena.heroes_in_circle(pos, 260.0, 1 - hero.team, true, true).size() >= 2
 	return near_enemies >= 2
 
 
@@ -1282,6 +1286,11 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"titan":
 			# Tartunta ei tartu yksiköihin (torni/minioni) -> vain sankaria vastaan.
 			return dist < 150.0 and _target_is_hero()
+		"hush":
+			# Suojasointu: kilpiää haavoittuneimman liittolaisen kantamalta.
+			return bb.lowest_ally != null \
+				and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.8 \
+				and pos.distance_to(bb.lowest_ally.global_position) < 520.0
 	return false
 
 
@@ -1328,6 +1337,9 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 				and _target.void_stacks >= 2
 		"titan":
 			return hero.hp < hero.max_hp * 0.55 and hero.res > 35.0
+		"hush":
+			# Dissonanssikenttä (slow+DoT) heitetään lähelle vihollisia keskietäisyydeltä.
+			return dist > 120.0 and dist < 430.0 and _target_is_hero()
 	return false
 
 

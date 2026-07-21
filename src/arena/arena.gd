@@ -223,6 +223,8 @@ func _make_hero(id: String) -> Hero:
 			return Rift.new()
 		"titan":
 			return Titan.new()
+		"hush":
+			return Hush.new()
 	return Hero.new()
 
 

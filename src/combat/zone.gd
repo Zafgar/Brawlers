@@ -60,6 +60,8 @@ func _default_color() -> Color:
 			return Palette.SHIELD
 		"shock":
 			return Color("ffe14a")
+		"hush":
+			return Color("a678f0")
 	return Color.WHITE
 
 
@@ -111,6 +113,13 @@ func _physics_process(delta: float) -> void:
 				if not is_ally:
 					hero.apply_slow(slow_f, 0.3)
 			"shock":
+				if not is_ally:
+					hero.apply_slow(slow_f, 0.3)
+					if do_tick:
+						source.deal_damage_to(hero, dps * tick_interval, 0.0,
+							(hero.global_position - global_position).normalized())
+			"hush":
+				# Dissonanssikenttä (Hush): hidastaa voimakkaasti + kalvaa DoT.
 				if not is_ally:
 					hero.apply_slow(slow_f, 0.3)
 					if do_tick:
@@ -195,3 +204,13 @@ func _draw() -> void:
 					pts.append(along + Vector2(cos(base_ang + PI / 2.0),
 						sin(base_ang + PI / 2.0)) * jitter)
 				draw_polyline(pts, Palette.with_alpha(Palette.glow(color, 1.6), 0.7 * fade), 2.0)
+		"hush":
+			# Vaimentava dissonanssi: sisäänpäin supistuvat kaikurenkaat.
+			draw_circle(Vector2.ZERO, radius, Palette.with_alpha(color, 0.13 * fade))
+			for i in range(4):
+				var rf: float = fmod(_age * 0.6 + i / 4.0, 1.0)
+				var rr: float = radius * (1.0 - rf)
+				draw_arc(Vector2.ZERO, rr, 0.0, TAU, 44,
+					Palette.with_alpha(Palette.glow(color, 1.4), (0.5 - rf * 0.4) * fade), 2.5)
+			draw_arc(Vector2.ZERO, radius * pulse, 0.0, TAU, 44,
+				Palette.with_alpha(Palette.glow(color, 1.3), 0.5 * fade), 3.0)
