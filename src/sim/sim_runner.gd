@@ -215,7 +215,7 @@ func _pick_unused(pool: Array, used: Dictionary) -> String:
 func _role_pool(cat: String) -> Array:
 	match cat:
 		"tank":
-			return ["bastion", "boulder", "titan"]
+			return ["bastion", "boulder", "titan", "obsidian"]
 		"mage":
 			return ["ember", "volt"]
 		"support":

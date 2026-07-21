@@ -1237,6 +1237,10 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 			# Suuri Vaimennus on itsekeskinen alue-lukitus: laukaise kun 2+
 			# vihollista on lähellä (ult-säde 260).
 			return arena.heroes_in_circle(pos, 260.0, 1 - hero.team, true, true).size() >= 2
+		"obsidian":
+			# Ydinräjähdys: telegrafoitu latausräjähdys — laukaise kun kimpussa on
+			# vihollisia (2+ lähellä tai 1 kiinni ja hyvä hp).
+			return near_enemies >= 2 or (dist < 200.0 and near_enemies >= 1)
 	return near_enemies >= 2
 
 
@@ -1291,6 +1295,9 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 			return bb.lowest_ally != null \
 				and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.8 \
 				and pos.distance_to(bb.lowest_ally.global_position) < 520.0
+		"obsidian":
+			# Louhintaloikka: hyppää keskietäisyydeltä vihollisen niskaan.
+			return dist > 160.0 and dist < 560.0
 	return false
 
 
@@ -1340,6 +1347,9 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"hush":
 			# Dissonanssikenttä (slow+DoT) heitetään lähelle vihollisia keskietäisyydeltä.
 			return dist > 120.0 and dist < 430.0 and _target_is_hero()
+		"obsidian":
+			# Kiviho: kertakäyttöinen torjunta/heijastus kun vihollinen on lähellä.
+			return dist < 220.0 and hero.res > 35.0
 	return false
 
 

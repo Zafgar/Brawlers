@@ -58,6 +58,9 @@ var haste_factor := 1.0
 var root_timer := 0.0
 var stun_timer := 0.0
 var silence_timer := 0.0            # ei voi käyttää kykyjä (a1/a2/ult/väistö); voi liikkua
+var reflect_timer := 0.0            # kiviho: heijasta osa otetusta vahingosta takaisin lähisankarille
+var reflect_factor := 0.0           # heijastettu osuus (0..1)
+var reflect_slot := ""              # heijastuksen kirjaava kykypaikka (telemetria)
 var mark_timer := 0.0               # merkitty kohde ottaa lisävahinkoa (Scout)
 var mark_amp := 1.25                # merkin vahinkokerroin (asetetaan apply_markissa)
 var kb_resist := 0.0                # 0..1, tankeille
@@ -373,6 +376,7 @@ func _tick_status(delta: float) -> void:
 	root_timer = maxf(root_timer - delta, 0.0)
 	stun_timer = maxf(stun_timer - delta, 0.0)
 	silence_timer = maxf(silence_timer - delta, 0.0)
+	reflect_timer = maxf(reflect_timer - delta, 0.0)
 	mark_timer = maxf(mark_timer - delta, 0.0)
 	guard_timer = maxf(guard_timer - delta, 0.0)
 	shield_timer -= delta
@@ -838,6 +842,24 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 	if mark_timer > 0.0:
 		amount *= mark_amp
 
+	# Kiviho (heijastus): heijasta osa otetusta vahingosta takaisin hyökkäävälle
+	# vihollissankarille. Vain oikeat sankarit (ei tornit/olennot/minionit) ja
+	# konteksti tallennetaan/palautetaan, koska olemme hyökkääjän vahinkokutsun
+	# sisällä (arenan aktiivikonteksti on hyökkääjän).
+	if reflect_timer > 0.0 and reflect_factor > 0.0 and amount > 0.0 \
+			and source != null and is_instance_valid(source) and source != self \
+			and not source.is_unit and source.team != team:
+		var refl: float = amount * reflect_factor
+		var prev_hero = arena._act_hero if arena != null else null
+		var prev_slot: String = arena._act_slot if arena != null else ""
+		var prev_ctx := _cast_context
+		_act(reflect_slot)
+		deal_damage_to(source, refl)
+		_cast_context = prev_ctx
+		if arena != null:
+			arena._act_hero = prev_hero
+			arena._act_slot = prev_slot
+
 	# Suuntatorjunta (kilpivalli): edestä tulevat osumat vaimenevat.
 	if guard_timer > 0.0 and kb_dir != Vector2.ZERO:
 		var from_dir := -kb_dir
@@ -996,6 +1018,14 @@ func apply_silence(duration: float) -> void:
 			arena.popup(global_position + Vector2(0, -60), "VAIMENNETTU", Color("b06aff"), 15)
 
 
+## Kiviho: aseta heijastus (osa otetusta vahingosta takaisin hyökkääjälle) ja
+## sen kirjaava kykypaikka. Kutsutaan joka framessa kanavoinnin aikana.
+func apply_reflect(duration: float, factor: float, slot: String) -> void:
+	reflect_timer = maxf(reflect_timer, duration)
+	reflect_factor = factor
+	reflect_slot = slot
+
+
 func apply_mark(duration: float, amp := 1.25) -> void:
 	mark_timer = maxf(mark_timer, duration)
 	mark_amp = amp
@@ -1077,6 +1107,7 @@ func _knockout(source: Hero) -> void:
 	root_timer = 0.0
 	stun_timer = 0.0
 	silence_timer = 0.0
+	reflect_timer = 0.0
 	mark_timer = 0.0
 
 	var now := Time.get_ticks_msec() / 1000.0
@@ -1155,6 +1186,7 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	root_timer = 0.0
 	stun_timer = 0.0
 	silence_timer = 0.0
+	reflect_timer = 0.0
 	mark_timer = 0.0
 	guard_timer = 0.0
 	guard_radius = 0.0

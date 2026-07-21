@@ -225,6 +225,8 @@ func _make_hero(id: String) -> Hero:
 			return Titan.new()
 		"hush":
 			return Hush.new()
+		"obsidian":
+			return Obsidian.new()
 	return Hero.new()
 
 

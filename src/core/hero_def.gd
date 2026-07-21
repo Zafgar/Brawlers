@@ -6,7 +6,7 @@ class_name HeroDef
 const ORDER := [
 	"bastion", "ember", "luma", "blink", "bramble", "quill",
 	"boulder", "volt", "maestro", "shade", "tide", "scout",
-	"prism", "rift", "titan", "hush",
+	"prism", "rift", "titan", "hush", "obsidian",
 ]
 
 const HEROES := {
@@ -312,6 +312,25 @@ const HEROES := {
 			"a2": {"name": "Dissonanssikenttä", "desc": "Heittää alueen, joka hidastaa voimakkaasti ja kalvaa vihollisia. Tähtää pitämällä nappia pohjassa.", "cd": 8.0},
 			"dodge": {"name": "Haamukello", "desc": "Hetkellinen immuniteetti ja nopea haamuliuku seinien läpi, jättää pienen suojakilven. Pitkä jäähdytys.", "cd": 7.0},
 			"ult": {"name": "Suuri Vaimennus", "desc": "Iso alue, joka tainnuttaa, juurruttaa ja vaimentaa viholliset — ei vahinkoa, pelkkää kovaa kontrollia. Tähtää pitämällä ulttinappi pohjassa.", "cd": 0.0},
+		},
+	},
+	"obsidian": {
+		"name": "Obsidian",
+		"role": "Tankki",
+		"difficulty": 2,
+		"hp": 370.0,
+		"speed": 290.0,
+		"ratings": {"kesto": 5, "liike": 2, "vahinko": 2, "tuki": 3},
+		"weapon": "Obsidiaaninyrkit",
+		"desc": "Kivinen jättiläinen. Hallitsee lähialuetta, kääntää vahingon takaisin hyökkääjiin ja lataa itsensä eläväksi pommiksi. Kerää raivoa taistelusta.",
+		"color": Color("8a4a52"),
+		"color_b": Color("2e181c"),
+		"abilities": {
+			"basic": {"name": "Kiviisku", "desc": "Raskas isku joka hidastaa viholliset ja parantaa itseä osuessaan.", "cd": 0.6},
+			"a1": {"name": "Louhintaloikka", "desc": "Hyppää tähtäyssuuntaan seinien yli ja iskee alas tainnuttavalla aluevahingolla. Tähtää pitämällä nappia pohjassa.", "cd": 8.0},
+			"a2": {"name": "Kiviho", "desc": "Pidä pohjassa: torjuu otettua vahinkoa joka suunnasta ja heijastaa osan takaisin hyökkääjään. Kuluttaa raivoa.", "cd": 6.0},
+			"dodge": {"name": "Kivirynnäkkö", "desc": "Raskas syöksy, joka tönäisee ja hidastaa osuessaan.", "cd": 5.0},
+			"ult": {"name": "Ydinräjähdys", "desc": "Lataa hetken ottaen paljon vähemmän vahinkoa, sitten räjähtää — lähempänä olevat viholliset ottavat enemmän vahinkoa. Obsidian selviää räjähdyksestä.", "cd": 0.0},
 		},
 	},
 }

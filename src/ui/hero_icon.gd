@@ -43,6 +43,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_titan(ci, center, r)
 		"hush":
 			_hush(ci, center, r)
+		"obsidian":
+			_obsidian(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -343,6 +345,35 @@ static func _scout(ci: CanvasItem, center: Vector2, r: float) -> void:
 		var d := Vector2.RIGHT.rotated(ang)
 		ci.draw_line(center + d * r * 0.5, center + d * r * 1.0, INK, r * 0.1)
 	ci.draw_circle(center, r * 0.15, INK)
+
+
+## Obsidian: särmikäs kivilohkare, jonka halki kulkee hehkuva laavahalkeama.
+static func _obsidian(ci: CanvasItem, center: Vector2, r: float) -> void:
+	var shard := PackedVector2Array([
+		center + Vector2(-0.2, -0.95) * r,
+		center + Vector2(0.55, -0.55) * r,
+		center + Vector2(0.9, 0.25) * r,
+		center + Vector2(0.35, 0.9) * r,
+		center + Vector2(-0.55, 0.78) * r,
+		center + Vector2(-0.92, -0.05) * r,
+	])
+	var shadow := PackedVector2Array()
+	for p in shard:
+		shadow.append(p + Vector2(0, r * 0.06))
+	ci.draw_colored_polygon(shadow, SHADE)
+	ci.draw_colored_polygon(shard, INK)
+	# Fasettilinjat (särmät).
+	ci.draw_line(center + Vector2(-0.2, -0.95) * r, center + Vector2(0.1, 0.1) * r, SHADE, r * 0.07)
+	ci.draw_line(center + Vector2(0.9, 0.25) * r, center + Vector2(0.1, 0.1) * r, SHADE, r * 0.07)
+	ci.draw_line(center + Vector2(-0.55, 0.78) * r, center + Vector2(0.1, 0.1) * r, SHADE, r * 0.06)
+	# Hehkuva laavahalkeama (zigzag) keskeltä.
+	var crack := PackedVector2Array([
+		center + Vector2(-0.05, -0.7) * r,
+		center + Vector2(0.14, -0.2) * r,
+		center + Vector2(-0.08, 0.12) * r,
+		center + Vector2(0.12, 0.6) * r,
+	])
+	ci.draw_polyline(crack, Color("ff7a3a"), r * 0.11)
 
 
 ## Hush: vaimennuskello — kellon runko, kieli ja vaimennuskaari yli.
