@@ -8,7 +8,15 @@ extends Hero
 const MAG_SIZE := 26                # lippaan koko (patruunat)
 const FIRE_INTERVAL := 0.09         # aika laukausten välillä (konekivääri)
 const RELOAD_TIME := 2.5            # automaattisen latauksen kesto
-const SHOT_DMG := 8.0               # buff (sim2: scout 33 vah/min = rikki-ali): 6 -> 8
+const SHOT_DMG := 10.0              # pohjavahinko (sim: 8.9/osuma = 1/5 quillin 45.5:sta)
+
+# Kuumeneminen: konekivääri tekee enemmän vahinkoa mitä kauemmin yhtäjaksoisesti
+# tulittaa (identiteetti: kestävä syöttö palkitaan). Korjaa juurisyyn — scoutin
+# "iso volyymi korvaa matalan per-osuman" ei toteudu (volyymi ei ollut isompi),
+# joten sarjatuli rampaa vahingon carry-tasolle. Nollaantuu latauksessa/tauolla.
+const HEAT_BONUS := 0.7             # täydessä kuumuudessa +70 % (10 -> 17)
+const HEAT_RAMP := 0.85            # kuumeneminen /s tulittaessa (täysi ~1.2 s)
+const HEAT_COOL := 2.0             # jäähtyminen /s kun ei tulita (tauko ~0.5 s)
 
 const MARK_DUR := 4.5
 const MARK_AMP := 1.45              # merkitty kohde ottaa +45 % vahinkoa (vahva)
@@ -32,6 +40,8 @@ var _lock_timer := 0.0
 var _turret := false                # tornitila päällä (ultin ajan)
 var _turret_timer := 0.0
 var _turret_fx := 0.0               # hehkurenkaan ajastin tornitilassa
+var _heat := 0.0                    # sarjatulen kuumuus 0..1 (vahinkokerroin)
+var _heat_grace := 0.0              # "juuri tulitettu" -ikkuna (ramppaus vs jäähdytys)
 
 
 func _init() -> void:
@@ -82,6 +92,7 @@ func _attack_control(held: bool, _just_pressed: bool, _just_released: bool,
 func _fire_one(dir: Vector2) -> void:
 	visual.attack_swing()
 	AudioMgr.play("pop", 0.12, -1.0)
+	_heat_grace = 0.18   # merkitse "juuri tulitettu" -> kuumuus ramppaa (ks. _passive_update)
 	# Lukittu kohde: tähtää siihen ja anna luotien hakeutua (LOCK_RANGE:n sisällä).
 	var lock: Hero = _active_lock()
 	var fire_dir: Vector2 = dir
@@ -104,7 +115,7 @@ func _shoot(from: Vector2, dir: Vector2, homing: Hero) -> void:
 	var spread: float = 0.0 if homing != null else randf_range(-0.05, 0.05)
 	var cfg := {
 		"speed": 1000.0,
-		"dmg": SHOT_DMG,
+		"dmg": SHOT_DMG * (1.0 + HEAT_BONUS * _heat),   # kuumeneminen: sarjatuli rampaa
 		"radius": 10.0,   # buff (sim2: perus osui harvoin): luotettavampi osuma
 		"life": 0.7,
 		"kb": 55.0,
@@ -152,6 +163,12 @@ func _passive_update(delta: float) -> void:
 			_finish_reload()
 	if _lock_timer > 0.0:
 		_lock_timer -= delta
+	# Kuumeneminen: ramppaa kun juuri tulitettu, jäähtyy tauolla/latauksessa.
+	if _heat_grace > 0.0 and not reloading:
+		_heat_grace -= delta
+		_heat = minf(_heat + HEAT_RAMP * delta, 1.0)
+	else:
+		_heat = maxf(_heat - HEAT_COOL * delta, 0.0)
 	if _turret:
 		_turret_timer -= delta
 		# Näkyvä tornitila-hehku ~0.5 s välein.
@@ -291,6 +308,8 @@ func _clear_scout_state() -> void:
 	_turret_timer = 0.0
 	_lock_target = null
 	_lock_timer = 0.0
+	_heat = 0.0
+	_heat_grace = 0.0
 	reloading = false
 	_reload_time = 0.0
 	ammo = MAG_SIZE
