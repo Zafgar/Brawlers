@@ -8,7 +8,9 @@ extends Hero
 
 const SWING_RANGE := 100.0
 const SWING_ARC_DEG := 75.0
-const SWING_DMG := 8.0
+# nerf (sim4: titan on Tankki mutta 2. kovin damage 796/min, 215k perusvahinkoa
+# AoE-viuhkalla): 8 -> 6. Rooli = kestä + hallitse, ei out-damageta carryja.
+const SWING_DMG := 6.0
 const GRAB_CD_REFUND := 1.3        # jokainen perusosuma lyhentää a1:tä
 
 const GRAB_RANGE := 132.0
