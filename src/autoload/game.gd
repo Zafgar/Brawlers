@@ -39,7 +39,7 @@ var options := {
 	"music": true,
 	"shake": true,
 	"fullscreen": true,
-	"split_screen": false,    # jaettu ruutu isolla kartalla (koeversio)
+	"split_screen": true,     # per-pelaaja-ruudut (oma hahmo keskiössä, 1-4 jaettu)
 }
 
 var main: Node = null

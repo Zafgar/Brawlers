@@ -1,26 +1,32 @@
 class_name SplitView
 extends Control
-## Jaettu ruutu (valinnainen). Maailma renderöidään SubViewporteihin, jotka
-## kaikki jakavat saman World2D:n mutta katsovat sitä omilla kameroillaan.
-## Näyttö jakautuu dynaamisesti 1–4 osaan sen mukaan, kuinka moneen ryhmään
-## ihmispelaajat leviävät: kun he ovat lähekkäin, ruutu on yksi; kun he
-## hajaantuvat, jokainen ryhmä (enimmillään neljä) saa oman ruutunsa.
+## Per-pelaaja-ruudut (LoL-tyyli). Maailma renderöidään SubViewporteihin, jotka
+## jakavat saman World2D:n mutta katsovat sitä omilla kameroillaan. Näyttö
+## jakautuu PAIKALLISTEN IHMISPELAAJIEN MÄÄRÄN mukaan (1-4): jokainen pelaaja
+## saa oman ruutunsa, joka seuraa hänen hahmoaan KESKIÖSSÄ. Näkymä EI laajene
+## vihollisista — se on kiinteä alue oman hahmon ympärillä (VIEW_HALF).
 ##
-## Jokainen ruutu pitää lähellä olevat viholliset näkyvissä, jotta taistelua
-## voi seurata omalta ruudulta. HUD piirtyy CanvasLayerina kaikkien päälle.
+## Poikkeus: kun pelaaja tähtää skillshottia joka ylittää ruudun näkymän, kamera
+## zoomaa ulos juuri sen verran että tähtäys näkyy max rangeen asti.
 ##
-## Otetaan käyttöön Game.options.split_screen. Oletuksena pois -> klassinen
-## yksittäiskamera (GameCamera) toimii kuten ennen.
+## Otetaan käyttöön Game.options.split_screen (oletuksena päällä). Simulaatiossa
+## käytetään aina klassista GameCameraa.
 
 const MAX_PANES := 4
-const MARGIN := 260.0
-const MIN_ZOOM := 0.6
-const MAX_ZOOM := 1.05
-const FOLLOW := 3.5
-const ZOOM_SPEED := 2.5
-const SPLIT_DIST := 1050.0        # ryhmien etäisyys jonka yli -> jako
-const MERGE_DIST := 780.0         # ... ja alle jonka -> yhdistys (hystereesi)
-const INCLUDE_RADIUS := 640.0     # tämän säteen sisällä olevat viholliset mukaan
+const MARGIN := 260.0              # vain vararyhmän (ei ihmisiä) rajaukseen
+# LoL-tyylinen per-pelaaja-näkymä: kiinteä alue OMAN hahmon ympärillä, ei laajene
+# vihollisista. VIEW_HALF = perusnäkymän puolikorkeus maailmayksikköinä (näkymä
+# skaalautuu ruudun kokoon niin että jokainen pelaaja näkee saman alueen).
+const VIEW_HALF := 540.0
+const AIM_MARGIN := 150.0          # lisämarginaali tähtäyksen kärjen taakse
+const MIN_ZOOM := 0.34            # kuinka kauas voi zoomata (isot skillshotit/vara)
+const MAX_ZOOM := 1.15            # kuinka lähelle perusnäkymä zoomaa
+const FOLLOW := 6.0               # kameran seuranta (tiukempi -> hahmo keskiössä)
+const ZOOM_SPEED := 3.5
+# Legacy (ei enää käytössä per-pelaaja-mallissa; jätetty vanhojen apurien takia).
+const SPLIT_DIST := 1050.0
+const MERGE_DIST := 780.0
+const INCLUDE_RADIUS := 640.0
 
 var arena = null
 
@@ -138,30 +144,22 @@ func _pane_rects(count: int, full: Vector2) -> Array:
 				Rect2(0, hh, hw, full.y - hh), Rect2(hw, hh, full.x - hw, full.y - hh)]
 
 
-# --- Ryhmittely (klusterointi) ---
+# --- Ruutujen kohdennus ---
 
-## Ryhmittelee elossa olevat ihmispelaajat 1–4 ryhmään. Jokainen ryhmä saa oman
-## ruutunsa. Hystereesi (SPLIT_DIST vs MERGE_DIST parikohtaisesti) estää
-## värinän rajalla. Ryhmät järjestetään pelaajanumeron mukaan, jotta ruudut
-## eivät vaihda paikkaa.
+## Yksi ruutu per PAIKALLINEN ihmispelaaja (LoL-tyyli: oma hahmo aina keskiössä,
+## ei dynaamista yhdistämistä eikä laajenemista vihollisista). Vakaa järjestys
+## pelaajanumeron mukaan -> ruudut eivät vaihda paikkaa. Kuollutkin pelaaja pitää
+## oman ruutunsa. Jos ihmispelaajia ei ole (katselu/sim), yksi vararuutu.
 func _clusters() -> Array:
-	var anchors := _human_anchors()
-	var groups: Array = []
-	if anchors.size() <= 1:
-		groups = [anchors] if not anchors.is_empty() else [_fallback_group()]
-	else:
-		groups = _cluster_by_hysteresis(anchors)
-		groups = _cap_groups(groups, MAX_PANES)
-	_remember_groups(groups)
-	return _sorted_groups(groups)
-
-
-## Elossa olevat ihmispelaajat (ruutujen ankkurit).
-func _human_anchors() -> Array:
 	var out: Array = []
 	for h in arena.heroes:
-		if is_instance_valid(h) and h.alive and h.profile != null and not h.profile.is_bot:
-			out.append(h)
+		if is_instance_valid(h) and h.profile != null and not h.profile.is_bot:
+			out.append([h])
+	out.sort_custom(func(a, b): return a[0].profile.index < b[0].profile.index)
+	if out.is_empty():
+		return [_fallback_group()]
+	if out.size() > MAX_PANES:
+		out = out.slice(0, MAX_PANES)
 	return out
 
 
@@ -304,17 +302,35 @@ func _frame(cluster: Array) -> Array:
 
 func _update_camera(cam: Camera2D, vp: SubViewport, cluster: Array, delta: float,
 		snap: bool) -> void:
-	var framed := _frame(cluster)
-	if framed.is_empty():
+	if cluster.is_empty():
 		return
-	var rect := Rect2(framed[0].global_position, Vector2.ONE)
-	for h in framed:
-		rect = rect.expand(h.global_position)
-	rect = rect.grow(MARGIN)
-
 	var vps := Vector2(vp.size)
 	if vps.x < 1.0 or vps.y < 1.0:
 		vps = Vector2(960.0, 540.0)
+
+	var rect: Rect2
+	if cluster.size() == 1 and is_instance_valid(cluster[0]):
+		# PER-PELAAJA: kiinteä näkymä oman hahmon ympärillä (ei laajene vihollisista).
+		var hero: Hero = cluster[0]
+		var focus: Vector2 = hero.global_position
+		rect = Rect2(focus.x - VIEW_HALF, focus.y - VIEW_HALF, VIEW_HALF * 2.0, VIEW_HALF * 2.0)
+		# Tähdättäessä skillshottia näytön yli: laajenna näkymä KÄRJEN (max range)
+		# asti, jotta tähtäys pysyy kokonaan ruudulla -> zoomaa ulos vain tarpeeksi.
+		if hero._aim_active and hero._aim_len > 1.0 and hero.aim.length() > 0.1:
+			rect = rect.expand(focus + hero.aim.normalized() * (hero._aim_len + AIM_MARGIN))
+	else:
+		# VARARUUTU (ei ihmispelaajia): rajaa koko klusteri kuten klassinen kamera.
+		var valid: Array = []
+		for h in cluster:
+			if is_instance_valid(h):
+				valid.append(h)
+		if valid.is_empty():
+			return
+		rect = Rect2(valid[0].global_position, Vector2.ONE)
+		for h in valid:
+			rect = rect.expand(h.global_position)
+		rect = rect.grow(MARGIN)
+
 	var fit: float = minf(vps.x / rect.size.x, vps.y / rect.size.y)
 	var tz: float = clampf(fit, MIN_ZOOM, MAX_ZOOM)
 	var target: Vector2 = rect.get_center()
