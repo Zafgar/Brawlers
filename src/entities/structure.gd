@@ -22,9 +22,12 @@ const DEFEND_WINDOW := 2.5     # kuinka tuoreesta osumasta torni puolustaa liitt
 # viholliset nopeasti -> vihollisen tukikohta on kuolettava no-go-alue kunnes
 # tornit on kaadettu. Haavoittuvaksi muututtuaan laser sammuu (silloin nexuksen
 # KUULUU olla tuhottavissa).
-const NEXUS_LASER_RANGE := 480.0
-const NEXUS_LASER_DPS := 260.0    # tappaa nopeasti: älä loju suojatun nexuksen alueella
-const NEXUS_LASER_TICK := 0.35
+# Laser-kantama 500: juuri sisemmän tornin (n. 520 px nexuksesta) alapuolella,
+# jottei se estä tornin piiritystä — vartioi nexuksen ydintä, ei koko tukikohtaa.
+# Kuolettava DPS + AI-väistö tekevät alueesta "ei mene sinne lainkaan" -vyöhykkeen.
+const NEXUS_LASER_RANGE := 500.0
+const NEXUS_LASER_DPS := 460.0    # tappaa nopeasti (~1.5-2.5 s): kuolettava vyöhyke
+const NEXUS_LASER_TICK := 0.3
 
 var kind := Kind.TOWER
 var _color := Color("4aa8ff")
@@ -59,11 +62,11 @@ func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2) -> void:
 
 	match kind:
 		Kind.TOWER:
-			max_hp = 900.0
+			max_hp = 1150.0                   # kovempi (12 min pelit: tukikohta kestää)
 			radius = 46.0
 			_charge = randf_range(0.0, 0.6)   # porrasta aloituslataus
 		Kind.NEXUS:
-			max_hp = 1600.0
+			max_hp = 2200.0                   # kovempi linnake (ei kaadu 7 min)
 			radius = 72.0
 			_invuln = true
 	_color = Palette.team(p_team).lerp(Color.WHITE, 0.15)

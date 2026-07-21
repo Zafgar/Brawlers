@@ -999,7 +999,7 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 func _moba_tower_safe(hero: Hero, arena, pos: Vector2, goal: Vector2) -> Vector2:
 	if arena.mode != "moba":
 		return goal
-	var tower_hold: float = Structure.SHOT_RANGE + 45.0
+	var tower_hold: float = Structure.SHOT_RANGE + 60.0
 	var skip_towers: bool = _pref_range >= tower_hold   # kaukotaistelija ampuu ulkoa
 	var out: Vector2 = goal
 	for st in arena.structures:
@@ -1023,12 +1023,14 @@ func _moba_tower_safe(hero: Hero, arena, pos: Vector2, goal: Vector2) -> Vector2
 			continue
 		if skip_towers or out.distance_to(s.global_position) >= tower_hold:
 			continue
-		# Dive on sallittua VAIN jos oma aalto imee tornin: torni ei saa tähdätä
-		# juuri tähän sankariin. Jos torni on lukinnut TÄMÄN sankarin, työnnä ulos
-		# kantamalta vaikka omia minioneja olisi lähellä -> ei enää facetankkia
-		# (torni ampuu minioneja ensin, joten lukitus meihin = aalto ei suojaa).
+		# Dive on sallittua VAIN jos: torni ei tähtää juuri minuun, olen terve JA
+		# vahva oma aalto (>=2 minionia) imee tornin. Muuten pysy kantaman ulkona
+		# -> ei turhaa tornitappelua (tätä tapahtui liikaa). Aiemmin jo 1 minioni
+		# + mikä tahansa HP riitti, mikä salli jatkuvan tornin alla oleilun.
 		var tower_on_me: bool = s._target_lock == hero
-		if not tower_on_me and _own_minions_near(hero, arena, s.global_position, 360.0) > 0:
+		var healthy: bool = hero.hp > hero.max_hp * 0.5
+		var wave: int = _own_minions_near(hero, arena, s.global_position, 340.0)
+		if not tower_on_me and healthy and wave >= 2:
 			continue
 		var away: Vector2 = out - s.global_position
 		if away.length() < 1.0:
