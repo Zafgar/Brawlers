@@ -1041,6 +1041,28 @@ func _moba_tower_safe(hero: Hero, arena, pos: Vector2, goal: Vector2) -> Vector2
 	return out
 
 
+## Onko nykyinen kohde vihollistornin kantamalla ilman turvallista dive-syytä?
+## Dive on ok vain vahvalla omalla aallolla (>=2 minionia imemään torni) TAI
+## varmalla tapolla (kohde lähes kuollut ja itse terve). Muuten -> ei diveä
+## (botit eivät saa jahdata tappoja tornin alle ja kuolla baittiin).
+func _tower_diving(hero: Hero, arena) -> bool:
+	if arena.mode != "moba":
+		return false
+	if _target == null or not is_instance_valid(_target) or not _target.alive or _target.is_unit:
+		return false
+	for st in arena.structures:
+		var s := st as Structure
+		if s == null or not s.alive or s.team == hero.team or s.kind == Structure.Kind.NEXUS:
+			continue
+		if _target.global_position.distance_to(s.global_position) > Structure.SHOT_RANGE:
+			continue
+		var wave: int = _own_minions_near(hero, arena, s.global_position, 340.0)
+		var sure_kill: bool = _target.hp < _target.max_hp * 0.28 \
+			and hero.hp > hero.max_hp * 0.55
+		return not (wave >= 2 or sure_kill)
+	return false
+
+
 func _update_aim(hero: Hero) -> void:
 	if _target == null or not is_instance_valid(_target) or not _target.alive:
 		if _move.length() > 0.1:
@@ -1111,9 +1133,14 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 		dist = pos.distance_to(_target.global_position)
 	var near_enemies: int = arena.heroes_in_circle(pos, 320.0, 1 - hero.team, true, true).size()
 
+	# Onko kohde vihollistornin alla ilman turvallista dive-syytä? Jos on, ei
+	# käytetä syöksy-/hyökkäyskykyjä eikä ulttia sinne (ei tornidiveä tappoja
+	# jahdaten -> bait-kuolemat loppuvat). Liike hoidetaan _moba_tower_safella.
+	var diving: bool = _tower_diving(hero, arena)
+
 	# Ultimate — arvokkain, käytetään herkemmin kaikilla vaikeustasoilla.
 	if hero.ult_charge >= 100.0:
-		if _want_ult(hero, arena, bb, dist, near_enemies) and randf() < ult_chance:
+		if not diving and _want_ult(hero, arena, bb, dist, near_enemies) and randf() < ult_chance:
 			_flags.ult = true
 			return
 
@@ -1137,6 +1164,11 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 		return                          # väijyessä ei käytetä engage-kykyjä (a1/a2)
 
 	if randf() > ability_chance:
+		return
+
+	# Tornidive-esto: älä käytä engage-/syöksykykyjä kohteeseen joka on
+	# vihollistornin alla ilman omaa aaltoa (pako-a1 hoidetaan _try_escapessa yllä).
+	if diving:
 		return
 
 	if hero.cd.a1 <= 0.0:

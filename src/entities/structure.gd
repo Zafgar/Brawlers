@@ -132,27 +132,38 @@ func _passive_update(delta: float) -> void:
 	if kind == Kind.NEXUS:
 		_nexus_laser(delta)
 		return
+	_tower_tick(delta)
+
+
+## Torni lataa VAIN kun kohde on kantamalla. Kun kohde poistuu/kuolee, lataus
+## perutaan ja uusi kohde valitaan (jos kantamalla). Täydellä latauksella torni
+## ampuu hakeutuvan (varmasti osuvan) ammuksen.
+func _tower_tick(delta: float) -> void:
 	_muzzle = maxf(_muzzle - delta, 0.0)
-	if _charge < 1.0:
-		_charge = minf(_charge + delta / CHARGE_TIME, 1.0)
-		# Lukitse kohde latauksen loppuvaiheessa -> näkyvä tähtäys ennen laukausta.
-		if _charge >= AIM_LOCK_AT:
-			var had_lock := _target_lock != null
-			_target_lock = _valid_lock()
-			# Äänitelegrafi lukituksen kohdatessa: kuuluva varoitus ennen laukausta,
-			# vastaa näkyvää tähtäyssädettä (kerran per kohteen hankinta).
-			if _target_lock != null and not had_lock and not Game.simulating:
-				AudioMgr.play("mark", 0.05, -13.0, global_position)
-		return
-	# Lataus täynnä: varmista/valitse kohde ja ammu.
-	var target := _valid_lock()
-	_target_lock = target
+	var target := _acquire_target()
 	if target == null:
-		return   # valmis mutta ei kohdetta -> pysyy ladattuna, ampuu heti kun kohde tulee
-	_charge = 0.0
+		# Ei kohdetta kantamalla -> peru lataus, odota. (Kohteen poistuessa
+		# lataus alkaa alusta seuraavasta kohteesta.)
+		_charge = 0.0
+		_target_lock = null
+		return
+	if target != _target_lock:
+		# Uusi kohde (edellinen poistui/kuoli tai ensimmäinen kantamalle) ->
+		# lataa alusta, jotta laukaus on aina näkyvästi telegrafoitu.
+		_target_lock = target
+		_charge = 0.0
+		if not Game.simulating:
+			AudioMgr.play("mark", 0.05, -13.0, global_position)
+	_charge = minf(_charge + delta / CHARGE_TIME, 1.0)
+	if _charge >= 1.0:
+		_fire_at(target)
+		_charge = 0.0
+
+
+## Ampuu hakeutuvan ammuksen kohteeseen: nopea + kova kääntyvyys -> ei väistettävä
+## (osuu varmasti). Peräkkäiset iskut samaan sankariin ramppaavat.
+func _fire_at(target: Hero) -> void:
 	_muzzle = MUZZLE_TIME
-	# Ramppaus: peräkkäiset iskut SAMAAN sankariin kovenevat (minionit kuolevat
-	# yhdellä joka tapauksessa -> ne eivät ramppaa eivätkä nollaa toisen ramppia).
 	var dmg := SHOT_DMG
 	if not target.is_unit:
 		if target == _ramp_target:
@@ -163,12 +174,14 @@ func _passive_update(delta: float) -> void:
 		dmg *= 1.0 + RAMP_STEP * float(_ramp)
 	var dir: Vector2 = (target.global_position - global_position).normalized()
 	Projectile.launch(self, global_position + dir * (radius + 6.0), dir, {
-		"speed": 880.0,
+		"speed": 640.0,          # nopeampi kuin sankari -> ei paeta
 		"dmg": dmg,
-		"radius": 12.0,
-		"life": 0.55,
+		"radius": 13.0,
+		"life": 1.7,             # ehtii kaartaa kohteeseen
 		"kb": 40.0,
 		"color": _color,
+		"homing_target": target, # hakeutuu -> varmasti osuu
+		"homing_rate": 11.0,
 	})
 	# Hiljaisempi + hajautunut viritys, ettei 4 tornia soi kimeästi unisonossa
 	# ~4×/s. Ei soi simulaatiossa (jatkuva tuli sotkisi nopean ajon).
@@ -176,9 +189,15 @@ func _passive_update(delta: float) -> void:
 		AudioMgr.play("light", 0.2, -9.0, global_position)
 
 
-## Lukitun kohteen validointi: pidä lukittu kohde jos se on yhä elossa ja
-## kantamalla, muuten valitse uusi normaalilla prioriteetilla.
-func _valid_lock() -> Hero:
+## Kohteen hankinta prioriteetilla:
+##  1) Puolustus: vihollissankari joka lyö liittolaista tornin alla (rankaisu,
+##     ohittaa nykyisen lukon -> torni kääntyy heti sukeltajaan).
+##  2) Nykyinen lukko jos se on yhä elossa ja kantamalla (pidä telegrafi).
+##  3) Uusi kohde (minionit > lähin sankari).
+func _acquire_target() -> Hero:
+	var defend := _defend_target()
+	if defend != null:
+		return defend
 	if _target_lock != null and is_instance_valid(_target_lock) and _target_lock.alive \
 			and _target_lock.global_position.distance_to(global_position) <= SHOT_RANGE:
 		return _target_lock
@@ -186,11 +205,6 @@ func _valid_lock() -> Hero:
 
 
 func _tower_target() -> Hero:
-	# LoL-tornin puolustus: jos vihollissankari on hiljattain lyönyt liittolais-
-	# sankaria tornin kantamassa, kohdista siihen heti (minionien ohi).
-	var defend := _defend_target()
-	if defend != null:
-		return defend
 	var foe: int = 1 - team
 	var best_m: Hero = null
 	var bm := SHOT_RANGE
@@ -367,6 +381,15 @@ class StructureVisual:
 	func _paint_tower(s: Structure, r: float, col: Color, dark: Color) -> void:
 		# Kivijalka + kapeneva torni + hehkuva kärki josta ammukset lähtevät.
 		var glow: Color = Palette.glow(col, 1.6)
+		var chg: float = clampf(s._charge, 0.0, 1.0)
+		# Kantama-kehä maahan (ensimmäisenä -> jää tornin alle): näkyvä varo-alue,
+		# joka kirkastuu latauksen mukaan ja hohtaa punaisena kun torni lataa.
+		var rng_fill: Color = col if s._target_lock == null \
+			else Palette.glow(Color("ff5a4a"), 1.2)
+		draw_circle(Vector2.ZERO, Structure.SHOT_RANGE,
+			Palette.with_alpha(rng_fill, 0.028 + 0.05 * chg))
+		draw_arc(Vector2.ZERO, Structure.SHOT_RANGE, 0.0, TAU, 72,
+			Palette.with_alpha(Palette.glow(rng_fill, 1.3), 0.12 + 0.30 * chg), 2.5)
 		# Kivijalka: leveä matala kuusikulmio.
 		var base_ring := PackedVector2Array()
 		for i in range(6):
