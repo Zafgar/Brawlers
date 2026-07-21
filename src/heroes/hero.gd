@@ -238,7 +238,7 @@ func _physics_process(delta: float) -> void:
 	var mv := Vector2.ZERO
 	if root_timer <= 0.0 and stun_timer <= 0.0:
 		mv = controller.move_vector()
-	var speed := base_speed * slow_factor * haste_factor
+	var speed := base_speed * slow_factor * haste_factor * _move_speed_mult()
 	if carrying:
 		speed *= CARRY_SPEED_MULT
 	if arena.map != null:
@@ -641,6 +641,12 @@ func _attack_control(held: bool, _just_pressed: bool, _just_released: bool,
 
 
 # --- Sankarikohtaiset kyvyt (ylikirjoitetaan aliluokissa) ---
+
+## Liikkumisnopeuden kerroin (ylikirjoitettavissa; esim. Scoutin tornitila
+## hidastaa). Oletus 1.0 = ei vaikutusta.
+func _move_speed_mult() -> float:
+	return 1.0
+
 
 func _basic(_dir: Vector2) -> void:
 	pass

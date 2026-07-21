@@ -22,6 +22,8 @@ var heal_allies := 0.0
 var on_hit := Callable()
 var on_expire := Callable()
 var spin := false
+var homing_target: Hero = null   # jos asetettu, ammus kaartaa tätä kohti
+var homing_rate := 0.0           # maksimikääntyminen rad/s (0 = ei hakeutumista)
 
 var direction := Vector2.RIGHT
 var _slot := ""                # mikä kykypaikka ampui tämän (telemetria)
@@ -49,6 +51,8 @@ static func launch(src: Hero, pos: Vector2, dir: Vector2, cfg := {}) -> Projecti
 	p.on_hit = cfg.get("on_hit", Callable())
 	p.on_expire = cfg.get("on_expire", Callable())
 	p.spin = cfg.get("spin", false)
+	p.homing_target = cfg.get("homing_target", null)
+	p.homing_rate = cfg.get("homing_rate", 0.0)
 	src.arena.add_projectile(p)
 	return p
 
@@ -72,6 +76,16 @@ func _physics_process(delta: float) -> void:
 	if life <= 0.0:
 		_expire()
 		return
+
+	# Hakeutuminen: kaarra kohti kohdetta rajoitetulla kääntönopeudella (esim.
+	# Scoutin lukittu kohde -> luodit hakeutuvat siihen).
+	if homing_rate > 0.0 and homing_target != null and is_instance_valid(homing_target) \
+			and homing_target.alive:
+		var want: Vector2 = homing_target.global_position - global_position
+		if want.length() > 1.0:
+			var ang: float = clampf(direction.angle_to(want.normalized()),
+				-homing_rate * delta, homing_rate * delta)
+			direction = direction.rotated(ang)
 
 	global_position += direction * speed * delta
 

@@ -1121,11 +1121,12 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 		if _try_escape(hero, bb):
 			return
 
-	# Scout: lataa lipas RULLAAMALLA kun se on lähes tyhjä eikä ole välitöntä
-	# vaaraa (rulla lataa heti; muuten 2.5 s auto-lataus kesken taistelun syö
-	# perusvahingon). Vain tasoilla joilla on väistöosaamista.
-	if hero.hero_id == "scout" and dodge_chance > 0.2 and hero.cd.dodge <= 0.0 \
-			and not hero.reloading and hero.ammo <= maxi(1, hero.ammo_max / 5) \
+	# Scout: lataa lipas RULLAAMALLA (X) kun se on kolmanneksessa eikä ole
+	# välitöntä vaaraa (rulla lataa heti; muuten 2.5 s auto-lataus kesken
+	# taistelun syö perusvahingon). Perustaito -> lähes kaikilla tasoilla.
+	# (Tornitilassa ammo pysyy täynnä, joten tämä ei laukea silloin turhaan.)
+	if hero.hero_id == "scout" and dodge_chance > 0.05 and hero.cd.dodge <= 0.0 \
+			and not hero.reloading and hero.ammo <= maxi(2, hero.ammo_max / 3) \
 			and not _in_danger(hero, arena):
 		_flags.dodge = true
 		return

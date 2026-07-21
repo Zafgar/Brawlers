@@ -16,7 +16,22 @@ const MARK_AMP := 1.45              # merkitty kohde ottaa +45 % vahinkoa (vahva
 const STUN_AOE_RADIUS := 95.0
 const STUN_DUR := 0.8
 
+# Lukitus (a2-kranaatti osuu -> merkkaa kohteen): perusluodit hakeutuvat siihen
+# LOCK_DUR ajan, jos se on LOCK_RANGE:n sisällä.
+const LOCK_DUR := 3.2
+const LOCK_RANGE := 560.0
+const HOMING_RATE := 7.0            # luodin kääntönopeus rad/s (hakeutuminen)
+
+# Tornitila (ultti): hidas kävely, kaksoisase (kaksi viivaa), ei latausta.
+const TURRET_DUR := 6.0
+const TURRET_SLOW := 0.5
+
 var _reload_time := 0.0
+var _lock_target: Hero = null       # lukittu kohde (perusluodit hakeutuvat)
+var _lock_timer := 0.0
+var _turret := false                # tornitila päällä (ultin ajan)
+var _turret_timer := 0.0
+var _turret_fx := 0.0               # hehkurenkaan ajastin tornitilassa
 
 
 func _init() -> void:
@@ -65,20 +80,51 @@ func _attack_control(held: bool, _just_pressed: bool, _just_released: bool,
 
 
 func _fire_one(dir: Vector2) -> void:
-	ammo -= 1
 	visual.attack_swing()
 	AudioMgr.play("pop", 0.12, -1.0)
-	var spread := randf_range(-0.05, 0.05)
-	Projectile.launch(self, global_position + dir * 28.0, dir.rotated(spread), {
+	# Lukittu kohde: tähtää siihen ja anna luotien hakeutua (LOCK_RANGE:n sisällä).
+	var lock: Hero = _active_lock()
+	var fire_dir: Vector2 = dir
+	if lock != null:
+		fire_dir = (lock.global_position - global_position).normalized()
+	if _turret:
+		# Tornitila: kaksi rinnakkaista viivaa (toinen ase), EI kuluta lipasta.
+		var perp: Vector2 = fire_dir.orthogonal() * 14.0
+		_shoot(global_position + fire_dir * 28.0 + perp, fire_dir, lock)
+		_shoot(global_position + fire_dir * 28.0 - perp, fire_dir, lock)
+		return
+	ammo -= 1
+	_shoot(global_position + fire_dir * 28.0, fire_dir, lock)
+	if ammo <= 0:
+		_start_reload()
+
+
+## Yksi luoti. homing != null -> hakeutuu lukittuun kohteeseen (ei hajontaa).
+func _shoot(from: Vector2, dir: Vector2, homing: Hero) -> void:
+	var spread: float = 0.0 if homing != null else randf_range(-0.05, 0.05)
+	var cfg := {
 		"speed": 1000.0,
 		"dmg": SHOT_DMG,
-		"radius": 10.0,   # buff (sim2: perus osui harvoin boteilla): 7 -> 10 luotettavampi osuma
+		"radius": 10.0,   # buff (sim2: perus osui harvoin): luotettavampi osuma
 		"life": 0.7,
 		"kb": 55.0,
 		"color": hero_color(),
-	})
-	if ammo <= 0:
-		_start_reload()
+	}
+	if homing != null:
+		cfg["homing_target"] = homing
+		cfg["homing_rate"] = HOMING_RATE
+	Projectile.launch(self, from, dir.rotated(spread), cfg)
+
+
+## Voimassa oleva lukitus tai null (kohde elossa, vihollinen, kantamalla).
+func _active_lock() -> Hero:
+	if _lock_timer <= 0.0 or _lock_target == null or not is_instance_valid(_lock_target):
+		return null
+	if not _lock_target.alive or _lock_target.team == team:
+		return null
+	if _lock_target.global_position.distance_to(global_position) > LOCK_RANGE:
+		return null
+	return _lock_target
 
 
 func _start_reload() -> void:
@@ -104,6 +150,18 @@ func _passive_update(delta: float) -> void:
 		_reload_time -= delta
 		if _reload_time <= 0.0:
 			_finish_reload()
+	if _lock_timer > 0.0:
+		_lock_timer -= delta
+	if _turret:
+		_turret_timer -= delta
+		# Näkyvä tornitila-hehku ~0.5 s välein.
+		_turret_fx -= delta
+		if _turret_fx <= 0.0:
+			_turret_fx = 0.5
+			if not Game.simulating:
+				Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.3), radius + 20.0, 0.4)
+		if _turret_timer <= 0.0:
+			_end_turret()
 
 
 ## Perushyökkäys (varapolku boteille, jotka eivät ohjaa liipaisinta pito­logiikalla).
@@ -160,6 +218,14 @@ func _stun_target(hit_hero: Hero, _proj: Projectile) -> void:
 		return
 	var center: Vector2 = hit_hero.global_position
 	AudioMgr.play("pop", 0.1, -8.0)
+	# LUKITUS + merkki: osunut kohde lukitaan -> perusluodit hakeutuvat siihen
+	# LOCK_DUR ajan, ja se ottaa lisävahinkoa (merkki). Tämä on scoutin combo:
+	# osu kranaatilla -> tainnutus + merkki + hakeutuvat luodit.
+	if not hit_hero.is_unit and hit_hero.team != team:
+		_lock_target = hit_hero
+		_lock_timer = LOCK_DUR
+		hit_hero.apply_mark(MARK_DUR, MARK_AMP)
+		Fx.ring(arena, center, Palette.glow(Palette.GOLD, 1.5), 40.0, 0.5, 3.0)
 	# Vaahtoräjähdys ja aluepamahdus
 	Fx.burst(arena, center, Color(1, 1, 1, 0.85), 16, 240.0, 0.45, 6.0)
 	Fx.ring(arena, center, Palette.with_alpha(Color.WHITE, 0.7), STUN_AOE_RADIUS, 0.4, 4.0)
@@ -184,10 +250,11 @@ func _dodge_action(dir: Vector2) -> void:
 		Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.3), 44.0, 0.35)
 
 
-## Ultimate: Merkkisade — merkitsee kaikki lähiviholliset (vahvalla merkillä)
-## ja kiihdyttää joukkueen.
+## Ultimate: Tornitila — merkitsee kaikki lähiviholliset ja kiihdyttää joukkueen
+## (kuten ennen), MUTTA lisäksi scout menee tornitilaan: kävely hidastuu, käyttöön
+## tulee toinen ase (kaksi viivaa) eikä lipasta tarvitse ladata ultin ajan.
 func _ultimate(_dir: Vector2) -> void:
-	arena.popup(global_position + Vector2(0, -84), "MERKKISADE!", Palette.glow(Palette.GOLD, 1.5), 26)
+	arena.popup(global_position + Vector2(0, -84), "TORNITILA!", Palette.glow(Palette.GOLD, 1.5), 26)
 	AudioMgr.play("mark", 0.02, -2.0)
 	Fx.ring(arena, global_position, Palette.glow(Palette.GOLD, 1.6), 640.0, 0.7, 6.0)
 	Fx.ring(arena, global_position, Palette.with_alpha(Palette.GOLD, 0.5), 400.0, 0.6, 4.0)
@@ -197,3 +264,43 @@ func _ultimate(_dir: Vector2) -> void:
 			Fx.spark(arena, enemy.global_position, Palette.GOLD)
 	for ally in arena.alive_allies(team):
 		ally.apply_haste(1.2, 3.0)
+	# Tornitila päälle: täysi lipas, ei latausta, kaksoisase, hidas kävely.
+	_turret = true
+	_turret_timer = TURRET_DUR
+	reloading = false
+	_reload_time = 0.0
+	ammo = MAG_SIZE
+
+
+func _end_turret() -> void:
+	_turret = false
+	ammo = MAG_SIZE   # ultti päättyy täydellä lippaalla
+	if not Game.simulating:
+		arena.popup(global_position + Vector2(0, -70), "Ase jäähtyy", Palette.TEXT_DIM, 14)
+
+
+## Tornitila hidastaa kävelyn (asemoitu tuli — vahva mutta liikkumaton).
+func _move_speed_mult() -> float:
+	return TURRET_SLOW if _turret else 1.0
+
+
+## Nollaa tornitila/lukitus kuollessa/erän alussa, ettei respawnaava scout jää
+## hitaaksi tai luodit hakeudu vanhaan kohteeseen.
+func _clear_scout_state() -> void:
+	_turret = false
+	_turret_timer = 0.0
+	_lock_target = null
+	_lock_timer = 0.0
+	reloading = false
+	_reload_time = 0.0
+	ammo = MAG_SIZE
+
+
+func _respawn() -> void:
+	super()
+	_clear_scout_state()
+
+
+func reset_for_round(keep_ult_fraction := 0.5) -> void:
+	super(keep_ult_fraction)
+	_clear_scout_state()
