@@ -173,15 +173,18 @@ func _fire_at(target: Hero) -> void:
 			_ramp = 0
 		dmg *= 1.0 + RAMP_STEP * float(_ramp)
 	var dir: Vector2 = (target.global_position - global_position).normalized()
+	# Kääntyvyys niin kova että kääntösäde (speed/rate ~32 px) < osumaetäisyys
+	# (radius 16 + kohteen ~25 = ~41 px) -> ammus konvergoi ja osuu myös
+	# paikallaan olevaan kohteeseen (ei jää kiertämään). Osuu siis varmasti.
 	Projectile.launch(self, global_position + dir * (radius + 6.0), dir, {
 		"speed": 640.0,          # nopeampi kuin sankari -> ei paeta
 		"dmg": dmg,
-		"radius": 13.0,
+		"radius": 16.0,
 		"life": 1.7,             # ehtii kaartaa kohteeseen
 		"kb": 40.0,
 		"color": _color,
 		"homing_target": target, # hakeutuu -> varmasti osuu
-		"homing_rate": 11.0,
+		"homing_rate": 20.0,
 	})
 	# Hiljaisempi + hajautunut viritys, ettei 4 tornia soi kimeästi unisonossa
 	# ~4×/s. Ei soi simulaatiossa (jatkuva tuli sotkisi nopean ajon).
