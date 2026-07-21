@@ -183,11 +183,16 @@ func _passive_update(delta: float) -> void:
 	for ally in arena.alive_allies(team):
 		if ally.global_position.distance_to(global_position) > PULSE_RANGE:
 			continue
+		# Ohita liittolaiset joilla on jo merkittävä kilpi: add_shield ylikirjoittaa
+		# keston, joten pieni pulssi lyhentäisi Suojasoinnun ison kilven kestoa.
+		if ally.shield_hp >= PULSE_SHIELD:
+			continue
 		var frac: float = ally.hp / ally.max_hp
-		if frac < worst and (ally.shield_hp < PULSE_SHIELD or frac < 0.99):
+		if frac < worst:
 			worst = frac
 			target = ally
 	if target == null:
+		_pulse_timer = PULSE_INTERVAL - 0.25   # ei täyttä nollausta -> kevyt uudelleenyritys, ei joka-framen skannaus
 		return
 	_pulse_timer = 0.0
 	target.add_shield(PULSE_SHIELD, PULSE_DUR, self)
