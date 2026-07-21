@@ -1241,6 +1241,9 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 			# Ydinräjähdys: telegrafoitu latausräjähdys — laukaise kun kimpussa on
 			# vihollisia (2+ lähellä tai 1 kiinni ja hyvä hp).
 			return near_enemies >= 2 or (dist < 200.0 and near_enemies >= 1)
+		"lance":
+			# Taivaankeihäs: loikkaa kohteeseen kun se on kantamalla (ult-range ~520).
+			return dist < 540.0 and (near_enemies >= 1 or _target_is_hero())
 	return near_enemies >= 2
 
 
@@ -1298,6 +1301,9 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"obsidian":
 			# Louhintaloikka: hyppää keskietäisyydeltä vihollisen niskaan.
 			return dist > 160.0 and dist < 560.0
+		"lance":
+			# Lävistyssyöksy: syöksy vihollisen läpi keskietäisyydeltä (merkit).
+			return dist > 120.0 and dist < 460.0
 	return false
 
 
@@ -1350,6 +1356,9 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"obsidian":
 			# Kiviho: kertakäyttöinen torjunta/heijastus kun vihollinen on lähellä.
 			return dist < 220.0 and hero.res > 35.0
+		"lance":
+			# Pyörremyrsky: lähitaistelun AoE + vaimennus + merkit.
+			return dist < 175.0 and hero.res > 38.0
 	return false
 
 

@@ -45,6 +45,8 @@ static func draw_symbol(ci: CanvasItem, hero_id: String, center: Vector2, r: flo
 			_hush(ci, center, r)
 		"obsidian":
 			_obsidian(ci, center, r)
+		"lance":
+			_lance(ci, center, r)
 		_:
 			_letter(ci, hero_id, center, r)
 
@@ -345,6 +347,31 @@ static func _scout(ci: CanvasItem, center: Vector2, r: float) -> void:
 		var d := Vector2.RIGHT.rotated(ang)
 		ci.draw_line(center + d * r * 0.5, center + d * r * 1.0, INK, r * 0.1)
 	ci.draw_circle(center, r * 0.15, INK)
+
+
+## Lance: vinottain kulkeva keihäs, jonka kärjessä on kaksintaistelumerkki.
+static func _lance(ci: CanvasItem, center: Vector2, r: float) -> void:
+	var lw: float = maxf(2.0, r * 0.12)
+	var tail := center + Vector2(-0.72, 0.72) * r
+	var tip := center + Vector2(0.66, -0.66) * r
+	# Varsi
+	ci.draw_line(tail + Vector2(0, r * 0.05), tip + Vector2(0, r * 0.05), SHADE, lw)
+	ci.draw_line(tail, tip, INK, lw * 0.8)
+	# Keihäänkärki
+	var dir := (tip - tail).normalized()
+	var perp := Vector2(-dir.y, dir.x)
+	var head := PackedVector2Array([
+		tip + dir * r * 0.28,
+		tip - dir * r * 0.16 + perp * r * 0.2,
+		tip - dir * r * 0.16 - perp * r * 0.2,
+	])
+	ci.draw_colored_polygon(head, INK)
+	# Kaksintaistelumerkki (timantti) tyven lähellä
+	var m := center + Vector2(-0.28, 0.28) * r
+	var gem := PackedVector2Array([
+		m + Vector2(0, -r * 0.24), m + Vector2(r * 0.2, 0),
+		m + Vector2(0, r * 0.24), m + Vector2(-r * 0.2, 0)])
+	ci.draw_colored_polygon(gem, Color("ff9db0"))
 
 
 ## Obsidian: särmikäs kivilohkare, jonka halki kulkee hehkuva laavahalkeama.

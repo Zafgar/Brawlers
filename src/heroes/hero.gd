@@ -61,6 +61,7 @@ var silence_timer := 0.0            # ei voi käyttää kykyjä (a1/a2/ult/väis
 var reflect_timer := 0.0            # kiviho: heijasta osa otetusta vahingosta takaisin lähisankarille
 var reflect_factor := 0.0           # heijastettu osuus (0..1)
 var reflect_slot := ""              # heijastuksen kirjaava kykypaikka (telemetria)
+var cc_immune_timer := 0.0          # immuuni CC:lle (stun/root/slow/silence); esim. Lancen syöksy
 var mark_timer := 0.0               # merkitty kohde ottaa lisävahinkoa (Scout)
 var mark_amp := 1.25                # merkin vahinkokerroin (asetetaan apply_markissa)
 var kb_resist := 0.0                # 0..1, tankeille
@@ -142,6 +143,10 @@ var _beam_heal := false
 var void_stacks := 0
 var void_stack_timer := 0.0
 var void_stacker: Hero = null
+# Kaksintaistelumerkit (Lance): kasautuvat kohteeseen; 3 merkkiä -> viimeistely.
+var duel_marks := 0
+var duel_mark_timer := 0.0
+var duel_marker: Hero = null
 var frozen := 0.0                  # ajanpysäytys: > 0 = ei voi liikkua/toimia
 
 
@@ -377,6 +382,7 @@ func _tick_status(delta: float) -> void:
 	stun_timer = maxf(stun_timer - delta, 0.0)
 	silence_timer = maxf(silence_timer - delta, 0.0)
 	reflect_timer = maxf(reflect_timer - delta, 0.0)
+	cc_immune_timer = maxf(cc_immune_timer - delta, 0.0)
 	mark_timer = maxf(mark_timer - delta, 0.0)
 	guard_timer = maxf(guard_timer - delta, 0.0)
 	shield_timer -= delta
@@ -388,6 +394,10 @@ func _tick_status(delta: float) -> void:
 	if void_stack_timer <= 0.0 and void_stacks > 0:
 		void_stacks = 0
 		void_stacker = null
+	duel_mark_timer = maxf(duel_mark_timer - delta, 0.0)
+	if duel_mark_timer <= 0.0 and duel_marks > 0:
+		duel_marks = 0
+		duel_marker = null
 
 
 ## Lukee ohjaimen kykypainallukset puskuriin ja vanhentaa vanhat painallukset.
@@ -597,6 +607,24 @@ func consume_void_stacks() -> int:
 	void_stacks = 0
 	void_stack_timer = 0.0
 	void_stacker = null
+	return n
+
+
+## Kaksintaistelumerkki (Lance): kasaa merkin kohteeseen (enintään 3).
+## Palauttaa merkkien määrän lisäyksen jälkeen.
+func add_duel_mark(source: Hero) -> int:
+	duel_marks = mini(duel_marks + 1, 3)
+	duel_mark_timer = 5.0
+	duel_marker = source
+	return duel_marks
+
+
+## Nollaa ja palauttaa merkkien määrän (Lancen viimeistelyisku kuluttaa ne).
+func consume_duel_marks() -> int:
+	var n := duel_marks
+	duel_marks = 0
+	duel_mark_timer = 0.0
+	duel_marker = null
 	return n
 
 
@@ -970,6 +998,8 @@ func add_ult(points: float) -> void:
 
 
 func apply_slow(factor: float, duration: float) -> void:
+	if cc_immune_timer > 0.0:
+		return
 	if factor < slow_factor or slow_timer <= 0.0:
 		slow_factor = factor
 	# Kirjaa VAIN lisätty aika (uusi kesto - vanha), ei raakaa duration-arvoa:
@@ -992,6 +1022,8 @@ func apply_haste(factor: float, duration: float, record := true) -> void:
 
 
 func apply_root(duration: float) -> void:
+	if cc_immune_timer > 0.0:
+		return
 	var before := root_timer
 	root_timer = maxf(root_timer, duration)
 	arena.popup(global_position + Vector2(0, -60), "JUURTUNUT", Palette.BAD, 16)
@@ -1001,6 +1033,8 @@ func apply_root(duration: float) -> void:
 
 
 func apply_stun(duration: float) -> void:
+	if cc_immune_timer > 0.0:
+		return
 	var before := stun_timer
 	stun_timer = maxf(stun_timer, duration)
 	_record_cc("stun", stun_timer - before)
@@ -1009,6 +1043,8 @@ func apply_stun(duration: float) -> void:
 
 ## Vaimennus: kohde ei voi käyttää kykyjä (a1/a2/ult/väistö) mutta voi liikkua.
 func apply_silence(duration: float) -> void:
+	if cc_immune_timer > 0.0:
+		return
 	var before := silence_timer
 	silence_timer = maxf(silence_timer, duration)
 	if silence_timer - before > 0.0:
@@ -1086,6 +1122,10 @@ func _knockout(source: Hero) -> void:
 	void_stacks = 0
 	void_stack_timer = 0.0
 	void_stacker = null
+	duel_marks = 0
+	duel_mark_timer = 0.0
+	duel_marker = null
+	cc_immune_timer = 0.0
 	frozen = 0.0
 	respawn_timer = _respawn_delay()
 	profile.stats.deaths += 1
@@ -1171,6 +1211,10 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	void_stacks = 0
 	void_stack_timer = 0.0
 	void_stacker = null
+	duel_marks = 0
+	duel_mark_timer = 0.0
+	duel_marker = null
+	cc_immune_timer = 0.0
 	frozen = 0.0
 	hp = max_hp
 	shield_hp = 0.0

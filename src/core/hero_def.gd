@@ -6,7 +6,7 @@ class_name HeroDef
 const ORDER := [
 	"bastion", "ember", "luma", "blink", "bramble", "quill",
 	"boulder", "volt", "maestro", "shade", "tide", "scout",
-	"prism", "rift", "titan", "hush", "obsidian",
+	"prism", "rift", "titan", "hush", "obsidian", "lance",
 ]
 
 const HEROES := {
@@ -331,6 +331,25 @@ const HEROES := {
 			"a2": {"name": "Kiviho", "desc": "Pidä pohjassa: torjuu otettua vahinkoa joka suunnasta ja heijastaa osan takaisin hyökkääjään. Kuluttaa raivoa.", "cd": 6.0},
 			"dodge": {"name": "Kivirynnäkkö", "desc": "Raskas syöksy, joka tönäisee ja hidastaa osuessaan.", "cd": 5.0},
 			"ult": {"name": "Ydinräjähdys", "desc": "Lataa hetken ottaen paljon vähemmän vahinkoa, sitten räjähtää — lähempänä olevat viholliset ottavat enemmän vahinkoa. Obsidian selviää räjähdyksestä.", "cd": 0.0},
+		},
+	},
+	"lance": {
+		"name": "Lance",
+		"role": "Fighter",
+		"difficulty": 3,
+		"hp": 240.0,
+		"speed": 320.0,
+		"ratings": {"kesto": 3, "liike": 4, "vahinko": 4, "tuki": 1},
+		"weapon": "Teräskeihäs",
+		"desc": "Kaksintaistelija. Kasaa merkkejä kohteisiin ja viimeistelee ne isolla iskulla. Kerää raivoa taistelusta.",
+		"color": Color("cf4459"),
+		"color_b": Color("48141f"),
+		"abilities": {
+			"basic": {"name": "Keihäänpisto", "desc": "Kapea pisto eteen. Joka 3. osuma merkitsee kohteen; 3 merkkiä laukaisee viimeistelyn (bonusvahinko + elinvoiman imu + vauhti).", "cd": 0.5},
+			"a1": {"name": "Lävistyssyöksy", "desc": "Syöksy seinien ja sankarien läpi, joka merkitsee jokaisen läpi mennyn vihollisen. Syöksyn aikana immuuni tainnutuksille. Tähtää pitämällä nappia pohjassa.", "cd": 8.0},
+			"a2": {"name": "Pyörremyrsky", "desc": "Pyörivä keihäs vahingoittaa ja vaimentaa lähiviholliset sekä merkitsee heidät. Kuluttaa raivoa.", "cd": 8.0},
+			"dodge": {"name": "Sivuloikka", "desc": "Nopea väistöloikka.", "cd": 4.0},
+			"ult": {"name": "Taivaankeihäs", "desc": "Loikkaa kaukaa tähdättyyn pisteeseen ja iskee alas aluevahingolla ja tainnutuksella; Lance saa iskunopeusbuffin. Tähtää pitämällä ulttinappi pohjassa.", "cd": 0.0},
 		},
 	},
 }
