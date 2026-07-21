@@ -1196,7 +1196,11 @@ func _toggle_pause() -> void:
 		return
 	get_tree().paused = true
 	_pause_layer = PauseMenuLayer.new(self)
-	add_child(_pause_layer)
+	# Jaetussa näytössä areena elää SubViewportissa (jonka container ei välitä
+	# hiiri-/UI-syötettä), joten taukovalikko lisätään PÄÄRUUDULLE (SplitView).
+	# Muuten areenaan. Näin hiiri ja ohjain pääsevät nappeihin.
+	var host = split_view if split_view != null else self
+	host.add_child(_pause_layer)
 
 
 ## Taukovalikko omana kerroksenaan: pysyy aktiivisena pausen aikana,
