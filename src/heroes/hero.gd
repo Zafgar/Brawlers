@@ -61,6 +61,7 @@ var silence_timer := 0.0            # ei voi käyttää kykyjä (a1/a2/ult/väis
 var reflect_timer := 0.0            # kiviho: heijasta osa otetusta vahingosta takaisin lähisankarille
 var reflect_factor := 0.0           # heijastettu osuus (0..1)
 var reflect_slot := ""              # heijastuksen kirjaava kykypaikka (telemetria)
+var _applying_reflect := false      # estää heijastuksen ketjuuntumisen (kaksi kiviho-sankaria)
 var cc_immune_timer := 0.0          # immuuni CC:lle (stun/root/slow/silence); esim. Lancen syöksy
 var mark_timer := 0.0               # merkitty kohde ottaa lisävahinkoa (Scout)
 var mark_amp := 1.25                # merkin vahinkokerroin (asetetaan apply_markissa)
@@ -876,13 +877,16 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 	# sisällä (arenan aktiivikonteksti on hyökkääjän).
 	if reflect_timer > 0.0 and reflect_factor > 0.0 and amount > 0.0 \
 			and source != null and is_instance_valid(source) and source != self \
-			and not source.is_unit and source.team != team:
+			and not source.is_unit and source.team != team \
+			and not source._applying_reflect:   # älä heijasta heijastettua osumaa (ei ketjua)
 		var refl: float = amount * reflect_factor
 		var prev_hero = arena._act_hero if arena != null else null
 		var prev_slot: String = arena._act_slot if arena != null else ""
 		var prev_ctx := _cast_context
 		_act(reflect_slot)
+		_applying_reflect = true
 		deal_damage_to(source, refl)
+		_applying_reflect = false
 		_cast_context = prev_ctx
 		if arena != null:
 			arena._act_hero = prev_hero
@@ -1148,6 +1152,7 @@ func _knockout(source: Hero) -> void:
 	stun_timer = 0.0
 	silence_timer = 0.0
 	reflect_timer = 0.0
+	_applying_reflect = false
 	mark_timer = 0.0
 
 	var now := Time.get_ticks_msec() / 1000.0
@@ -1231,6 +1236,7 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	stun_timer = 0.0
 	silence_timer = 0.0
 	reflect_timer = 0.0
+	_applying_reflect = false
 	mark_timer = 0.0
 	guard_timer = 0.0
 	guard_radius = 0.0

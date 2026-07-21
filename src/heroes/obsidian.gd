@@ -182,7 +182,6 @@ func _dodge_action(dir: Vector2) -> void:
 func _ultimate(_dir: Vector2) -> void:
 	_charging = CHARGE_DUR
 	_charge_fx = 0.0
-	red_buff = maxf(red_buff, CHARGE_DUR)   # latauksen ajan elinvoiman palautus
 	arena.popup(global_position + Vector2(0, -92), "YDINLATAUS!", Palette.glow(MOLTEN, 1.6), 26)
 	AudioMgr.play("quake", 0.05, -2.0)
 	arena.shake(0.35)
