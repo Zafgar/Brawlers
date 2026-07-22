@@ -1,6 +1,6 @@
 # Project Arena
 
-Värikäs, ylhäältä kuvattu paikallinen areenapeli 1–8 pelaajalle. Pelaa yksin
+Värikäs, ylhäältä kuvattu paikallinen areenapeli 1–4 paikallispelaajalle. Pelaa yksin
 botteja vastaan, kaverin kanssa samassa joukkueessa tai vastakkain — samalla
 ruudulla. Ensisijainen ohjain on PS5:n DualSense, ja näppäimistö + hiiri
 muodostavat yhden pelaajan.
@@ -45,10 +45,8 @@ lobbyssa painamalla X.
   erän. Kantaja hidastuu eikä voi käyttää kykyjään. Tasatilanteessa
   ratkaisuhetki: seuraava pito voittaa.
 - Ottelukoot **1v1–4v4**, paras kolmesta tai paras viidestä.
-- **12 sankaria**: Bastion ja Boulder (tankit), Ember ja Volt (maget),
-  Luma ja Maestro (tuet), Blink ja Shade (assassinit), Bramble ja Tide
-  (fighterit) sekä Quill ja Scout (rangerit). Jokaisella perushyökkäys,
-  kaksi kykyä, väistö, ultimate ja passiivi.
+- **19 sankaria**, joilla on omat roolit, resurssit ja taistelutyylit. Jokaisella
+  on perushyökkäys, kaksi kykyä, väistö, ultimate ja passiivi.
 - **Viisi kenttää**, joilla omat mekaniikkansa ja identiteettinsä:
   - *Geargarden* — tasapainoinen perusareena: messinkirattaita, pensasaitoja
     suojana ja pelaajia työntäviä kuljetinhihnoja
@@ -111,7 +109,7 @@ src/
 └── ui/
     ├── ui_kit.gd            # Yhtenäiset napit, paneelit, tekstit
     ├── main_menu.gd, match_setup.gd, lobby.gd, hero_gallery.gd
-    ├── hud.gd, player_card.gd
+    ├── hud.gd                # Responsiivinen 1–4 pelaajan HUD ja minikartat
     ├── results.gd           # Tulosruutu ja MVP-laskenta
     └── menu_backdrop.gd     # Valikoiden animoitu tausta
 ```
@@ -124,7 +122,7 @@ dataan rivi ja perimällä `Hero`-luokka (~100 riviä).
 
 Speksi harkitsi 2D:tä ja 3D:tä. Valinta on tietoisesti **2D + 2.5D-vaikutelma**:
 
-- 8 pelaajaa yhdellä jaetulla kameralla vaatii täydellistä luettavuutta.
+- 1–4 paikallispelaajan omat kamerat ja HUDit vaativat täydellistä luettavuutta.
 - 60 FPS toteutuu heikommallakin koneella, myös 4v4-tilanteissa.
 - Koodilla generoitu vektorigrafiikka näyttää 2D:nä viimeistellyltä;
   varjot, hyppyvaikutelma ja squash & stretch antavat syvyyden tunnun.
