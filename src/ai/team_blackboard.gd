@@ -1,0 +1,163 @@
+class_name TeamBlackboard
+extends RefCounted
+## Joukkueen jaettu taktinen tilannekuva. Kaikki saman joukkueen botit
+## lukevat tätä, jotta ne toimivat yhtenä ryhmänä: kuka kantaa reliikkiä,
+## ketä suojataan, kuka johtaa rintamaa ja missä viholliset ovat.
+
+var arena = null
+var team := 0
+
+var own_carrier: Hero = null       # oma reliikinkantaja (jos on)
+var enemy_carrier: Hero = null     # vihollisen kantaja (jos on)
+var lowest_ally: Hero = null       # eniten kärsinyt elossa oleva liittolainen
+var frontline_ally: Hero = null    # lähimpänä vihollisia oleva liittolainen (johtaa rintamaa)
+var protect_ally: Hero = null      # tärkein suojeltava (kantaja > tuki > kärsinyt)
+var focus_target: Hero = null      # joukkueen keskitetyn tulen kohde (focus fire)
+var threat_center := Vector2.ZERO  # elossa olevien vihollisten painopiste
+var retreat_pos := Vector2.ZERO
+var alert_timer := 0.0             # hetkellinen hälytystila (reliikki vaihtoi omistajaa)
+var threatened_structure = null    # oma rakennus jota vihollissankari juuri uhkaa (MOBA)
+var defender: Hero = null          # lähin liittolainen nimetty puolustamaan sitä
+
+
+func setup(p_arena, p_team: int) -> void:
+	arena = p_arena
+	team = p_team
+	retreat_pos = arena.map.spawn_point(team, 0)
+
+
+func update(delta: float) -> void:
+	alert_timer = maxf(alert_timer - delta, 0.0)
+
+	own_carrier = null
+	enemy_carrier = null
+	var carrier: Hero = arena.relic.carrier
+	if carrier != null and is_instance_valid(carrier) and carrier.alive:
+		if carrier.team == team:
+			own_carrier = carrier
+		else:
+			enemy_carrier = carrier
+
+	var allies: Array = arena.alive_allies(team)
+
+	# Vihollisten painopiste — vain oikeat vihollissankarit (ei minioneja/
+	# rakennuksia/olentoja), jotta uhka-arvio ja keskitetty tuli eivät vääristy.
+	var enemies: Array = arena.enemy_heroes(team)
+	if enemies.is_empty():
+		threat_center = Vector2.ZERO
+	else:
+		var sum := Vector2.ZERO
+		for enemy in enemies:
+			sum += enemy.global_position
+		threat_center = sum / enemies.size()
+
+	# Eniten kärsinyt liittolainen
+	lowest_ally = null
+	var worst := 2.0
+	for ally in allies:
+		var frac: float = ally.hp / ally.max_hp
+		if frac < worst:
+			worst = frac
+			lowest_ally = ally
+
+	# Rintamaa johtava (lähimpänä vihollisia)
+	frontline_ally = null
+	if threat_center != Vector2.ZERO:
+		var best_d := 1e20
+		for ally in allies:
+			var d: float = ally.global_position.distance_to(threat_center)
+			if d < best_d:
+				best_d = d
+				frontline_ally = ally
+
+	# Suojeltava: kantaja tärkein, sitten oma tuki, sitten kärsinyt
+	protect_ally = own_carrier
+	if protect_ally == null:
+		for ally in allies:
+			if HeroDef.get_def(ally.hero_id)["role"] == "Tuki":
+				protect_ally = ally
+				break
+		if protect_ally == null:
+			protect_ally = lowest_ally
+
+	# Keskitetyn tulen kohde: vihollisen kantaja on aina focus; muuten
+	# tapettavin kohde lähellä liittolaisten painopistettä (matala hp + lähellä
+	# + arvokas takalinja). Botit iskevät tähän yhdessä.
+	var prev_focus: Hero = focus_target
+	focus_target = enemy_carrier
+	if focus_target == null and not enemies.is_empty() and not allies.is_empty():
+		var ally_center := Vector2.ZERO
+		for ally in allies:
+			ally_center += ally.global_position
+		ally_center /= allies.size()
+		var best_score := -1e20
+		for enemy in enemies:
+			var score: float = (1.0 - enemy.hp / enemy.max_hp) * 300.0
+			score -= enemy.global_position.distance_to(ally_center) * 0.22
+			if HeroDef.get_def(enemy.hero_id)["role"] in ["Tuki", "Ranger", "Mage"]:
+				score += 55.0
+			# Hystereesi: edellinen kohde saa bonuksen, jottei focus värise
+			# kahden lähes samanarvoisen vihollisen välillä (nollaisi reaktiot).
+			if enemy == prev_focus:
+				score += 90.0
+			if score > best_score:
+				best_score = score
+				focus_target = enemy
+
+	# MOBA: uhattu oma rakennus + nimetty puolustaja. Rakennus on "uhattu" jos
+	# vihollissankari on juuri (viim. 3 s) osunut siihen. Nimetään VAIN lähin
+	# liittolainen puolustamaan -> koko joukkue ei romahda kotiin.
+	threatened_structure = null
+	defender = null
+	if arena.mode == "moba":
+		# Vahinkohistoria käyttää areenan peliaikaa. Sama kello on välttämätön
+		# etenkin 16x/32x/64x-simulaatiossa; seinäkello teki puolustusikkunasta
+		# virheellisen ja jätti uhatun tornin usein ilman nimettyä puolustajaa.
+		var now: float = arena.match_elapsed
+		var worst_pri := -1.0
+		for st in arena.structures:
+			var s := st as Structure
+			if s == null or not s.alive or s.team != team:
+				continue
+			var hit := false
+			for entry in s._recent_damagers:
+				var h = entry.hero
+				if is_instance_valid(h) and h.alive and not h.is_unit \
+						and h.team != team and now - float(entry.time) < 3.0:
+					hit = true
+					break
+			if not hit:
+				continue
+			var pri: float = s.max_hp   # nexus 1600 > torni 900 -> nexus etusijalla
+			if pri > worst_pri:
+				worst_pri = pri
+				threatened_structure = s
+		# Nimeä lähin TERVE liittolainen (matala hp vetäytyisi heti -> ei jäisi
+		# puolustamaan). Jos yksikään ei ole terve, valitse silti lähin.
+		if threatened_structure != null and not allies.is_empty():
+			var spos: Vector2 = threatened_structure.global_position
+			var best_d := 1.0e20
+			var best_any: Hero = null
+			var any_d := 1.0e20
+			for ally in allies:
+				var dd: float = ally.global_position.distance_to(spos)
+				if dd < any_d:
+					any_d = dd
+					best_any = ally
+				if ally.hp > ally.max_hp * 0.42 and dd < best_d:
+					best_d = dd
+					defender = ally
+			if defender == null:
+				defender = best_any
+
+
+func on_relic_taken(_hero) -> void:
+	alert_timer = 3.0
+
+
+func on_enemy_has_relic(_hero) -> void:
+	alert_timer = 4.0
+
+
+func on_relic_free() -> void:
+	alert_timer = 2.0
