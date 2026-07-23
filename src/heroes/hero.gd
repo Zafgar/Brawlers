@@ -37,7 +37,27 @@ const LEVEL_XP_THRESHOLDS := [
 	4650.0, 5800.0, 7050.0, 8400.0, 9850.0, 12000.0,
 ]
 const HP_GROWTH_PER_LEVEL := 0.032
-const DAMAGE_GROWTH_PER_LEVEL := 0.018
+# Vahinkokasvun budjetti (1.0-profiilin sankari tasolla 12, steps = 11):
+#   yleinen kasvu   1 + 11 * 0.015 = 1.165
+#   spell/melee     1 + 11 * 0.020 = 1.220
+#   yhteensä        1.165 * 1.22  ≈ 1.42  -> ~+42 % vahinkoa (tavoite 40–45 %).
+# DAMAGE_GROWTH_PER_LEVEL laskettiin 0.018 -> 0.015 kun spell/melee-kasvu
+# lisättiin, jottei kokonaiskasvu karkaa käsistä.
+const DAMAGE_GROWTH_PER_LEVEL := 0.015
+const SPELL_GROWTH_PER_LEVEL := 0.02     # a1/a2/ult-vahingon kasvu per taso
+const MELEE_GROWTH_PER_LEVEL := 0.02     # perushyökkäyksen kasvu per taso
+const REGEN_GROWTH_PER_LEVEL := 0.03     # mana/energia-regenin kasvu per taso
+
+# Kykyrankit: perus/a1/a2/väistö ovat käytettävissä rankilla 0 (perusvoima),
+# rankit 1–3 vahvistavat niitä. Ulti on LUKOSSA rankilla 0: ranki N vaatii
+# tason ULT_RANK_LEVELS[N-1] (avaus aikaisintaan tasolla 4, sitten 8 ja 12).
+const RANK_CAP := 3
+const ULT_RANK_LEVELS := [4, 8, 12]
+const RANK_POWER_STEP := 0.10            # perus/a1/a2/väistö: +10 % voimaa/ranki
+const ULT_RANK_POWER_STEP := 0.12        # ulti: +12 %/ranki rankin 1 jälkeen
+const RANK_CD_STEP := 0.06               # a1/a2/väistö: -6 % jäähdytys/ranki
+const SLOT_NAMES := {"basic": "PERUS", "a1": "KYKY 1", "a2": "KYKY 2",
+	"dodge": "VÄISTÖ", "ult": "ULTI"}
 
 var arena = null                    # Arena, asetetaan ennen add_childia
 var profile: PlayerProfile = null
@@ -55,6 +75,9 @@ var base_speed := 320.0
 var radius := 26.0
 var level := 1
 var level_damage_mult := 1.0
+var level_spell_mult := 1.0         # tasokasvu a1/a2/ult-vahingolle
+var level_melee_mult := 1.0         # tasokasvu perushyökkäykselle
+var _regen_level_mult := 1.0        # tasokasvu mana/energia-regenille
 var _level_base_max_hp := 200.0
 
 var alive := true
@@ -69,6 +92,14 @@ var carrying := false               # kantaa reliikkiä
 var ult_charge := 0.0               # 0..100
 var cd := {"basic": 0.0, "a1": 0.0, "a2": 0.0, "dodge": 0.0}
 var cd_max := {"basic": 0.5, "a1": 8.0, "a2": 8.0, "dodge": 4.0}
+
+# Kykyrankit ja -pisteet. Piste per taso (+1 aloituspiste) = 12 pistettä;
+# paikkoja on 4 * 3 + 3 = 15, joten kaikkea ei saa täyteen -> oikeita valintoja.
+var ability_ranks := {"basic": 0, "a1": 0, "a2": 0, "dodge": 0, "ult": 0}
+var skill_points := 0
+var _base_cd_max := {}              # cd_max-pohja rankkien jäähdytysalennukselle
+var _spend_locked := {}             # kehitystilassa painetut napit: ei castia ennen vapautusta
+var _pending_dodge_shield := 0.0    # väistön kilpiarkkityyppi: kilpi syöksyn päätyttyä
 
 # Suojat ja tilavaikutukset
 var shield_hp := 0.0
@@ -253,6 +284,16 @@ func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	profile.stats.level_times = {"1": 0.0}
 	_apply_level_stats(false)
 
+	# Kykyrankit: cd_max-pohja otetaan talteen VASTA kaikkien säätöjen jälkeen
+	# (_setup_resource + botin cooldown_mult), joten rankkien jäähdytysalennus
+	# ei sodi sankarikohtaisten cd_max-asetusten kanssa. Jokainen saa yhden
+	# aloituspisteen tasolla 1; botit käyttävät sen heti.
+	_base_cd_max = cd_max.duplicate()
+	if not is_unit:
+		skill_points = 1
+		if controller != null and controller.is_bot():
+			_bot_spend_points()
+
 
 static func xp_for_level(target_level: int) -> float:
 	var idx := clampi(target_level, 1, MAX_LEVEL) - 1
@@ -286,20 +327,35 @@ func gain_xp(amount: float) -> float:
 	profile.stats.xp += amount
 	while level < MAX_LEVEL and float(profile.stats.xp) >= xp_for_level(level + 1):
 		level += 1
+		skill_points += 1   # jokainen taso antaa yhden kykypisteen
 		profile.stats.level = level
 		var reached_at := 0.0
 		if arena != null:
 			reached_at = float(arena.match_elapsed)
 		profile.stats.level_times[str(level)] = reached_at
 		_apply_level_stats(true)
+	# Botti käyttää uudet pisteet heti prioriteettilistansa mukaan.
+	if skill_points > 0 and controller != null and controller.is_bot():
+		_bot_spend_points()
 	return amount
 
 
 func _apply_level_stats(show_feedback: bool) -> void:
 	var old_max := maxf(max_hp, 1.0)
 	var steps := float(level - 1)
-	max_hp = _level_base_max_hp * (1.0 + steps * HP_GROWTH_PER_LEVEL)
-	level_damage_mult = 1.0 + steps * DAMAGE_GROWTH_PER_LEVEL
+	# Sankarikohtainen skaalausprofiili (ks. _level_scaling): hypercarryt saavat
+	# ison spell/melee-kertoimen, tankit ison hp:n mutta matalan vahingon jne.
+	var prof := _level_scaling()
+	var hp_f: float = prof.get("hp", 1.0)
+	var dmg_f: float = prof.get("damage", 1.0)
+	var spell_f: float = prof.get("spell", 1.0)
+	var melee_f: float = prof.get("melee", 1.0)
+	var regen_f: float = prof.get("regen", 1.0)
+	max_hp = _level_base_max_hp * (1.0 + steps * HP_GROWTH_PER_LEVEL * hp_f)
+	level_damage_mult = 1.0 + steps * DAMAGE_GROWTH_PER_LEVEL * dmg_f
+	level_spell_mult = 1.0 + steps * SPELL_GROWTH_PER_LEVEL * spell_f
+	level_melee_mult = 1.0 + steps * MELEE_GROWTH_PER_LEVEL * melee_f
+	_regen_level_mult = 1.0 + steps * REGEN_GROWTH_PER_LEVEL * regen_f
 	if show_feedback and alive:
 		# Level-up antaa vain kasvaneen max-HP:n erotuksen, ei ilmaista täysparannusta.
 		hp = minf(max_hp, hp + max_hp - old_max)
@@ -312,6 +368,251 @@ func _apply_level_stats(show_feedback: bool) -> void:
 				AudioMgr.play("blessing", 0.04, -3.0, global_position)
 	else:
 		hp = minf(hp, max_hp)
+
+
+## Tasoskaalauksen profiili. Ylikirjoitetaan sankarissa: kertoimet skaalaavat
+## per-taso-kasvua (1.0 = normaali). Avaimet: hp, damage (yleinen), spell
+## (a1/a2/ult), melee (perus), regen (mana/energia-palautuminen).
+func _level_scaling() -> Dictionary:
+	return {"hp": 1.0, "damage": 1.0, "spell": 1.0, "melee": 1.0, "regen": 1.0}
+
+
+# --- Kykyrankit ---
+
+## Kykypaikan rankin voimakerroin: perus/a1/a2/väistö +10 %/ranki; ulti
+## +12 %/ranki rankin 1 jälkeen (ranki 1 = ultin perustaso).
+func rank_power(slot: String) -> float:
+	var rank: int = ability_ranks.get(slot, 0)
+	if slot == "ult":
+		return 1.0 + ULT_RANK_POWER_STEP * float(maxi(rank - 1, 0))
+	return 1.0 + RANK_POWER_STEP * float(rank)
+
+
+func ult_unlocked() -> bool:
+	return int(ability_ranks.ult) >= 1
+
+
+## Voiko kykypaikan rankata: piste jäljellä, ranki alle katon ja ultille
+## tasovaatimus (seuraava ranki N vaatii tason ULT_RANK_LEVELS[N-1] = 4/8/12).
+func can_rank(slot: String) -> bool:
+	if is_unit or skill_points <= 0 or not ability_ranks.has(slot):
+		return false
+	var rank: int = ability_ranks[slot]
+	if rank >= RANK_CAP:
+		return false
+	if slot == "ult" and level < int(ULT_RANK_LEVELS[rank]):
+		return false
+	return true
+
+
+## Käyttää kykypisteen: nostaa rankia, laskee a1/a2/väistön jäähdytystä
+## pohja-arvosta ja kutsuu sankarin _on_rank_up-koukun. Palauttaa onnistumisen.
+func rank_up(slot: String) -> bool:
+	if not can_rank(slot):
+		return false
+	skill_points -= 1
+	ability_ranks[slot] = int(ability_ranks[slot]) + 1
+	var new_rank: int = ability_ranks[slot]
+	# Jäähdytysalennus lasketaan aina setupin lopussa otetusta pohjasta, joten
+	# se ei kertaudu eikä sodi sankarien omien cd_max-asetusten kanssa.
+	if (slot == "a1" or slot == "a2" or slot == "dodge") and _base_cd_max.has(slot):
+		cd_max[slot] = float(_base_cd_max[slot]) * (1.0 - RANK_CD_STEP * float(new_rank))
+	_on_rank_up(slot, new_rank)
+	# Lopullinen build talteen raporttia varten (turvallinen lisäavain).
+	if profile != null:
+		profile.stats["skill_build"] = ability_ranks.duplicate()
+	if arena != null and not Game.simulating and is_inside_tree():
+		var label := "ULTI AVATTU!" if slot == "ult" and new_rank == 1 \
+			else "%s RANK %d" % [str(SLOT_NAMES.get(slot, slot)), new_rank]
+		arena.popup(global_position + Vector2(0, -64), label, Palette.GOLD, 16)
+		Fx.ring(arena, global_position, Palette.with_alpha(Palette.GOLD, 0.85),
+			radius + 24.0, 0.4, 4.0)
+		if profile != null and profile.is_human():
+			AudioMgr.play("blessing", 0.04, -5.0, global_position)
+	# Täysi lataus odotti vain avausta -> "ulti valmis" heti avattaessa.
+	if slot == "ult" and new_rank == 1 and ult_charge >= 100.0:
+		_announce_ult_ready()
+	return true
+
+
+## Sankarikohtainen signatuuribonus rankin noustessa (ylikirjoitettavissa).
+func _on_rank_up(_slot: String, _new_rank: int) -> void:
+	pass
+
+
+## Lähteen kokonaisvahinkokerroin: yleinen tasokasvu, kykytyypin tasokasvu
+## (perus = melee, a1/a2/ult = spell) ja toimivan kykypaikan ranki. Kykypaikka
+## luetaan tarttuvasta kontekstista (sama malli kuin punainen/sininen buffi).
+func combat_damage_mult() -> float:
+	var mult := level_damage_mult
+	if _cast_context == "basic":
+		mult *= level_melee_mult
+	elif _cast_context == "a1" or _cast_context == "a2" or _cast_context == "ult":
+		mult *= level_spell_mult
+	if _cast_context != "":
+		mult *= rank_power(_cast_context)
+	return mult
+
+
+# --- Bottien kykypisteet ---
+
+## Botin rankkausjärjestys (ylikirjoitetaan sankarissa). Ulti otetaan aina
+## ensin jos mahdollista; muuten ensimmäinen listan paikka jolla on tilaa.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "basic", "dodge"]
+
+
+## Käyttää botin kaikki vapaat kykypisteet. Toimii myös simulaatiossa
+## (rank_up ei näytä palautetta kun Game.simulating).
+func _bot_spend_points() -> void:
+	if controller == null or not controller.is_bot():
+		return
+	while skill_points > 0:
+		var slot := ""
+		if can_rank("ult"):
+			slot = "ult"
+		else:
+			for cand in _bot_skill_order():
+				if can_rank(str(cand)):
+					slot = str(cand)
+					break
+		if slot == "" or not rank_up(slot):
+			break
+
+
+# --- Kykypisteiden käyttö (kehitystila: pidä D-pad ylös / T + kyvyn nappi) ---
+
+func _spend_mode_active() -> bool:
+	if controller == null or controller.is_bot():
+		return false
+	if not controller.has_method("spend_held"):
+		return false
+	return bool(controller.spend_held())
+
+
+## Kehitystilan syötteet: kyvyn napin painallus käyttää kykypisteen castin
+## sijaan. Puskurit tyhjennetään ja pohjassa olevat napit lukitaan vapautukseen
+## asti, ettei pisteen käyttö vuoda castiksi kun tila päästetään irti.
+func _handle_spend_inputs() -> void:
+	_buf.a1 = 0.0
+	_buf.a2 = 0.0
+	_buf.ult = 0.0
+	_buf.dodge = 0.0
+	if _channel_slot != "":
+		var ch := _channel_slot
+		_channel_slot = ""
+		_channel_end(ch)
+	_ult_holding = false
+	if controller.attack_held():
+		_spend_locked["basic"] = true
+	if controller.ability1_held():
+		_spend_locked["a1"] = true
+	if controller.ability2_held():
+		_spend_locked["a2"] = true
+	if controller.ult_held():
+		_spend_locked["ult"] = true
+	if controller.attack_just_pressed():
+		_try_spend("basic")
+	if controller.ability1_just():
+		_try_spend("a1")
+	if controller.ability2_just():
+		_try_spend("a2")
+	if controller.dodge_just():
+		_try_spend("dodge")
+	if controller.ult_just():
+		_try_spend("ult")
+
+
+## Pisteen käyttö + kuuluva "ei onnistu" -vihje jos rankkaus ei ole sallittu.
+func _try_spend(slot: String) -> void:
+	if rank_up(slot):
+		return
+	if _deny_cd <= 0.0:
+		AudioMgr.play("ui_back", 0.05, -8.0)
+		_deny_cd = 0.45
+
+
+## Palauttaa true jos slotin nappi on yhä pohjassa kehitystilan jäljiltä.
+## Esto vapautuu vasta kun nappi irrotetaan — pisteen käyttö ei vuoda castiksi.
+func _spend_release_locked(slot: String) -> bool:
+	if not bool(_spend_locked.get(slot, false)):
+		return false
+	var held := false
+	match slot:
+		"basic":
+			held = bool(controller.attack_held())
+		"a1":
+			held = bool(controller.ability1_held())
+		"a2":
+			held = bool(controller.ability2_held())
+		"ult":
+			held = bool(controller.ult_held())
+	if held:
+		return true
+	_spend_locked[slot] = false
+	return false
+
+
+# --- Väistön kehitys (arkkityypit) ---
+
+## Väistön kehityksen arkkityyppi: "haste" / "shield" / "cleanse" / "phase".
+## Sankari ylikirjoittaa kittiinsä sopivan. Ranki 0 = pelkkä syöksy.
+func _dodge_evolution() -> String:
+	return "haste"
+
+
+## Väistön käyttöhetkellä: rankin mukainen utility arkkityypin mukaan. Efektit
+## pidetään maltillisina — väistö on ensisijaisesti liikkumiskyky. Kutsutaan
+## _act("dodge")-kontekstissa, joten esim. hasten buffisekunnit kirjautuvat
+## väistölle telemetriassa.
+func _apply_dodge_evolution() -> void:
+	var rank: int = ability_ranks.get("dodge", 0)
+	if rank <= 0:
+		return
+	match _dodge_evolution():
+		"haste":
+			# Vauhtipyrähdys syöksyn jälkeen; ranki 3 puhdistaa myös hidasteet.
+			apply_haste(1.08 if rank == 1 else 1.14, 1.0 if rank == 1 else 1.4)
+			if rank >= 3:
+				slow_timer = 0.0
+				slow_factor = 1.0
+		"shield":
+			# Kilpi: rankeilla 1–2 syöksyn päätyttyä, rankilla 3 jo syöksyn alussa.
+			var frac := 0.06 + 0.04 * float(rank - 1)
+			if rank >= 3:
+				_grant_dodge_shield(frac)
+			else:
+				_pending_dodge_shield = frac
+		"cleanse":
+			# Puhdistus: hidasteet; ranki 2 myös juurrutukset; ranki 3 lyhyt CC-suoja.
+			slow_timer = 0.0
+			slow_factor = 1.0
+			if rank >= 2:
+				root_timer = 0.0
+			if rank >= 3:
+				cc_immune_timer = maxf(cc_immune_timer, 0.4)
+		"phase":
+			# Pidempi/aavemaisempi syöksy (matka = nopeus * kesto). Ranki 3 menee
+			# sisäseinien läpi vain tämän syöksyn ajan; _end_phase palauttaa
+			# törmäyksen syöksyn päättyessä (Tidellä faasi on aina, se säilyy).
+			if dash_timer > 0.0:
+				dash_timer *= 1.10
+				if rank >= 2:
+					iframes = maxf(iframes, dash_timer + 0.08)
+				if rank >= 3 and not _phase_walls:
+					_phase_walls = true
+					set_collision_mask_value(1, false)
+
+
+## Väistökilpi suoraan (ilman add_shieldin rank-kerrointa — arkkityypin arvot
+## ovat jo rankin mukaiset). Imetty vahinko kirjautuu väistön telemetriaan.
+func _grant_dodge_shield(frac: float) -> void:
+	shield_hp = maxf(shield_hp, max_hp * frac)
+	shield_timer = 1.5
+	shield_source = self
+	shield_slot = "dodge"
+	AudioMgr.play("shield", 0.06, -4.0, global_position)
+	Fx.ring(arena, global_position, Palette.SHIELD, radius + 14.0, 0.35)
 
 
 func _physics_process(delta: float) -> void:
@@ -404,6 +705,10 @@ func _physics_process(delta: float) -> void:
 		velocity = _control_velocity + kb_velocity
 		if _phase_walls:
 			_end_phase()   # syöksy loppui -> palauta seinätörmäys
+		# Väistön kilpiarkkityyppi (ranki 1–2): kilpi annetaan syöksyn päätyttyä.
+		if _pending_dodge_shield > 0.0:
+			_grant_dodge_shield(_pending_dodge_shield)
+			_pending_dodge_shield = 0.0
 
 	if arena.map != null:
 		velocity += arena.map.conveyor_push(global_position)
@@ -436,15 +741,21 @@ func _physics_process(delta: float) -> void:
 	_aim_active = false   # nollataan joka framessa; kyvyt/lataus aktivoivat tarvittaessa
 
 	# Toiminnot
-	if stun_timer <= 0.0:
+	if _spend_mode_active():
+		# Kehitystila: pidä D-pad ylös (näppäimistöllä T) ja paina kyvyn nappia
+		# käyttääksesi kykypisteen. Painallukset eivät vuoda casteiksi.
+		_handle_spend_inputs()
+		_aiming_slot = ""
+	elif stun_timer <= 0.0:
 		# Perushyökkäyksen konteksti telemetriaan. Tallenna/palauta tarttuva
 		# konteksti ettei perushyökkäys pyyhi kesken olevaa kykyä (esim.
 		# kanavoitava ult, jonka viivästynyt vahinko tulee awaitin takaa).
 		var _prev_ctx := _cast_context
+		var _atk_locked := _spend_release_locked("basic")
 		_act("basic")
 		_attack_control(
-			controller.attack_held(),
-			controller.attack_just_pressed(),
+			controller.attack_held() and not _atk_locked,
+			controller.attack_just_pressed() and not _atk_locked,
 			controller.attack_just_released(),
 			aim, delta)
 		_act_end()
@@ -477,15 +788,17 @@ func _physics_process(delta: float) -> void:
 					if _ult_ground_targeted():
 						_ground_cast_target = global_position + _ground_aim_offset
 						_ground_cast_valid = true
-					if ult_charge >= 100.0:
+					if ult_charge >= 100.0 and ult_unlocked():
 						_fire_ult()
 					_ground_cast_valid = false
 					_ult_holding = false
-			elif controller.ult_held() and ult_charge >= 100.0:
+			elif controller.ult_held() and ult_charge >= 100.0 and ult_unlocked() \
+					and not _spend_release_locked("ult"):
 				_ult_holding = true
 				if _ult_ground_targeted():
 					_begin_ult_ground_aim()
-		elif silence_timer <= 0.0 and _buf.ult > 0.0 and ult_charge >= 100.0:
+		elif silence_timer <= 0.0 and _buf.ult > 0.0 and ult_charge >= 100.0 \
+				and ult_unlocked():
 			_buf.ult = 0.0
 			_fire_ult()
 		if silence_timer <= 0.0 and _buf.dodge > 0.0 and cd.dodge <= 0.0:
@@ -495,6 +808,7 @@ func _physics_process(delta: float) -> void:
 			_act("dodge")
 			_log_cast("dodge")
 			_dodge_action(dodge_dir.normalized())
+			_apply_dodge_evolution()
 			_act_end()
 		if carrying and controller.drop_just():
 			arena.relic.drop_from_carrier(false)
@@ -606,6 +920,10 @@ func _buffer_inputs(delta: float) -> void:
 ## syötepuskurin kautta. Botit käyttävät aina välitöntä laukaisua.
 func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 	var is_bot: bool = controller.is_bot()
+	# Kehitystilassa painettu nappi ei saa aloittaa tähtäystä/castia ennen kuin
+	# se on välillä vapautettu (muuten piste-painallus vuotaisi kyvyksi).
+	if not is_bot and _spend_release_locked(slot):
+		return
 	var held: bool = controller.ability1_held() if num == 1 else controller.ability2_held()
 	var released: bool = controller.ability1_released() if num == 1 else controller.ability2_released()
 
@@ -916,8 +1234,9 @@ func _tick_resource(delta: float) -> void:
 	if res_type == "mana" or res_type == "energy":
 		# Ei palaudu kanavoinnin aikana (säde/kilpi kuluttaa sitä), jotta
 		# resurssi todella loppuu eikä regen-tippa pidä kykyä hengissä.
+		# _regen_level_mult: regen kasvaa tasojen myötä (profiilin regen-kerroin).
 		if _channel_slot == "":
-			res = minf(res + res_regen * boost * delta, res_max)
+			res = minf(res + res_regen * boost * _regen_level_mult * delta, res_max)
 	elif res_type == "rage":
 		_rage_idle += delta
 		if _rage_idle > 3.5:
@@ -1413,7 +1732,8 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 	# Vaikeustason huijauskertoimet (vain epäreilu botti poikkeaa 1.0:sta):
 	# hyökkääjän aiheuttama vahinko ja kohteen ottama vahinko.
 	if source != null and is_instance_valid(source):
-		amount *= source.dmg_out_mult * source.level_damage_mult
+		# Tasokasvu (yleinen + melee/spell) ja toimivan kykypaikan ranki.
+		amount *= source.dmg_out_mult * source.combat_damage_mult()
 		if source.red_buff > 0.0 and source._cast_context == "basic":
 			if source.red_camp_buff > 0.0:
 				source.profile.stats.red_bonus_damage += amount * 0.18
@@ -1538,6 +1858,11 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 func heal_hp(amount: float, source: Hero) -> float:
 	if not alive or hp >= max_hp:
 		return 0.0
+	# Rankki vahvistaa parannuksia, jotka tulevat kyvyn _act-kontekstissa
+	# (esim. Luman hoitokehä). Kontekstittomat parannukset jäävät ennalleen.
+	if source != null and is_instance_valid(source) and arena != null \
+			and arena._act_hero == source and arena._act_slot != "":
+		amount *= source.rank_power(arena._act_slot)
 	var healed := minf(amount, max_hp - hp)
 	hp += healed
 	if source != null and source != self:
@@ -1555,6 +1880,11 @@ func heal_hp(amount: float, source: Hero) -> float:
 ## record=false: kilpi on neutraali palkinto (pomobuffi) eikä kuulu millekään
 ## kyvylle -> shield_slot jää tyhjäksi eikä imetty vahinko sotke kyky­telemetriaa.
 func add_shield(amount: float, duration: float, source: Hero, record := true) -> void:
+	# Rankki vahvistaa kykyjen antamia kilpiä (neutraalit palkinnot record=false
+	# ja kontekstittomat kilvet jäävät ennalleen).
+	if record and source != null and is_instance_valid(source) \
+			and source._cast_context != "":
+		amount *= source.rank_power(source._cast_context)
 	shield_hp = maxf(shield_hp, amount)
 	shield_timer = duration
 	shield_source = source
@@ -1568,13 +1898,23 @@ func add_shield(amount: float, duration: float, source: Hero, record := true) ->
 func add_ult(points: float) -> void:
 	if ult_charge >= 100.0:
 		return
+	# Lataus kertyy myös lukitulle ultille, mutta "ULTI VALMIS" ilmoitetaan
+	# vasta kun ulti on sekä ladattu että avattu (rank_up hoitaa avaushetken).
 	ult_charge = minf(ult_charge + points * ult_gain_mult, 100.0)
-	if ult_charge >= 100.0 and not _ult_ready_announced:
-		_ult_ready_announced = true
-		AudioMgr.play("ult_ready")
-		controller_rumble(0.3, 0.12, 0.2)   # tuntopalaute: ulti valmis
-		if arena != null:
-			arena.popup(global_position + Vector2(0, -70), "ULTI VALMIS!", Palette.GOLD, 20)
+	if ult_charge >= 100.0 and ult_unlocked():
+		_announce_ult_ready()
+
+
+## "Ulti valmis" -ilmoitus (ääni + tärinä + popup) kerran per lataus. Laukeaa
+## vain kun ulti on sekä täydessä latauksessa että avattu (ranki >= 1).
+func _announce_ult_ready() -> void:
+	if _ult_ready_announced:
+		return
+	_ult_ready_announced = true
+	AudioMgr.play("ult_ready")
+	controller_rumble(0.3, 0.12, 0.2)   # tuntopalaute: ulti valmis
+	if arena != null:
+		arena.popup(global_position + Vector2(0, -70), "ULTI VALMIS!", Palette.GOLD, 20)
 
 
 ## Työntö/veto-impulssi omaan kanavaansa (kb_velocity), jota ohjausliikkeen
@@ -1754,6 +2094,9 @@ func _knockout(source: Hero) -> void:
 	reflect_timer = 0.0
 	_applying_reflect = false
 	mark_timer = 0.0
+	_pending_dodge_shield = 0.0
+	_spend_locked.clear()
+	# HUOM: ability_ranks ja skill_points säilyvät — rankit ovat ottelun mittaisia.
 
 	var now: float = arena.match_elapsed if arena != null \
 		else Time.get_ticks_msec() / 1000.0
@@ -1870,7 +2213,10 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	guard_radius = 0.0
 	grabbed_by = null
 	ult_charge = ult_charge * keep_ult_fraction
-	_ult_ready_announced = ult_charge >= 100.0
+	_ult_ready_announced = ult_charge >= 100.0 and ult_unlocked()
+	_pending_dodge_shield = 0.0
+	_spend_locked.clear()
+	# HUOM: ability_ranks ja skill_points säilyvät erien yli (ottelun mittaisia).
 	_dodge_was_cooling = false
 	_heartbeat_t = 0.0
 	_deny_cd = 0.0
