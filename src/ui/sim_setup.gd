@@ -4,10 +4,15 @@ extends Control
 ## telemetria tekoälyn ja tasapainon kehitykseen. Käyttää MatchSetupin
 ## OptionRow-rivejä.
 ##
-## Kaksi tilaa:
-##   Manuaali — N ottelua satunnaisilla/peilatuilla kokoonpanoilla.
+## Kolme tilaa:
+##   Manuaali — N ottelua satunnaisilla/peilatuilla kokoonpanoilla. Oletus on
+##              24 ottelun VAKIOAJO: kiertopakka takaa, että jokainen hero saa
+##              useita pelejä -> yksi klikkaus tuottaa kattavan tasapainodatan.
 ##   Sweep    — käy läpi kaikki kokoonpanotyyppien parit (täysvahinko, täystuki,
 ##              täystankki, kaukotaisto, sukellus, tasapaino) toistoineen.
+##   Ladder   — rank vs rank -testi: vierekkäiset tier-parit (Wood vs Bronze ...
+##              Champion vs Challenger) + hajautusankkurit. Varmistaa että
+##              ylempi rank oikeasti voittaa alemman (LADDER TOIMII / RIKKI).
 
 var _team_size := 4       # Projektin virallinen ja ainoa ottelumuoto
 # Oletustaso 5 (Mestari): paras EI-huijaava taso. Tasapainon mittaamiseen
@@ -16,15 +21,21 @@ var _team_size := 4       # Projektin virallinen ja ainoa ottelumuoto
 var _blue_level := 4
 var _orange_level := 4
 var _comp := 0            # 0 = satunnainen, 1 = peilattu
-var _count := 3
+# Vakioajon oletus: 24 ottelua kattaa 23 heron kiertopakalla jokaisen heron
+# vähintään ~8 kertaa -> hero-taulukot ovat heti käyttökelpoisia.
+var _count := 24
 var _speed := 32
 var _show_visuals := false
 var _sweep := false
+var _ladder := false
 var _repeats := 1
+var _ladder_matches := 6
 
-const COUNTS := [1, 3, 5, 10]
+const COUNTS := [1, 3, 5, 10, 24]
 const SPEEDS := [4, 8, 16, 32, 64]
 const REPEATS := [1, 2, 3]
+const LADDER_MATCHES := [2, 4, 6, 10]
+const LADDER_PAIRS := 10  # 7 vierekkäistä tier-paria + 3 hajautusankkuria
 
 var _note: Label = null
 
@@ -50,21 +61,25 @@ func _ready() -> void:
 	var inner := UiKit.vbox(12)
 	panel.add_child(inner)
 
-	_add(inner, MatchSetup.OptionRow.new("Tila", ["Manuaali", "Sweep (kaikki tyypit)"],
-		0, func(i): _sweep = i == 1; _update_note()))
+	_add(inner, MatchSetup.OptionRow.new("Tila",
+		["Manuaali", "Sweep (kaikki tyypit)", "Ladder-testi (rank vs rank)"],
+		0, func(i): _sweep = i == 1; _ladder = i == 2; _update_note()))
 	var format_row := MatchSetup.OptionRow.new("Virallinen formaatti", ["4v4 MOBA"], 0, Callable())
 	format_row.locked = true
 	_add(inner, format_row)
-	_add(inner, MatchSetup.OptionRow.new("Sininen taso", Game.BOT_LEVEL_NAMES,
+	_add(inner, MatchSetup.OptionRow.new("Sininen taso (ei ladder)", Game.BOT_LEVEL_NAMES,
 		_blue_level, func(i): _blue_level = i))
-	_add(inner, MatchSetup.OptionRow.new("Oranssi taso", Game.BOT_LEVEL_NAMES,
+	_add(inner, MatchSetup.OptionRow.new("Oranssi taso (ei ladder)", Game.BOT_LEVEL_NAMES,
 		_orange_level, func(i): _orange_level = i))
 	_add(inner, MatchSetup.OptionRow.new("Kokoonpanot (vain manuaali)", ["Satunnainen", "Peilattu"],
 		_comp, func(i): _comp = i))
-	_add(inner, MatchSetup.OptionRow.new("Otteluita (vain manuaali)", ["1", "3", "5", "10"],
-		1, func(i): _count = COUNTS[i]; _update_note()))
+	_add(inner, MatchSetup.OptionRow.new("Otteluita (vain manuaali)",
+		["1", "3", "5", "10", "24 (vakioajo)"],
+		4, func(i): _count = COUNTS[i]; _update_note()))
 	_add(inner, MatchSetup.OptionRow.new("Sweep-toistot (per tyyppipari)", ["1", "2", "3"],
 		0, func(i): _repeats = REPEATS[i]; _update_note()))
+	_add(inner, MatchSetup.OptionRow.new("Ladder: ottelut per rank-pari", ["2", "4", "6", "10"],
+		2, func(i): _ladder_matches = LADDER_MATCHES[i]; _update_note()))
 	_add(inner, MatchSetup.OptionRow.new("Nopeus",
 		["4x", "8x", "16x", "32x (suositus)", "64x (tehokone)"],
 		3, func(i): _speed = SPEEDS[i]; _update_note()))
@@ -95,7 +110,14 @@ func _update_note() -> void:
 		else "ottelut piirretään ruudulle"
 	var speed_note := " · 64x vaatii paljon prosessorilta; 32x on yleensä tasaisin." \
 		if _speed >= 64 else ""
-	if _sweep:
+	if _ladder:
+		var ladder_total: int = LADDER_PAIRS * _ladder_matches
+		_note.text = ("Ladder: %d rank-paria (7 vierekkäistä + 3 ankkuria) × %d ottelua "
+			+ "= %d ottelua %dv%d, %dx. Kokoonpanot satunnaisia, puolet puolin vaihdettuna. "
+			+ "%s. Raportti: LADDER TOIMII / RIKKI.%s") % [
+			LADDER_PAIRS, _ladder_matches, ladder_total, _team_size, _team_size,
+			_speed, view_note, speed_note]
+	elif _sweep:
 		var pairs: int = 36                       # 6 tyyppiä × 6
 		var total: int = pairs * _repeats
 		_note.text = ("Sweep: %d tyyppiparia × %d toistoa = %d ottelua %dv%d, %dx. "
@@ -103,7 +125,8 @@ func _update_note() -> void:
 			pairs, _repeats, total, _team_size, _team_size, _speed,
 			view_note, speed_note, cheat]
 	else:
-		_note.text = ("Manuaali: %d ottelua %dv%d, %dx. %s. "
+		_note.text = ("Manuaali: %d ottelua %dv%d, %dx (24 = vakioajo: kiertopakka "
+			+ "takaa jokaiselle herolle pelejä). %s. "
 			+ "Raportti tallentuu ja tulostuu konsoliin.%s%s") % [
 			_count, _team_size, _team_size, _speed, view_note, speed_note, cheat]
 
@@ -125,6 +148,8 @@ func _run() -> void:
 	runner.show_visuals = _show_visuals
 	runner.sweep = _sweep
 	runner.repeats = _repeats
+	runner.ladder = _ladder
+	runner.ladder_matches = _ladder_matches
 	runner.start()
 
 

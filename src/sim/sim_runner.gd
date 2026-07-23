@@ -1,10 +1,17 @@
 class_name SimRunner
 extends RefCounted
-## Bot vs bot -simulaatio MOBA-kartalla. Kaksi tilaa:
+## Bot vs bot -simulaatio MOBA-kartalla. Kolme tilaa:
 ##   Manuaali — N ottelua kiinteillä (satunnainen/peilattu) kokoonpanoilla.
+##              Satunnaiset kokoonpanot nostetaan KIERTOPAKASTA, joten vakioajo
+##              (24 ottelua) kattaa takuulla jokaisen heron useita kertoja.
 ##   Sweep    — käy läpi KAIKKI kokoonpanotyyppien parit (6×6) toistoineen,
 ##              mukaan lukien täysvahinko- ja täystuki-joukkueet, jotta
 ##              rikkinäiset herot/yhdistelmät löytyvät.
+##   Ladder   — rank vs rank -testi: jokainen vierekkäinen tier-pari (Wood vs
+##              Bronze, ... , Champion vs Challenger) + hajautusankkurit pelaavat
+##              N ottelua satunnaisin kokoonpanoin, puolet puolet vaihtaen.
+##              Raportti kertoo voittaako ylempi rank riittävän usein
+##              (LADDER TOIMII / LADDER RIKKI).
 ##
 ## Nopeutus tehdään Engine.time_scalella (tarkka: askeleet pysyvät 1/60 s,
 ## niitä vain otetaan enemmän per ruutu). Lähtölaskenta ja voittobanneri
@@ -21,9 +28,24 @@ var speed := 8
 var show_visuals := true
 var sweep := false
 var repeats := 1          # sweepissä: montako kertaa jokainen tyyppipari
+var ladder := false       # ladder-testi: rank vs rank (ohittaa sweepin)
+var ladder_matches := 6   # otteluita per rank-pari (puolet puolin vaihdettuna)
 
-var _results: Array = []          # manuaali: [snap]; sweep: [{snap, ba, oa}]
-var _queue: Array = []            # sweep: lista {bi, oi}
+# Ladder-testin parit tier-indekseinä (0 = Wood ... 7 = Challenger). Vierekkäiset
+# parit todentavat koko portaikon monotonisuuden; hajautusankkurit (iso rankiero)
+# ovat terveystarkistus — niiden KUULUU olla lähes 100 % ylemmälle.
+const LADDER_ADJACENT_PAIRS := [
+	[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7],
+]
+const LADDER_ANCHOR_PAIRS := [
+	[0, 3],   # Wood vs Gold
+	[2, 5],   # Silver vs Diamond
+	[0, 7],   # Wood vs Challenger
+]
+
+var _results: Array = []          # manuaali: [snap]; sweep/ladder: [{snap, ...}]
+var _queue: Array = []            # sweep: {bi, oi}; ladder: {lo, hi, hi_team, anchor}
+var _hero_cycle: Array = []       # kiertopakka: takaa kaikkien herojen peliajan
 var _cur_ba := ""
 var _cur_oa := ""
 var _match_index := 0
@@ -57,7 +79,12 @@ func start() -> void:
 	Game.sim_runner = self
 	_results = []
 	_match_index = 0
-	if sweep:
+	_hero_cycle = []
+	if ladder:
+		sweep = false          # ladder ohittaa sweepin (yksi erikoistila kerrallaan)
+		_build_ladder_queue()
+		match_count = _queue.size()
+	elif sweep:
 		_build_queue()
 		match_count = _queue.size()
 	_orig_max_steps = Engine.max_physics_steps_per_frame
@@ -97,7 +124,10 @@ func _make_progress_overlay() -> void:
 
 
 func _start_match() -> void:
-	if sweep:
+	if ladder:
+		var lq: Dictionary = _queue[_match_index]
+		Game.roster = _build_ladder_roster(lq)
+	elif sweep:
 		var q: Dictionary = _queue[_match_index]
 		Game.roster = _build_sweep_roster(int(q["bi"]), int(q["oi"]))
 	else:
@@ -115,7 +145,7 @@ func _start_match() -> void:
 ## Näyttää etenemisen ruudulla (ottelut ovat näkyvissä, vain nopeutettuna).
 ## Pysyvä yläkulman laskuri + lyhyt banneri ottelun vaihtuessa.
 func _announce_progress() -> void:
-	var sub: String = "%s vs %s" % [_cur_ba, _cur_oa] if sweep else "Bot vs bot"
+	var sub: String = "%s vs %s" % [_cur_ba, _cur_oa] if (sweep or ladder) else "Bot vs bot"
 	var pct := int(round(100.0 * float(_match_index) / float(maxi(match_count, 1))))
 	if _progress_label != null and is_instance_valid(_progress_label):
 		_progress_label.text = "SIMULAATIO  Ottelu %d/%d  (%d%%)\n%s" % [
@@ -132,7 +162,11 @@ func _announce_progress() -> void:
 func on_match_done() -> void:
 	if Game.arena != null and is_instance_valid(Game.arena):
 		var snap: Dictionary = Game.arena.sim_snapshot()
-		if sweep:
+		if ladder:
+			var lq: Dictionary = _queue[_match_index]
+			_results.append({"snap": snap, "lo": int(lq["lo"]), "hi": int(lq["hi"]),
+				"hi_team": int(lq["hi_team"]), "anchor": bool(lq["anchor"])})
+		elif sweep:
 			_results.append({"snap": snap, "ba": _cur_ba, "oa": _cur_oa})
 		else:
 			_results.append(snap)
@@ -168,7 +202,16 @@ func abort() -> void:
 func _finish() -> void:
 	_teardown()
 	var results := SimResults.new()
-	if sweep:
+	if ladder:
+		var lintro := [
+			"=== LADDER-TESTI (RANK vs RANK) ===",
+			"%dv%d | %d vierekkäistä paria + %d ankkuria | %d ottelua/pari | Otteluita: %d | Nopeus: %dx" % [
+				team_size, team_size, LADDER_ADJACENT_PAIRS.size(),
+				LADDER_ANCHOR_PAIRS.size(), ladder_matches, match_count, speed],
+			"Kokoonpanot satunnaisia (kiertopakka), puolet otteluista puolin vaihdettuna.",
+		]
+		results.report_text = MatchReport.build_ladder(_results, lintro)
+	elif sweep:
 		var intro := [
 			"=== KOKOONPANO-SWEEP (MOBA) ===",
 			"%dv%d | Taso %d vs %d | Tyyppiparit: %d | Toistot: %d | Otteluita: %d | Nopeus: %dx" % [
@@ -187,6 +230,42 @@ func _finish() -> void:
 				match_count, speed]]
 		results.report_text = MatchReport.build(_results, intro)
 	Game._swap(results)
+
+
+# --- Ladder: rank-parien jono ---
+
+## Rakentaa ladder-jonon: jokaiselle parille ladder_matches ottelua siten, että
+## joka toisessa ylempi rank on SININEN ja joka toisessa ORANSSI — mahdollinen
+## puolibias (kartta/aloitus) kumoutuu, eikä se vääristä ylemmän voitto-%:a.
+func _build_ladder_queue() -> void:
+	_queue = []
+	var pairs: Array = []
+	for p in LADDER_ADJACENT_PAIRS:
+		pairs.append({"pair": p, "anchor": false})
+	for p in LADDER_ANCHOR_PAIRS:
+		pairs.append({"pair": p, "anchor": true})
+	for entry in pairs:
+		var pair: Array = entry["pair"]
+		var lo: int = BotRank.tier_default_rank(int(pair[0]))
+		var hi: int = BotRank.tier_default_rank(int(pair[1]))
+		for m in range(maxi(ladder_matches, 1)):
+			_queue.append({"lo": lo, "hi": hi,
+				"hi_team": m % 2, "anchor": bool(entry["anchor"])})
+
+
+## Ladder-ottelun roster: molemmille joukkueille satunnainen kokoonpano
+## kiertopakasta; ylemmän rankin joukkue määräytyy jonomerkinnästä (hi_team).
+func _build_ladder_roster(lq: Dictionary) -> Array:
+	var lo: int = int(lq["lo"])
+	var hi: int = int(lq["hi"])
+	var hi_team: int = int(lq["hi_team"])
+	var blue_rank: int = hi if hi_team == 0 else lo
+	var orange_rank: int = lo if hi_team == 0 else hi
+	_cur_ba = BotRank.rank_name(blue_rank)
+	_cur_oa = BotRank.rank_name(orange_rank)
+	var blue_set: Array = _pick_set()
+	var orange_set: Array = _pick_set()
+	return _assemble_roster(blue_set, orange_set, blue_rank, orange_rank)
 
 
 # --- Sweep: tyyppiparien jono ---
@@ -264,29 +343,58 @@ func _role_pool(cat: String) -> Array:
 # --- Manuaali: kokoonpanon rakennus ---
 
 func _build_roster() -> Array:
-	var pool: Array = HeroDef.ORDER.duplicate()
-	var blue_set := _pick_set(pool)
-	var orange_set: Array = blue_set.duplicate() if comp_mode == Comp.MIRROR else _pick_set(pool)
+	var blue_set: Array = _pick_set()
+	var orange_set: Array = blue_set.duplicate() if comp_mode == Comp.MIRROR else _pick_set()
 	return _assemble_roster(blue_set, orange_set)
 
 
-func _pick_set(pool: Array) -> Array:
-	var shuffled: Array = pool.duplicate()
-	shuffled.shuffle()
+## Nostaa joukkueen herot KIERTOPAKASTA: pakassa on jokainen hero kerran
+## satunnaisessa järjestyksessä ja se täytetään uudelleen vasta tyhjennyttyä.
+## Näin vakioajo (24 ottelua × 8 paikkaa) kattaa takuulla jokaisen heron useita
+## kertoja — pelkkä satunnaisotanta voi jättää heron kokonaan ilman pelejä.
+## Samaan joukkueeseen ei koskaan tule samaa heroa kahdesti.
+func _pick_set() -> Array:
 	var out: Array = []
+	var used: Dictionary = {}
 	for i in range(team_size):
-		out.append(shuffled[i % shuffled.size()])
+		var pick: String = _draw_from_cycle(used)
+		used[pick] = true
+		out.append(pick)
 	return out
+
+
+## Yksi nosto kiertopakasta; exclude-herot (jo samassa joukkueessa) palautetaan
+## pakan pohjalle. 23 heron pakka ja enintään 3 poissuljettua -> päättyy aina.
+func _draw_from_cycle(exclude: Dictionary) -> String:
+	var deferred: Array = []
+	var pick := ""
+	while pick == "":
+		if _hero_cycle.is_empty():
+			_hero_cycle = HeroDef.ORDER.duplicate()
+			_hero_cycle.shuffle()
+		var cand: String = str(_hero_cycle.pop_back())
+		if exclude.has(cand):
+			deferred.append(cand)
+		else:
+			pick = cand
+	for cand in deferred:
+		_hero_cycle.push_front(cand)
+	return pick
 
 
 # --- Yhteinen: koota kahdesta sankarisetistä täysi roster ---
 
-func _assemble_roster(blue_set: Array, orange_set: Array) -> Array:
+## blue_rank/orange_rank >= 0 (ladder-testi) asettaa botille suoran rankin
+## (PlayerProfile.bot_rank) — Arena antaa sen BotBrainille sellaisenaan.
+## Muuten käytetään vanhaa 6-portaista tasoa (bot_level).
+func _assemble_roster(blue_set: Array, orange_set: Array,
+		blue_rank := -1, orange_rank := -1) -> Array:
 	var roster: Array = []
 	var idx := 0
 	for t in range(2):
 		var hs: Array = blue_set if t == 0 else orange_set
 		var lvl: int = blue_level if t == 0 else orange_level
+		var rk: int = blue_rank if t == 0 else orange_rank
 		for j in range(team_size):
 			var p := PlayerProfile.new()
 			p.index = idx
@@ -296,6 +404,7 @@ func _assemble_roster(blue_set: Array, orange_set: Array) -> Array:
 			p.team = t
 			p.hero_id = str(hs[j % hs.size()])
 			p.bot_level = lvl
+			p.bot_rank = rk
 			p.display_name = str(hs[j % hs.size()])
 			roster.append(p)
 	return roster

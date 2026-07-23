@@ -1,11 +1,17 @@
 class_name MatchReport
 ## Rakentaa tekstiraportin ottelun tilannekuvista (arena.sim_snapshot).
-## build()       — yksi tai muutama ottelu, per-ottelu-detaljit + koosteet.
-## build_sweep() — laaja kokoonpanoläpikäynti: kokoonpanotyypit, anomaliat ja
-##                 sankarikoosteet, jotta rikkinäiset yhdistelmät/herot löytyvät.
+## build()        — yksi tai muutama ottelu, per-ottelu-detaljit + koosteet.
+## build_sweep()  — laaja kokoonpanoläpikäynti: kokoonpanotyypit, anomaliat ja
+##                  sankarikoosteet, jotta rikkinäiset yhdistelmät/herot löytyvät.
+## build_ladder() — rank vs rank -laddertesti: voittaako ylempi rank tarpeeksi
+##                  usein jokaisessa parissa (LADDER TOIMII / LADDER RIKKI).
 ##
 ## Tilastot per sankari: K/D/A, vahinko, otettu, tornivahinko, viidakkovahinko,
 ## vaimennettu (kilvet/torjunnat), parannettu ja CS. Ihmiset merkitään *:llä.
+
+# Ladder-testin hyväksymisraja: ylemmän rankin on voitettava vähintään tämä
+# osuus parin otteluista, muuten pari merkitään varoitukseksi (ladder rikki).
+const LADDER_OK_WINRATE := 0.8
 
 
 static func build(snapshots: Array, intro: Array) -> String:
@@ -167,6 +173,71 @@ static func build_sweep(results: Array, intro: Array) -> String:
 	_survivability_table(lines, agg)
 	_tanking_table(lines, agg)
 	_ability_table(lines, agg)
+	return "\n".join(PackedStringArray(lines))
+
+
+## Ladder-testin raportti. Kukin tulos on {snap, lo, hi, hi_team, anchor}:
+## lo/hi = parin rankit (BotRank 0..31), hi_team = kumpi joukkue pelasi ylempää
+## rankia (0/1, vuorotellen -> puolibias kumoutuu), anchor = hajautusankkuri
+## (iso rankiero, terveystarkistus). Tuomio: ylemmän on voitettava vähintään
+## LADDER_OK_WINRATE otteluista, muuten "LADDER RIKKI kohdassa X".
+static func build_ladder(results: Array, intro: Array) -> String:
+	var lines: Array = intro.duplicate()
+	lines.append("")
+	var table: Dictionary = {}   # "lo-hi" -> koonti (säilyttää lisäysjärjestyksen)
+	for e in results:
+		var snap: Dictionary = e["snap"]
+		var lo: int = int(e["lo"])
+		var hi: int = int(e["hi"])
+		var key := "%d-%d" % [lo, hi]
+		if not table.has(key):
+			table[key] = {"lo": lo, "hi": hi, "games": 0, "hi_wins": 0,
+				"hi_wins_blue": 0, "hi_wins_orange": 0, "draws": 0, "time": 0.0,
+				"anchor": bool(e["anchor"])}
+		var a: Dictionary = table[key]
+		var winner: int = int(snap["winner"])
+		var hi_team: int = int(e["hi_team"])
+		a["games"] += 1
+		a["time"] += float(snap["elapsed"])
+		if winner < 0:
+			a["draws"] += 1
+		elif winner == hi_team:
+			a["hi_wins"] += 1
+			if hi_team == 0:
+				a["hi_wins_blue"] += 1
+			else:
+				a["hi_wins_orange"] += 1
+
+	lines.append("=== LADDER: PARIKOHTAISET TULOKSET (alempi vs ylempi rank) ===")
+	lines.append("  'ylempi voitti (sin+ora)' erittelee kummalla puolella ylempi pelasi -> puolibias näkyy.")
+	lines.append("  pari                             | pelit | ylempi voitti | tasap | voitto% | keskikesto | tulos")
+	var broken: Array = []
+	for key in table:
+		var a: Dictionary = table[key]
+		var games: int = maxi(int(a["games"]), 1)
+		var wr: float = float(a["hi_wins"]) / float(games)
+		var ok: bool = wr >= LADDER_OK_WINRATE
+		var name := "%s vs %s" % [BotRank.rank_name(int(a["lo"])),
+			BotRank.rank_name(int(a["hi"]))]
+		if bool(a["anchor"]):
+			name += " (ankkuri)"
+		if not ok:
+			broken.append("%s (%d %%)" % [name, int(round(wr * 100.0))])
+		lines.append("  %-32s | %5d | %6d (%d+%d)  | %5d | %5.1f %% | %10s | %s" % [
+			name, int(a["games"]), int(a["hi_wins"]),
+			int(a["hi_wins_blue"]), int(a["hi_wins_orange"]), int(a["draws"]),
+			wr * 100.0, _fmt(float(a["time"]) / float(games)),
+			"OK" if ok else "VAROITUS"])
+
+	lines.append("")
+	lines.append("=== LADDER-YHTEENVETO ===")
+	if broken.is_empty():
+		lines.append("LADDER TOIMII — ylempi rank voitti vähintään %d %% otteluista jokaisessa parissa." % [
+			int(round(LADDER_OK_WINRATE * 100.0))])
+	else:
+		lines.append("LADDER RIKKI kohdassa: %s" % ", ".join(PackedStringArray(broken)))
+		lines.append("Tarkista BotRank-parametrikäyrien monotonisuus näiden rankien välillä")
+		lines.append("(src/ai/bot_rank.gd + BotBrain._init) ja aja testi uudelleen isommalla otannalla.")
 	return "\n".join(PackedStringArray(lines))
 
 
