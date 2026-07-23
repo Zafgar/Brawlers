@@ -61,16 +61,23 @@ const LATE_WAVE_TIME := 840.0
 const MINION_CAP := 96
 # Kristallikello (LoL-inhibiittori käänteisenä): base-tornin kaaduttua murtaja
 # saa +1 superminionin per aalto sillä linjalla, kunnes puolustajan kristalli
-# nousee tornin paikalle (45 s viive). Elossa oleva kristalli pysäyttää
+# nousee tornin paikalle (FIRST_RISE-viive). Elossa oleva kristalli pysäyttää
 # superminionit JA toimii linjan base-tornina nexuksen suojaketjussa. Murrettu
-# kristalli nousee aina 45 s kuluttua uudelleen — sykli jatkuu.
-const CRYSTAL_RESPAWN := 45.0
+# kristalli nousee RESPAWN-ajan kuluttua uudelleen — sykli jatkuu.
+# 45 s respawn oli aivan liian nopea: hyökkääjä juoksi kristallilta toiselle
+# eikä nexus ehtinyt koskaan auki, ja simissä kaikki matsit venyivät aikakattoon.
+const CRYSTAL_FIRST_RISE := 75.0     # superminionit puskevat tämän ajan ennen 1. kristallia
+const CRYSTAL_RESPAWN := 180.0       # murskattu kristalli: kunnon hyökkäysikkuna (3 min)
 const DRAGON_FIRST := 90.0
 const BARON_FIRST := 180.0
 const PASSIVE_GOLD_PER_SEC := 1.5
 const MINION_REWARD_RADIUS := 850.0
-const MINION_PROXIMITY_GOLD := 12
-const MINION_LAST_HIT_BONUS := 8
+# Last hit on taito joka erottaa pelaajat: viimeistelijä saa kunnon kulta-
+# bonuksen JA osuuden XP:tä päälle. Pelkkä läheisyys-XP tasoitti kaikki samalle
+# tasokäyrälle, jolloin farmitaito ei muuttunut voimaeroksi (ladder-testi).
+const MINION_PROXIMITY_GOLD := 9
+const MINION_LAST_HIT_BONUS := 14
+const MINION_LAST_HIT_XP_SHARE := 0.35   # osuus minionin xp_valuesta viimeistelijälle
 const JUNGLE_XP_ASSIST_RADIUS := 720.0
 const JUNGLE_XP_ASSIST_SHARE := 0.35
 const MAJOR_XP_ASSIST_SHARE := 0.55
@@ -1111,6 +1118,9 @@ func on_minion_ko(minion: Minion, source: Hero) -> void:
 		source.profile.stats.gold += MINION_LAST_HIT_BONUS
 		source.profile.stats.last_hit_gold += MINION_LAST_HIT_BONUS
 		source.profile.stats.minion_kills += 1
+		# Viimeistely-XP: farmitaito kertautuu tasoiksi (rankit/statit), eikä
+		# pelkkä linjalla seisoskelu riitä samaan tasokäyrään.
+		_grant_moba_xp(source, float(minion.xp_value) * MINION_LAST_HIT_XP_SHARE, "lane")
 		_record_buff_economy(source, MINION_LAST_HIT_BONUS, 0.0)
 		_update_economy_milestones(source)
 		if not Game.simulating and source.profile.is_human():
@@ -1265,12 +1275,12 @@ func on_structure_destroyed(structure, source) -> void:
 		if s.lane_tier == 2:
 			hud.show_banner("%s BASE-TORNI KAATUI!" % s.lane_id.to_upper(),
 				"%s saa superminioneja — kristalli nousee suojaksi %d s kuluttua" % [
-					Game.team_name(attacker_team), int(CRYSTAL_RESPAWN)], 2.4)
-			# Käynnistä kristallisykli: 45 s kuluttua puolustajan kristalli nousee
+					Game.team_name(attacker_team), int(CRYSTAL_FIRST_RISE)], 2.4)
+			# Käynnistä kristallisykli: viiveen jälkeen puolustajan kristalli nousee
 			# tornin paikalle ja pysäyttää superminionit + suojaa nexuksen.
 			_crystal_lanes["%d:%s" % [s.team, s.lane_id]] = {
 				"team": s.team, "lane": s.lane_id,
-				"spot": s.global_position, "timer": CRYSTAL_RESPAWN, "crystal": null,
+				"spot": s.global_position, "timer": CRYSTAL_FIRST_RISE, "crystal": null,
 			}
 		_refresh_nexus_protection(s.team)
 	elif s.kind == Structure.Kind.CRYSTAL:
@@ -1423,7 +1433,10 @@ func _refresh_nexus_protection(team: int) -> void:
 
 ## Aikakaton ratkaisu ilman sokeaa sinisen suosintaa. Järjestys:
 ##  1) suurempi oma nexus-hp, 2) enemmän vihollistorneja kaadettu,
-##  3) enemmän pisteitä (leirit/pomo), muuten aito tasapeli (-1).
+##  3) enemmän pisteitä (leirit/pomo), 4) enemmän tienattua kultaa
+##  (CS + tapot + objektiivit = "pelasi paremmin"), 5) enemmän tappoja.
+## Aito tasapeli on tämän jälkeen käytännössä mahdoton — pelkkä tornilaskuri
+## teki tasaväkisistä aikakattopeleistä kolikonheittoa ladder-testissä.
 func _moba_leader() -> int:
 	var h0: float = _nexus_hp(0)
 	var h1: float = _nexus_hp(1)
@@ -1437,7 +1450,27 @@ func _moba_leader() -> int:
 	var p1: float = relic_points[1]
 	if absf(p0 - p1) > 0.5:
 		return 0 if p0 > p1 else 1
+	var g0 := _team_stat_sum(0, "gold")
+	var g1 := _team_stat_sum(1, "gold")
+	if absf(g0 - g1) > 5.0:
+		return 0 if g0 > g1 else 1
+	var k0 := _team_stat_sum(0, "kos")
+	var k1 := _team_stat_sum(1, "kos")
+	if absf(k0 - k1) > 0.5:
+		return 0 if k0 > k1 else 1
 	return -1   # aito tasapeli
+
+
+## Joukkueen sankarien statin summa (ei yksiköitä/rakenteita).
+func _team_stat_sum(team: int, key: String) -> float:
+	var total := 0.0
+	for h in heroes:
+		var hero := h as Hero
+		if hero == null or not is_instance_valid(hero) or hero.is_unit \
+				or hero is Structure or hero.team != team or hero.profile == null:
+			continue
+		total += float(hero.profile.stats.get(key, 0))
+	return total
 
 
 func _nexus_hp(team: int) -> float:
