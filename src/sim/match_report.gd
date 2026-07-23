@@ -193,7 +193,11 @@ static func build_ladder(results: Array, intro: Array) -> String:
 		if not table.has(key):
 			table[key] = {"lo": lo, "hi": hi, "games": 0, "hi_wins": 0,
 				"hi_wins_blue": 0, "hi_wins_orange": 0, "draws": 0, "time": 0.0,
-				"anchor": bool(e["anchor"])}
+				"anchor": bool(e["anchor"]), "nexus_ends": 0,
+				"hi_kills": 0.0, "lo_kills": 0.0, "hi_deaths": 0.0, "lo_deaths": 0.0,
+				"hi_assists": 0.0, "lo_assists": 0.0, "hi_cs": 0.0, "lo_cs": 0.0,
+				"hi_gold": 0.0, "lo_gold": 0.0, "hi_towers": 0.0, "lo_towers": 0.0,
+				"hi_obj": 0.0, "lo_obj": 0.0}
 		var a: Dictionary = table[key]
 		var winner: int = int(snap["winner"])
 		var hi_team: int = int(e["hi_team"])
@@ -207,6 +211,35 @@ static func build_ladder(results: Array, intro: Array) -> String:
 				a["hi_wins_blue"] += 1
 			else:
 				a["hi_wins_orange"] += 1
+		# Tilastodominanssi: kerää joukkuetason KDA/CS/kulta/rakenteet/objektiivit
+		# ylemmän ja alemman puolelle -> raportti kertoo MITEN paljon paremmin
+		# ylempi pelasi silloinkin kun peli ei päättynyt nexukseen.
+		if str(snap.get("reason", "")).begins_with("nexus"):
+			a["nexus_ends"] = int(a["nexus_ends"]) + 1
+		for hv in snap.get("heroes", []):
+			var hd: Dictionary = hv
+			var pre := "hi_" if int(hd.get("team", -1)) == hi_team else "lo_"
+			a[pre + "kills"] = float(a[pre + "kills"]) + float(hd.get("kos", 0))
+			a[pre + "deaths"] = float(a[pre + "deaths"]) + float(hd.get("deaths", 0))
+			a[pre + "assists"] = float(a[pre + "assists"]) + float(hd.get("assists", 0))
+			a[pre + "cs"] = float(a[pre + "cs"]) + float(hd.get("minion_kills", 0))
+			a[pre + "gold"] = float(a[pre + "gold"]) + float(hd.get("gold", 0))
+		for tv in snap.get("tower_events", []):
+			var te: Dictionary = tv
+			var at := int(te.get("attacker_team", -1))
+			if at == 0 or at == 1:
+				var pre_t := "hi_" if at == hi_team else "lo_"
+				a[pre_t + "towers"] = float(a[pre_t + "towers"]) + 1.0
+		var cb: Array = snap.get("crystals_broken", [])
+		if cb.size() >= 2:
+			a["hi_towers"] = float(a["hi_towers"]) + float(cb[hi_team])
+			a["lo_towers"] = float(a["lo_towers"]) + float(cb[1 - hi_team])
+		for ov in snap.get("objective_events", []):
+			var oe: Dictionary = ov
+			var ot := int(oe.get("team", -1))
+			if (ot == 0 or ot == 1) and str(oe.get("kind", "")) in ["baron", "dragon"]:
+				var pre_o := "hi_" if ot == hi_team else "lo_"
+				a[pre_o + "obj"] = float(a[pre_o + "obj"]) + 1.0
 
 	lines.append("=== LADDER: PARIKOHTAISET TULOKSET (alempi vs ylempi rank) ===")
 	lines.append("  'ylempi voitti (sin+ora)' erittelee kummalla puolella ylempi pelasi -> puolibias näkyy.")
@@ -229,6 +262,31 @@ static func build_ladder(results: Array, intro: Array) -> String:
 			wr * 100.0, _fmt(float(a["time"]) / float(games)),
 			"OK" if ok else "VAROITUS"])
 
+	# Tilastodominanssi: näyttää KUINKA paljon paremmin ylempi pelasi — myös
+	# silloin kun voitto ratkesi aikakatossa eikä nexuksessa.
+	lines.append("")
+	lines.append("=== LADDER: TILASTODOMINANSSI (joukkuekeskiarvot per ottelu, ylempi/alempi) ===")
+	lines.append("  KDA = joukkueen tapot/kuolemat/avustukset. CS = last hitit. GPM = kultaa/min.")
+	lines.append("  rakent. = tornit+kristallit. obj = baron+dragon. nexus = nexukseen päättyneet pelit.")
+	lines.append("  pari                             | KDA ylempi      | KDA alempi      | CS yl/al | GPM yl/al | rakent. | obj     | nexus")
+	for key in table:
+		var a: Dictionary = table[key]
+		var g := float(maxi(int(a["games"]), 1))
+		var mins: float = maxf(float(a["time"]) / 60.0, 0.1)
+		var name := "%s vs %s" % [BotRank.rank_name(int(a["lo"])),
+			BotRank.rank_name(int(a["hi"]))]
+		if bool(a["anchor"]):
+			name += " (ankkuri)"
+		lines.append("  %-32s | %5.1f/%4.1f/%4.1f | %5.1f/%4.1f/%4.1f | %3.0f/%3.0f  | %4.0f/%4.0f | %3.1f/%3.1f | %2.1f/%2.1f | %d/%d" % [
+			name,
+			float(a["hi_kills"]) / g, float(a["hi_deaths"]) / g, float(a["hi_assists"]) / g,
+			float(a["lo_kills"]) / g, float(a["lo_deaths"]) / g, float(a["lo_assists"]) / g,
+			float(a["hi_cs"]) / g, float(a["lo_cs"]) / g,
+			float(a["hi_gold"]) / mins, float(a["lo_gold"]) / mins,
+			float(a["hi_towers"]) / g, float(a["lo_towers"]) / g,
+			float(a["hi_obj"]) / g, float(a["lo_obj"]) / g,
+			int(a["nexus_ends"]), int(a["games"])])
+
 	lines.append("")
 	lines.append("=== LADDER-YHTEENVETO ===")
 	if broken.is_empty():
@@ -238,6 +296,28 @@ static func build_ladder(results: Array, intro: Array) -> String:
 		lines.append("LADDER RIKKI kohdassa: %s" % ", ".join(PackedStringArray(broken)))
 		lines.append("Tarkista BotRank-parametrikäyrien monotonisuus näiden rankien välillä")
 		lines.append("(src/ai/bot_rank.gd + BotBrain._init) ja aja testi uudelleen isommalla otannalla.")
+	# Diagnoosi: erottele "käyrät eivät eroa" vs "ylempi dominoi muttei sulje".
+	var stat_notes: Array = []
+	for key in table:
+		var a: Dictionary = table[key]
+		var games2: int = maxi(int(a["games"]), 1)
+		var wr2: float = float(a["hi_wins"]) / float(games2)
+		if wr2 >= LADDER_OK_WINRATE:
+			continue
+		var name2 := "%s vs %s" % [BotRank.rank_name(int(a["lo"])),
+			BotRank.rank_name(int(a["hi"]))]
+		var lo_gold: float = maxf(float(a["lo_gold"]), 1.0)
+		var gold_lead: float = (float(a["hi_gold"]) - lo_gold) / lo_gold
+		if gold_lead >= 0.08:
+			stat_notes.append("  %s: ylempi dominoi taloutta +%d %% muttei sulkenut pelejä -> lopetusmekaniikka, ei käyräongelma." % [
+				name2, int(round(gold_lead * 100.0))])
+		elif gold_lead <= 0.02:
+			stat_notes.append("  %s: ei tilastoeroa (kulta %+d %%) -> rankkierot eivät pure tällä välillä." % [
+				name2, int(round(gold_lead * 100.0))])
+	if not stat_notes.is_empty():
+		lines.append("Diagnoosi:")
+		for note in stat_notes:
+			lines.append(str(note))
 	return "\n".join(PackedStringArray(lines))
 
 

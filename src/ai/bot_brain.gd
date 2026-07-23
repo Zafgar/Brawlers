@@ -46,6 +46,8 @@ var farm_skill := 0.0           # linjafarmi: korkea taso hakee matalan HP:n las
 var combo_skill := 0.0          # muistaako avaajan kohteen ja käyttääkö oikean jatkokyvyn
 var cooldown_discipline := 0.0  # säästääkö liikkuvuutta/pakoa ja välttääkö tuplakastit
 var tower_judgement := 0.0      # kuinka tarkasti botti arvioi aallon, aggron ja poistumistien
+var macro_obedience := 1.0      # todennäköisyys totella joukkuekutsuja (apu/baron/ryhmätyöntö)
+var defense_delay := 0.0        # sekunteja ennen kuin nimetty puolustaja reagoi kriisiin
 
 # Huippupään huijaukset: poikkeavat 1.0:sta vasta rankista 24 (Champion IV)
 # ylöspäin, portaattomasti Challenger I:een. Hero lukee kertoimet setup()issa.
@@ -109,6 +111,15 @@ var _combo_timer := 0.0
 var _hold_timer := 0.0
 var _hold_pause := 0.0
 
+# Kutsukuuliaisuuden salvat: yksi arvonta per kutsu, ei uutta joka päätöksellä
+# (muuten botti välkkyisi totellun ja oman agendan välillä).
+var _help_key := ""
+var _help_obey := true
+var _macro_key := ""
+var _macro_obey := true
+var _defend_sid := 0            # uhatun rakenteen instanssi-id
+var _defend_since := -1.0       # puolustuskriisin alkuhetki (match_elapsed)
+
 
 func _init(p_level: int, p_rank := -1) -> void:
 	# Ranking-asteikko (BotRank): 32 porrasta Wood IV -> Challenger I. Vanha
@@ -143,6 +154,11 @@ func _init(p_level: int, p_rank := -1) -> void:
 	combo_skill = lerpf(0.03, 1.0, pow(t, 1.3))
 	cooldown_discipline = lerpf(0.05, 1.0, pow(t, 1.1))
 	tower_judgement = lerpf(0.5, 1.0, pow(t, 0.9))
+	# Joukkuepeli: matala rank ei kuule kutsuja eikä ehdi puolustamaan ajoissa.
+	# Tämä erottaa rankit pelin SULKEMISESSA (ryhmätyöntö/Baron/puolustusreaktio)
+	# eikä vain mekaniikassa — tasaväkiset aikakattopelit olivat kolikonheittoa.
+	macro_obedience = lerpf(0.25, 1.0, pow(t, 0.7))
+	defense_delay = lerpf(2.4, 0.0, pow(t, 0.8))
 	# Ultimatet ovat arvokkaimpia — niitä käytetään kaikilla tasoilla,
 	# heikommilla vain hieman huonommalla ajoituksella.
 	ult_chance = clampf(ability_chance + 0.35, 0.0, 1.0)
@@ -613,20 +629,37 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	_ensure_moba_assignment(hero, arena)
 	# PUOLUSTUS: jos oma rakennus on uhattu ja OLEN nimetty (lähin) puolustaja,
 	# kääerry puolustamaan — taistele viholliset pois rakennuksen luota. Vain yksi
-	# botti kerrallaan, joten koko joukkue ei hylkää linjaa.
+	# botti kerrallaan, joten koko joukkue ei hylkää linjaa. Matala rank havahtuu
+	# kriisiin viiveellä (defense_delay) — siihen asti se jatkaa omiaan.
 	if bb.defender == hero and bb.threatened_structure != null \
 			and is_instance_valid(bb.threatened_structure):
-		_defend_pos = bb.threatened_structure.global_position
-		_mode = Mode.FIGHT
-		return
+		var sid: int = bb.threatened_structure.get_instance_id()
+		if sid != _defend_sid:
+			_defend_sid = sid
+			_defend_since = float(arena.match_elapsed)
+		if float(arena.match_elapsed) - _defend_since >= defense_delay:
+			_defend_pos = bb.threatened_structure.global_position
+			_mode = Mode.FIGHT
+			return
+	else:
+		_defend_sid = 0
 	# ROTAATIO: tiimitaulu kutsui minut auttamaan hätälinjaa (esim. top pahasti
 	# alakynnessä tai koko vihollisjoukkue puskee yhtä linjaa) -> mene sinne.
 	# Kutsu poistuu taululta kun kriisi laukeaa, jolloin normaali lane-logiikka
 	# palauttaa omalle linjalle. Ohittaa myös tuen carry-liimauksen (SUPPORT).
+	# Kuuliaisuus arvotaan kerran per kutsu: matala rank jättää usein tulematta.
 	if bb.help_lane != "" and hero in bb.helpers:
-		_moba_goal = bb.help_pos
-		_mode = Mode.FIGHT
-		return
+		var hkey := "%s@%s" % [bb.help_lane, str(bb.help_pos)]
+		if hkey != _help_key:
+			_help_key = hkey
+			# Hätäapu on helpompi ymmärtää kuin hyökkäysmakro -> pieni bonus.
+			_help_obey = randf() < clampf(macro_obedience + 0.15, 0.0, 1.0)
+		if _help_obey:
+			_moba_goal = bb.help_pos
+			_mode = Mode.FIGHT
+			return
+	else:
+		_help_key = ""
 	# LOPETUS (juurisyykorjaus "nexus ei koskaan tuhoudu"): kun vihollisen nexus
 	# on AUKI (molempien linjojen base-tornit nurin), se on kaikkien lähellä
 	# olevien bottien ykköskohde. Ilman tätä botit jäivät ikuiseen vaihtokauppaan
@@ -646,10 +679,19 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	if bb.macro_call != "" and hero in bb.macro_participants \
 			and bb.macro_target != null and is_instance_valid(bb.macro_target) \
 			and bool(bb.macro_target.alive):
-		_jungle_target = bb.macro_target
-		_moba_goal = bb.macro_pos
-		_mode = Mode.FIGHT
-		return
+		var mkey := "%s@%d" % [bb.macro_call, bb.macro_target.get_instance_id()]
+		if mkey != _macro_key:
+			_macro_key = mkey
+			# Matala rank ei kokoonnu Baronille/ryhmätyöntöön luotettavasti ->
+			# kutsut jäävät vajaiksi eikä peli sulkeudu yhtä usein.
+			_macro_obey = randf() < macro_obedience
+		if _macro_obey:
+			_jungle_target = bb.macro_target
+			_moba_goal = bb.macro_pos
+			_mode = Mode.FIGHT
+			return
+	elif bb.macro_call == "":
+		_macro_key = ""
 	# LINJANVAIHTO: oman linjan vihollistornit on kaikki kaadettu, mutta nexus on
 	# yhä suojattu, koska TOISEN linjan base-torni seisoo (nexus vaatii molemmat).
 	# Ilman vaihtoa laneri jäi seisomaan tyhjälle linjalleen koko loppupelin ->
