@@ -146,6 +146,7 @@ var hud = null                    # HudLayer
 var heroes: Array = []
 var zones: Array = []
 var buffs: Array = []              # aktiiviset FieldBuffit (botit lukevat näitä)
+var artifacts: Array = []          # maassa lojuvat Baron-artefaktit (MOBA)
 var blackboards: Array = []
 
 var _sd_hold := 0.0
@@ -666,6 +667,9 @@ func on_critter_ko(critter, source) -> void:
 				AudioMgr.duck_music(8.0, 1.15)
 			AudioMgr.play("baron_defeat", 0.02, -1.0)
 			_sim_event("Pomo kaadettu: %s" % Game.team_name(team))
+			# Baron pudottaa legendaarisen artefaktin kaatumispaikalleen (MOBA).
+			if mode == "moba":
+				_spawn_artifact(critter.global_position, true)
 		Critter.Kind.DRAGON:
 			relic_points[team] += DRAGON_POINTS
 			_last_point_team = team
@@ -774,6 +778,27 @@ func _grant_dragon_boost(team: int) -> void:
 		ally.apply_haste(1.14, 35.0, false)
 		ally.add_shield(35.0, 35.0, ally, false)
 		Fx.ring(self, ally.global_position, Palette.glow(Color("37cdbb"), 1.5), ally.radius + 22.0, 0.55, 6.0)
+
+
+## Legendaarinen artefakti maailmaan: Baronin kaatumispaikalle (from_baron)
+## tai kantajan kuolinpaikalle. Ei katoamisaikaa — lojuu kunnes poimitaan;
+## artefakteja voi olla kentällä useita (Baron herää uudelleen).
+func _spawn_artifact(pos: Vector2, from_baron: bool) -> void:
+	if mode != "moba":
+		return
+	if map != null:
+		pos = map.clamp_to_field(pos, 40.0)
+	var art := LegendaryArtifact.new()
+	art.setup(self, pos)
+	add_child(art)
+	Fx.ring(self, pos, Palette.glow(Palette.GOLD, 1.5), 120.0, 0.7, 6.0)
+	if from_baron:
+		hud.show_banner("LEGENDAARINEN ARTEFAKTI PUTOSI!",
+			"Poimi se ja rakenna legendaarinen esine kaupassa", 2.6)
+		hud.ko_feed("Legendaarinen artefakti putosi!")
+		if not Game.simulating:
+			AudioMgr.play("crescendo", 0.04, -6.0, pos)
+	_sim_event("Artefakti putosi (%s)" % ("baron" if from_baron else "kantaja"))
 
 
 ## Aika loppui: eniten pisteitä voittaa ottelun (viidakko on yksieräinen).
@@ -1771,7 +1796,10 @@ func _start_round_intro() -> void:
 	for child in get_children():
 		if child is FieldBuff:
 			child.queue_free()
+		elif child is LegendaryArtifact:
+			child.queue_free()
 	buffs.clear()
+	artifacts.clear()
 	relic.reset_to_home()
 	if mode == "koth":
 		relic.control_team = -1
@@ -1859,6 +1887,11 @@ func _round_over(winner_team: int) -> void:
 # --- Tapahtumakoukut ---
 
 func on_hero_ko(hero: Hero, source: Hero) -> void:
+	# Artefaktin kantaja pudottaa artefaktin kuolinpaikalleen (uusi poimittava).
+	if mode == "moba" and not hero.is_unit and hero.legendary_artifact:
+		hero.legendary_artifact = false
+		_spawn_artifact(hero.global_position, false)
+		hud.ko_feed("%s pudotti artefaktin!" % hero.profile.display_name)
 	# Viidakko: vihollisen tyrmäys tuo joukkueelle pisteitä.
 	if mode == "jungle" and source != null and is_instance_valid(source) \
 			and source.team <= 1 and source.team != hero.team:

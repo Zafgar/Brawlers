@@ -274,6 +274,17 @@ func _draw_status(bob: float) -> void:
 			draw_arc(Vector2(0, -14), hero.radius + 13.0, a - half, a + half, 24,
 				Palette.glow(Palette.SHIELD, 1.4), 5.0)
 
+	# Baron-artefaktin kantaja: pieni kultatimantti sankarin yllä — myös
+	# viholliset näkevät kuka kantaa legendaarista palkintoa.
+	if not hero.is_unit and hero.legendary_artifact:
+		var art_c := top + Vector2(0, -26.0)
+		var art_pulse := 1.0 + 0.18 * sin(_time * 5.0)
+		draw_circle(art_c, 7.5 * art_pulse, Palette.with_alpha(Palette.GOLD, 0.22))
+		draw_colored_polygon(PackedVector2Array([
+			art_c + Vector2(0, -6) * art_pulse, art_c + Vector2(4.5, 0) * art_pulse,
+			art_c + Vector2(0, 6) * art_pulse, art_c + Vector2(-4.5, 0) * art_pulse]),
+			Palette.glow(Palette.GOLD, 1.5))
+
 	if hero.mark_timer > 0.0:
 		# Scoutin merkki: pulssaava kultatimantti pään yläpuolella.
 		var mark_center := top + Vector2(0, -16.0)

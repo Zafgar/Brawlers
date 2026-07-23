@@ -692,6 +692,23 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 			return
 	elif bb.macro_call == "":
 		_macro_key = ""
+	# ARTEFAKTI: maassa lojuva Baron-artefakti lähellä -> kävele sen päälle
+	# (LegendaryArtifact poimii botin automaattisesti pienen viiveen jälkeen).
+	# Vain jos oma artefaktipaikka on vapaa; kaukaa ei lähdetä hakemaan.
+	if not hero.legendary_artifact and not arena.artifacts.is_empty():
+		var near_art = null
+		var art_d := 700.0
+		for art_v in arena.artifacts:
+			if not is_instance_valid(art_v):
+				continue
+			var d: float = hero.global_position.distance_to(art_v.global_position)
+			if d < art_d:
+				art_d = d
+				near_art = art_v
+		if near_art != null:
+			_moba_goal = near_art.global_position
+			_mode = Mode.FIGHT
+			return
 	# LINJANVAIHTO: oman linjan vihollistornit on kaikki kaadettu, mutta nexus on
 	# yhä suojattu, koska TOISEN linjan base-torni seisoo (nexus vaatii molemmat).
 	# Ilman vaihtoa laneri jäi seisomaan tyhjälle linjalleen koko loppupelin ->

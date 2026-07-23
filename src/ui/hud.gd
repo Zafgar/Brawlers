@@ -576,6 +576,16 @@ class PaneHud:
 			var gem := rect.position + Vector2(18, 18)
 			_draw_diamond(gem, 8.0 + sin(_time * 6.0), Palette.glow(Palette.GOLD, 1.5))
 
+		# Baron-artefakti hallussa: kultachippi muotokuvan yllä muistuttaa,
+		# että legendaarinen esine on ostettavissa (ja menetettävissä kuollessa).
+		if bool(hero.legendary_artifact):
+			var art_chip := portrait + Vector2(0, -portrait_r - (8.0 if compact else 10.0))
+			_draw_diamond(art_chip, (6.0 if compact else 7.5) + sin(_time * 5.0),
+				Palette.glow(Palette.GOLD, 1.4))
+			UiKit.draw_text(self, art_chip + Vector2(0, -(9.0 if compact else 12.0)),
+				"ARTEFAKTI", 7 if compact else 9,
+				Palette.glow(Palette.GOLD, 1.15), true, 2)
+
 		if not hero.alive:
 			_panel(rect, Color(0.025, 0.035, 0.075, 0.88), Palette.with_alpha(Palette.BAD, 0.72),
 				17.0, 2.0)
@@ -1223,6 +1233,17 @@ class PaneHud:
 				_draw_diamond(sp, 3.5 if compact else 4.5, Palette.glow(scol, 1.2))
 			else:
 				draw_rect(Rect2(sp - Vector2(3.0, 3.0), Vector2(6.0, 6.0)), scol)
+
+		# Maassa lojuvat Baron-artefaktit: sykkivä kultatimantti MOLEMMILLE
+		# joukkueille (iso strateginen palkinto näkyy kaikille).
+		for artifact in arena.artifacts:
+			if not is_instance_valid(artifact):
+				continue
+			var art_p := _map_point(artifact.global_position, map_origin, world_size, scale_map)
+			_draw_diamond(art_p, (3.6 if compact else 4.6) + 1.4 * sin(_time * 5.0),
+				Palette.glow(Palette.GOLD, 1.4))
+			draw_arc(art_p, 6.5 if compact else 8.0, 0.0, TAU, 14,
+				Palette.with_alpha(Palette.GOLD, 0.45 + 0.3 * sin(_time * 5.0)), 1.0)
 
 		# Oman kameran alue ja oma suuntanuoli tekevät neljästä kartasta aidosti
 		# pelaajakohtaisia.
