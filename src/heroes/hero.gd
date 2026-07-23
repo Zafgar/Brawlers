@@ -232,6 +232,26 @@ var duel_marker: Hero = null
 var frozen := 0.0                  # ajanpysäytys: > 0 = ei voi liikkua/toimia
 var piloting := false              # ohjaa ohjattavaa ammusta (Salvon raketti): maan alla, ei toimi
 
+# --- Itemit (MOBA-kauppa) ---
+# Itemit säilyvät tyrmäyksen ja erien yli (ottelun mittaisia, kuten rankit).
+# _item_stats on statisummien välimuisti; passiivilaskurit tikittävät
+# _tick_statusissa. legendary_artifact tulee Baron-poiminnasta (Phase B) ja
+# kuluu legendaitemin ostoon.
+const MAX_ITEMS := 6
+var items: Array = []               # omistetut item-id:t (enintään 6 paikkaa)
+var _item_stats := {}               # statiavain -> summa (välimuisti)
+var legendary_artifact := false     # Baron-artefakti hallussa
+var _ap_momentum := 0               # arkkisauvan pinot (+1 % ap / pino, max 10)
+var _chain_hits := 0                # ketjusalama: joka 4. perusosuma
+var _echo_hits := 0                 # kaiku: joka 3. kykyosuma
+var _spellshield_cd := 0.0          # loitsukilpi: 8 s sisäinen jäähdytys
+var _frost_cd := 0.0                # huurre: hidastus enintään 0.8 s välein
+var _root_burst_cd := 0.0           # juurakko: 60 s sisäinen jäähdytys
+var armor_shred_timer := 0.0        # panssarinmurskain: -20 % panssari tässä kohteessa
+var _alpha_slow_ready := false      # alfa: leirin kaadon lataama hidasteosuma
+var _item_proc_active := false      # estää itemiproccien ketjuuntumisen
+var _shop_tick := 0.0               # bottiostojen kuristus (enintään 1 krt/s)
+
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
 	arena = p_arena
@@ -1572,6 +1592,14 @@ func _finish_recall(mm: MapMoba) -> void:
 	AudioMgr.play("respawn", 0.05, -4.0, dest)
 
 
+# --- Itemit ja kauppa (MOBA) ---
+
+## Itemistatin summa (välimuistista). Avaimet: ks. ItemDef (attack, ap, hp,
+## armor, mr, cdr, ms, lifesteal, crit, ...). Palauttaa 0.0 jos ei itemejä.
+func item_stat(key: String) -> float:
+	return float(_item_stats.get(key, 0.0))
+
+
 # --- Taisteluapurit ---
 
 ## phase_walls: syöksy menee sisäseinien läpi (mutta EI kartan ulkopuolelle;
@@ -2112,7 +2140,13 @@ func _knockout(source: Hero) -> void:
 			source.profile.stats.kos_during_dragon += 1
 		source.profile.add_score(30.0)
 		source.add_ult(15.0)   # tappo on iso mutta ei puolta ulttia (oli 20)
+		# Tyhjyys: sankaritappo palauttaa ult-latausta ja nollaa a1/a2:n.
+		if not source.is_unit and source.items.has("tyhjyydenydin"):
+			source.add_ult(40.0)
+			source.cd.a1 = 0.0
+			source.cd.a2 = 0.0
 		var assisted: Dictionary = {}
+		var assist_heroes: Array = []
 		for entry in _recent_damagers:
 			if not is_instance_valid(entry.hero):
 				continue
@@ -2123,8 +2157,33 @@ func _knockout(source: Hero) -> void:
 				continue
 			if now - entry.time <= ASSIST_WINDOW and entry.hero.team != team:
 				assisted[helper_id] = true
+				assist_heroes.append(entry.hero)
 				entry.hero.profile.stats.assists += 1
 				entry.hero.profile.add_score(15.0)
+		# Avustuskulta (MOBA): 40 % tappopalkkiosta jaettuna avustajien kesken.
+		# assist_gold-itemistatti kasvattaa omaa osuutta.
+		if arena != null and arena.mode == "moba" and not assist_heroes.is_empty() \
+				and not source.is_unit:
+			var bounty: float = float(arena.KO_GOLD_BASE) + 12.0 * float(level)
+			var share: float = bounty * 0.4 / float(assist_heroes.size())
+			for helper in assist_heroes:
+				if helper.is_unit or helper.profile == null:
+					continue
+				var gain := int(round(share * (1.0 + helper.item_stat("assist_gold"))))
+				helper.profile.stats.gold += gain
+				helper.profile.stats.assist_gold_earned = \
+					int(helper.profile.stats.assist_gold_earned) + gain
+				if not Game.simulating and helper.profile.is_human():
+					arena.popup(helper.global_position + Vector2(0, -58),
+						"+%dG" % gain, Palette.GOLD, 14)
+				# Hoiva: avustus parantaa avustajaa 6 % max HP:sta.
+				if helper.items.has("hoivasydän") and helper.alive:
+					helper.heal_hp(helper.max_hp * 0.06, helper)
+				# Tyhjyys: avustus palauttaa ult-latausta ja nollaa a1/a2.
+				if helper.items.has("tyhjyydenydin"):
+					helper.add_ult(40.0)
+					helper.cd.a1 = 0.0
+					helper.cd.a2 = 0.0
 	_recent_damagers.clear()
 
 	visible = false

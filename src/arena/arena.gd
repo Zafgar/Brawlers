@@ -83,6 +83,9 @@ const JUNGLE_XP_ASSIST_SHARE := 0.35
 const MAJOR_XP_ASSIST_SHARE := 0.55
 const TOWER_XP_ASSIST_RADIUS := 1050.0
 const HERO_KO_XP_BASE := 120.0
+# Tappopalkkio: 150 + 12 * uhrin taso kultaa tappajalle; avustajat jakavat
+# 40 % palkkiosta (jako hoidetaan Hero._knockoutissa avustuslistan kanssa).
+const KO_GOLD_BASE := 150
 const RED_CAMP_BUFF := 90.0
 const BLUE_CAMP_BUFF := 90.0
 
@@ -1586,6 +1589,8 @@ func sim_snapshot() -> Dictionary:
 			"tower_gold": int(p.stats.tower_gold),
 			"tower_xp": int(p.stats.tower_xp),
 			"hero_xp": float(p.stats.hero_xp),
+			"gold_spent": int(p.stats.get("gold_spent", 0)),
+			"items": h.items.duplicate(),
 			"gold_milestones": p.stats.gold_milestones.duplicate(true),
 			"xp_milestones": p.stats.xp_milestones.duplicate(true),
 			"level_times": p.stats.level_times.duplicate(true),
@@ -1595,6 +1600,7 @@ func sim_snapshot() -> Dictionary:
 		for key in [
 			"time_top", "time_bottom", "time_jungle", "time_base",
 			"jungle_clears", "jungle_clear_time", "jungle_active_clear_time",
+			"kill_gold", "assist_gold_earned",
 			"red_pickups", "blue_pickups", "baron_buffs", "dragon_buffs",
 			"red_buff_time", "blue_buff_time", "baron_buff_time", "dragon_buff_time",
 			"red_bonus_damage", "blue_bonus_damage", "red_healing",
@@ -1834,6 +1840,15 @@ func on_hero_ko(hero: Hero, source: Hero) -> void:
 			and not source.is_unit and source.team <= 1 and source.team != hero.team:
 		var ko_xp := HERO_KO_XP_BASE + float(maxi(hero.level - 1, 0)) * 12.0
 		_grant_moba_xp(source, ko_xp, "hero")
+		# Tappopalkkio: kulta tappajalle (avustajien osuus jaetaan Herossa).
+		var bounty: int = KO_GOLD_BASE + 12 * hero.level
+		source.profile.stats.gold += bounty
+		source.profile.stats.kill_gold = int(source.profile.stats.kill_gold) + bounty
+		_record_buff_economy(source, float(bounty), 0.0)
+		_update_economy_milestones(source)
+		if not Game.simulating and source.profile.is_human():
+			popup(hero.global_position + Vector2(0, -70), "+%dG" % bounty,
+				Palette.GOLD, 18)
 		for ally in heroes:
 			if not is_instance_valid(ally) or not ally.alive or ally.is_unit \
 					or ally is Structure or ally == source or ally.team != source.team:

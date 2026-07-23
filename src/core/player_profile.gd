@@ -40,7 +40,10 @@ func reset_stats() -> void:
 		"structure_damage": 0.0,  # vahinko rakennuksiin (tornit/nexus)
 		"jungle_damage": 0.0, # vahinko viidakko-olentoihin (leirit/pomo)
 		"minion_kills": 0,    # kaadetut minionit (CS)
-		"gold": 0,            # MOBA-talouden pohja
+		"gold": 0,            # MOBA-talouden pohja (KUMULATIIVINEN, ei vähene ostoista)
+		"gold_spent": 0,      # itemeihin käytetty kulta (lompakko = gold - gold_spent)
+		"kill_gold": 0,       # tappopalkkioista saatu kulta
+		"assist_gold_earned": 0, # avustuksista saatu kulta
 		"xp": 0.0,            # kokonais-XP; taso pysähtyy 12:een, telemetria jatkuu
 		"level": 1,           # varsinainen ottelutaso (AI-vaikeustaso on eri asia)
 		"level_times": {"1": 0.0}, # taso -> ensimmäinen saavuttamisaika
@@ -117,6 +120,13 @@ func color() -> Color:
 
 func add_score(points: float) -> void:
 	stats.score += points
+
+
+## MOBA-lompakko: käytettävissä oleva kulta. stats.gold pysyy KUMULATIIVISENA
+## (raportit ja tiebreakit nojaavat siihen), joten ostot kirjataan gold_spentiin
+## ja lompakko on niiden erotus.
+func wallet() -> int:
+	return int(stats.get("gold", 0)) - int(stats.get("gold_spent", 0))
 
 
 func is_human() -> bool:
