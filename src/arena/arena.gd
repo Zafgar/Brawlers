@@ -53,6 +53,11 @@ const SIM_MOBA_TIME := 1200.0
 const WAVE_INTERVAL := 18.0       # lyhyempi tyhjä jakso edellisen aallon jälkeen
 const WAVE_FIRST := 1.5           # ensimmäinen aalto lähtee lähes heti
 const WAVE_SIZE := 5              # 3 melee + 2 ranged per linja per joukkue
+# Loppupelin työntöapu: 14 min jälkeen joka aalto saa +1 etuvartion. Kolmen
+# tornin ketju per linja (aiemmin kaksi) pidensi piirityksiä niin, että ottelut
+# päättyivät aikakattoon nexustuhon sijaan — isompi loppuaalto crashaa torneille
+# useammin ja vie pelit maaliin.
+const LATE_WAVE_TIME := 840.0
 const MINION_CAP := 96
 const DRAGON_FIRST := 90.0
 const BARON_FIRST := 180.0
@@ -766,7 +771,7 @@ func _end_jungle() -> void:
 # --- MOBA-pelimuoto ---
 
 ## Luo viidakon (leirit + pomo ajastimella) sekä linjan rakennukset
-## (2 tornia + nexus per joukkue). Minioniaallot alkavat myöhemmin.
+## (3 tornia per linja + nexus per joukkue). Minioniaallot alkavat myöhemmin.
 func _setup_moba() -> void:
 	score_target = 999999.0
 	relic.koth = true
@@ -1167,12 +1172,19 @@ func _spawn_wave(team: int, lane_id: String = MapMoba.BOTTOM) -> void:
 		if p1 != base:
 			lead = (p1 - base).normalized()
 	var side: Vector2 = lead.orthogonal()
-	for i in range(WAVE_SIZE):
+	# Loppupelissä (LATE_WAVE_TIME) aalto kasvaa yhdellä etuvartiolla: piiritys-
+	# paine nousee ja base-tornit murtuvat ennen aikakattoa (ks. vakion selitys).
+	var wave_size := WAVE_SIZE
+	var melee_count := 3
+	if match_elapsed >= LATE_WAVE_TIME:
+		wave_size += 1
+		melee_count += 1
+	for i in range(wave_size):
 		var m := Minion.new()
-		# Kolme kilpisoturia muodostaa oikean etulinjan, kaksi sädevahtia
-		# jää taakse. Viiden yksikön aalto on uhka, jota ei voi vain sivuuttaa.
-		var m_kind := Minion.Kind.MELEE if i < 3 else Minion.Kind.RANGED
-		var rank_i := i if m_kind == Minion.Kind.MELEE else i - 3
+		# Kilpisoturit muodostavat oikean etulinjan, kaksi sädevahtia jää
+		# taakse. Viiden(+1) yksikön aalto on uhka, jota ei voi vain sivuuttaa.
+		var m_kind := Minion.Kind.MELEE if i < melee_count else Minion.Kind.RANGED
+		var rank_i := i if m_kind == Minion.Kind.MELEE else i - melee_count
 		var forward_offset := (182.0 + float(rank_i % 2) * 28.0) \
 			if m_kind == Minion.Kind.MELEE else (105.0 + float(rank_i) * 28.0)
 		var side_offset := (-34.0 + float(rank_i) * 34.0) \

@@ -574,6 +574,29 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 		_moba_goal = bb.help_pos
 		_mode = Mode.FIGHT
 		return
+	# LOPETUS (juurisyykorjaus "nexus ei koskaan tuhoudu"): kun vihollisen nexus
+	# on AUKI (molempien linjojen base-tornit nurin), se on kaikkien lähellä
+	# olevien bottien ykköskohde. Ilman tätä botit jäivät ikuiseen vaihtokauppaan
+	# respawnaavien puolustajien kanssa lähteen vieressä eivätkä koskaan lyöneet
+	# nexusta -> ottelut päättyivät aina aikakattoon. RETREAT-/hätäsäännöt
+	# hoitavat itsesuojelun edelleen (matala HP keskeyttää rynnäkön).
+	var enemy_nexus := _enemy_nexus(hero, arena)
+	if enemy_nexus != null and not enemy_nexus.is_protected() \
+			and hero.global_position.distance_to(enemy_nexus.global_position) < 1250.0:
+		_jungle_target = enemy_nexus
+		_mode = Mode.FIGHT
+		return
+	# LINJANVAIHTO: oman linjan vihollistornit on kaikki kaadettu, mutta nexus on
+	# yhä suojattu, koska TOISEN linjan base-torni seisoo (nexus vaatii molemmat).
+	# Ilman vaihtoa laneri jäi seisomaan tyhjälle linjalleen koko loppupelin ->
+	# toinen linja ei murtunut koskaan ja nexus ei auennut (raportoitu vika).
+	# Tornit eivät herää henkiin, joten vaihto on pysyvä ja turvallinen.
+	if _moba_job != "jungle" and _moba_lane != "" \
+			and enemy_nexus != null and enemy_nexus.is_protected() \
+			and _enemy_lane_broken(hero, arena, _moba_lane):
+		var other_lane: String = MapMoba.BOTTOM if _moba_lane == MapMoba.TOP else MapMoba.TOP
+		if not _enemy_lane_broken(hero, arena, other_lane):
+			_moba_lane = other_lane
 	var lane_map := arena.map as MapMoba
 	if _moba_job != "jungle" and _moba_lane != "" and lane_map != null \
 			and lane_map.distance_to_lane(hero.global_position, _moba_lane) > 520.0:
@@ -718,6 +741,26 @@ func _moba_objective_value(hero: Hero, cr: Critter) -> float:
 		Critter.Kind.SMALL_CAMP:
 			return 105.0 if _moba_job == "jungle" else 0.0
 	return 0.0
+
+
+## Vihollisen elossa oleva nexus-rakennus tai null.
+func _enemy_nexus(hero: Hero, arena) -> Structure:
+	for st in arena.structures:
+		var s := st as Structure
+		if s != null and s.alive and s.team != hero.team \
+				and s.kind == Structure.Kind.NEXUS:
+			return s
+	return null
+
+
+## Onko vihollisen torniketju annetulla linjalla kokonaan tuhottu?
+func _enemy_lane_broken(hero: Hero, arena, lane: String) -> bool:
+	for st in arena.structures:
+		var s := st as Structure
+		if s != null and s.alive and s.team != hero.team \
+				and s.kind == Structure.Kind.TOWER and s.lane_id == lane:
+			return false
+	return true
 
 
 ## Lähin tuhottavissa oleva vihollisrakennus (torni ensin, nexus vasta avattuna).
@@ -941,6 +984,14 @@ func _moba_emergency_goal(hero: Hero, arena) -> Vector2:
 ## MOBA-työnnön kohteenvalinta: vihollissankari lähellä -> taistele; muuten
 ## siivoa vihollisaalto (jotta oma aalto crashaa tornille); muuten lyö rakennus.
 func _moba_push_target(hero: Hero, arena) -> Hero:
+	# Kilpajuoksu nexukselle: AVOIN nexus iskuetäisyyden tuntumassa lyödään
+	# loppuun eikä käännytä puolustajaa päin — muuten respawnaava puolustaja
+	# keskeytti viimeistelyn loputtomasti (osasyy "nexus ei tuhoudu" -vikaan).
+	var open_nexus := _jungle_target as Structure
+	if open_nexus != null and open_nexus.kind == Structure.Kind.NEXUS \
+			and not open_nexus.is_protected() \
+			and hero.global_position.distance_to(open_nexus.global_position) < 700.0:
+		return open_nexus
 	var hero_scan: float = clampf(_pref_range + 150.0, 280.0, 700.0)
 	var enemy_hero := _nearest_enemy_hero(hero, arena, hero_scan)
 	if enemy_hero != null:

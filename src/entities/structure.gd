@@ -5,7 +5,8 @@ extends Hero
 ## joten sankarien osumat/ammukset osuvat siihen normaalisti.
 ##
 ## Torni ampuu lähellä olevia vihollisia (minionit etusijalla). Nexus on voiton
-## kohde: se on suojattu (haavoittumaton) kunnes sen molemmat tornit on tuhottu.
+## kohde: se on suojattu (haavoittumaton) kunnes MOLEMPIEN linjojen base-tornit
+## (tier 2) on tuhottu — torniketju pakottaa järjestyksen uloin -> sisin -> base.
 
 enum Kind { TOWER, NEXUS }
 
