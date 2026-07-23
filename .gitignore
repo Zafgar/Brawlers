@@ -1,0 +1,9 @@
+# Godot-välimuisti ja koneen omat tiedostot (EI repoon).
+# Huom: *.uid-tiedostot KUULUVAT repoon (Godot 4.4 -suositus), joten niitä ei ohiteta.
+.godot/
+export_presets.cfg
+*.translation
+
+# OS
+.DS_Store
+Thumbs.db
