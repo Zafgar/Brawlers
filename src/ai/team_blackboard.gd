@@ -173,6 +173,7 @@ func update(delta: float) -> void:
 ## koko joukkue ei hylkää omia linjojaan. Ihmisiä ei komenneta.
 func _update_moba_crisis(allies: Array, enemies: Array) -> void:
 	var prev_helpers: Array = helpers.filter(func(h): return is_instance_valid(h) and h.alive)
+	var help_lane_prev := help_lane
 	help_lane = ""
 	help_pos = Vector2.ZERO
 	helpers = []
@@ -190,6 +191,10 @@ func _update_moba_crisis(allies: Array, enemies: Array) -> void:
 		var enemy_n := 0
 		var enemy_sum := Vector2.ZERO
 		for e in enemies:
+			# Tukikohdassa (respawn/ostot) seisova ei ole "linjalla" — lähteet
+			# ovat lähellä molempien linjojen päitä ja vääristäisivät laskun.
+			if mm.is_in_own_sanctuary(e.global_position, e.team):
+				continue
 			if mm.distance_to_lane(e.global_position, str(lane)) < LANE_NEAR:
 				enemy_n += 1
 				enemy_sum += e.global_position
@@ -197,7 +202,12 @@ func _update_moba_crisis(allies: Array, enemies: Array) -> void:
 			continue
 		var ally_n := 0
 		for a in allies:
-			if mm.distance_to_lane(a.global_position, str(lane)) < LANE_NEAR:
+			if mm.is_in_own_sanctuary(a.global_position, a.team):
+				continue
+			# Matkalla oleva apuun kutsuttu lasketaan jo puolustajaksi: kriisi ei
+			# "ratkea" siitä että auttaja saapuu linjan laidalle (ei sinkoilua).
+			if mm.distance_to_lane(a.global_position, str(lane)) < LANE_NEAR \
+					or (str(lane) == help_lane_prev and a in prev_helpers):
 				ally_n += 1
 		var tower_threat: bool = threat_lane == str(lane)
 		var deficit: int = enemy_n - ally_n
@@ -231,8 +241,12 @@ func _update_moba_crisis(allies: Array, enemies: Array) -> void:
 			continue
 		if a.hp < a.max_hp * 0.4:
 			continue
-		if mm.distance_to_lane(a.global_position, help_lane) < LANE_NEAR:
-			continue   # on jo siellä -> ei "apua", vaan puolustaja
+		# Linjalla jo valmiiksi oleva on puolustaja, ei "apu" — mutta saapunut
+		# AUTTAJA pysyy tehtävässään kunnes kriisi oikeasti laukeaa (ei käänny
+		# kotiin heti linjan laidalla).
+		if mm.distance_to_lane(a.global_position, help_lane) < LANE_NEAR \
+				and not a in prev_helpers:
+			continue
 		var brain: BotBrain = a.controller
 		var score := 0.0
 		match str(brain._moba_job):
@@ -276,8 +290,12 @@ func _structure_lane(mm: MapMoba, s) -> String:
 	return best
 
 
-## Bottom-duon carry (ei-tuki-bottom-botti); null jos ei löydy.
+## Bottom-duon carry; null jos ei löydy. Ihmispelaajan positiovalinta (lobby)
+## tunnistetaan ensin — tuki ei saa hylätä IHMIS-carryakaan vaaraan.
 func _bottom_carry(allies: Array) -> Hero:
+	for a in allies:
+		if str(a.profile.moba_position) == "carry":
+			return a
 	for a in allies:
 		if not (a.controller is BotBrain):
 			continue

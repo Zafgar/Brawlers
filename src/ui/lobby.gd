@@ -210,6 +210,7 @@ func _check_all_ready() -> void:
 func _enter_positions() -> void:
 	phase = Phase.POSITIONS
 	AudioMgr.play("ui_open")
+	_deny.t = 0.0
 	for i in range(players.size()):
 		players[i].pos_cursor = i % POSITIONS.size()
 		players[i].pos_locked = false
@@ -277,6 +278,7 @@ func _all_positions_locked() -> bool:
 func _enter_heroes() -> void:
 	phase = Phase.HEROES
 	AudioMgr.play("ui_open")
+	_deny.t = 0.0
 	_bot_counter = 0
 	bots.clear()
 	for i in range(players.size()):
@@ -389,10 +391,12 @@ func _handle_heroes_input(device: int, edge: Dictionary) -> void:
 			# tyhjenevät, positiot avataan uudelleen valittaviksi.
 			phase = Phase.POSITIONS
 			bots.clear()
+			_deny.t = 0.0
 			for other in players:
 				other.locked = false
 				other.profile.hero_id = ""
 				other.pos_locked = false
+				other.profile.moba_position = ""
 			AudioMgr.play("ui_back")
 
 

@@ -955,12 +955,32 @@ func _tick_moba_telemetry(delta: float) -> void:
 func _progression_role(hero: Hero) -> String:
 	if hero == null or not is_instance_valid(hero):
 		return "unknown"
+	# Nimenomainen positiovalinta (lobby) menee kaiken päättelyn ohi: pelaaja voi
+	# pelata mitä tahansa sankaria missä tahansa positiossa (esim. mage-tuki).
+	if hero.profile != null:
+		match str(hero.profile.moba_position):
+			"top":
+				return "top"
+			"jungle":
+				return "jungle"
+			"carry":
+				return "bottom"
+			"support":
+				return "support"
 	var job := ""
+	var duty := ""
 	if hero.controller is BotBrain:
 		job = str(hero.controller._moba_job)
+		duty = str(hero.controller._moba_duty)
 	var hero_role := str(HeroDef.get_def(hero.hero_id).get("role", ""))
-	if job == "bottom" and hero_role == "Tuki":
-		return "support"
+	if job == "bottom":
+		# Botin työnjako (carry/support) ratkaisee ennen sankariroolia.
+		if duty == "support":
+			return "support"
+		if duty == "carry":
+			return "bottom"
+		if hero_role == "Tuki":
+			return "support"
 	if job != "":
 		return job
 	if hero_role == HeroDef.ROLE_JUNGLER:
