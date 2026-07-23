@@ -2185,8 +2185,10 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 						source.stealth_strike = false
 						source._stealth_strike_t = 0.0
 					amount *= 1.7
-					arena.popup(global_position + Vector2(0, -58), "KRIT!",
-						Color("ffb54a"), 17)
+					# Ei popup-solmuja simulaatiossa: kritejä tulee tuhansia 32x-ajossa.
+					if not Game.simulating:
+						arena.popup(global_position + Vector2(0, -58), "KRIT!",
+							Color("ffb54a"), 17)
 					# Panssarinmurskain: krit repii 20 % kohteen panssarista 3 s.
 					if source.items.has("teräsarmä"):
 						armor_shred_timer = 3.0

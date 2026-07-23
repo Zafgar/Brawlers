@@ -34,7 +34,7 @@ func _physics_process(delta: float) -> void:
 			continue
 		if hero.global_position.distance_to(global_position) > PICKUP_RADIUS + hero.radius:
 			continue
-		var hid := hero.get_instance_id()
+		var hid: int = hero.get_instance_id()
 		seen[hid] = true
 		if hero.controller == null:
 			continue

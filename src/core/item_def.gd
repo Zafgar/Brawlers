@@ -381,10 +381,13 @@ static func next_purchase(goal_id: String, owned: Array, wallet: int) -> String:
 		if remaining.has(comp):
 			remaining.erase(comp)   # jo omistettu komponentti ei ole ostotarve
 			continue
-		var pick := next_purchase(comp, owned, wallet)
+		# Rekursioon annetaan remaining (ei owned): kun resepti vaatii samaa
+		# komponenttia kahdesti ja yksi on jo omistettu, TOINEN kappale on yhä
+		# ostotarve — muuten botti jäi säästämään suoraan yhdistelmään.
+		var pick := next_purchase(comp, remaining, wallet)
 		if pick == "":
 			continue
-		var pick_cost := combine_cost(pick, owned)
+		var pick_cost := combine_cost(pick, remaining)
 		if best == "" or pick_cost < best_cost:
 			best = pick
 			best_cost = pick_cost
