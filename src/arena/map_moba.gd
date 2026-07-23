@@ -53,6 +53,7 @@ var _lane_wildlife := [Vector2(0, -2020), Vector2(0, 2020)]
 var _patches: Array = []
 var _trees: Array = []
 var _brushes: Array = []        # Rect2-alueet: tuleva fog/vision + nykyinen AI-näkö
+var _corner_massifs: Array = [] # kulmien kalliomassiivien portaat (myös rect_walls-osia)
 
 
 func _setup() -> void:
@@ -125,6 +126,23 @@ func _setup_barriers() -> void:
 	rect_walls.append(Rect2(-210, 1950, 50, 230))
 	rect_walls.append(Rect2(160, 1950, 50, 230))
 
+	# Kulmien kalliomassiivit: porrastettu diagonaali sulkee neljän kulman
+	# kuolleet kiilat linjan kaarta myötäillen. Portaiden ja linjan väliin jää
+	# pieni tasku, johon _setup_brushes lisää juke-puskan. Portaat ovat myös
+	# collision-seiniä; _draw_corner_forest pukee ne metsäksi.
+	var corner_steps := [
+		Rect2(2600, 2070, 1000, 130), Rect2(2720, 1955, 880, 130),
+		Rect2(2860, 1840, 740, 130), Rect2(3020, 1725, 580, 130),
+		Rect2(3200, 1610, 400, 130), Rect2(3360, 1505, 240, 120),
+		Rect2(3450, 1250, 150, 255),
+	]
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			for step in corner_steps:
+				var placed := _mirror_quadrant_rect(step, sx, sy)
+				_corner_massifs.append(placed)
+				rect_walls.append(placed)
+
 
 func _mirror_quadrant_rect(rect: Rect2, sx: float, sy: float) -> Rect2:
 	var x := rect.position.x if sx > 0.0 else -rect.end.x
@@ -171,6 +189,16 @@ func _setup_brushes() -> void:
 	_brushes.append(Rect2(25, -1950, 120, 145))
 	_brushes.append(Rect2(-145, 1805, 120, 145))
 	_brushes.append(Rect2(25, 1805, 120, 145))
+	# Linjan ULKOREUNAN puskat: kaksi per linja reunakaistalla (juket, syvät
+	# gankit tornin ohi). Jungle-puolen viisi puskaa saavat vastaparin.
+	for x in [-1700.0, 1700.0]:
+		_brushes.append(Rect2(x - 135.0, -2160.0, 270.0, 150.0))
+		_brushes.append(Rect2(x - 135.0, 2010.0, 270.0, 150.0))
+	# Kulmataskujen juke-puskat: massiiviportaiden ja linjan väliin jäävä
+	# suojaisa tasku jokaisessa kulmassa (avoin linjan suuntaan).
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			_brushes.append(_mirror_quadrant_rect(Rect2(2700, 1590, 260, 170), sx, sy))
 
 
 func _setup_decor() -> void:
@@ -522,6 +550,7 @@ func _draw() -> void:
 	_draw_jungle_doors()
 	_draw_brushes()
 	_draw_forest()
+	_draw_corner_forest()
 	_draw_route_marks()
 	_draw_walls_frame(Color("5f9364"), Color("07130d"))
 	_draw_vignette()
@@ -807,6 +836,60 @@ func _draw_forest() -> void:
 		draw_circle(p + Vector2(3, 5), r + 3, Color("04100988"))
 		draw_circle(p, r, Color("245a32aa"))
 		draw_circle(p + Vector2(-r * 0.25, -r * 0.3), r * 0.45, Color("4b9558aa"))
+
+
+## Kulmamassiivien metsä: portaikon kivet saavat päälleen tiheän latvuston,
+## syvyysvarjon kulmaa kohti, hehkuvaa sammalta ja sienirykelmiä. Deterministinen
+## siemen -> sama kaunis kulma joka käynnistyksellä, ei uudelleenlaskentaa.
+func _draw_corner_forest() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 771224
+	# Syvyysvarjo: latvusto tummenee kulmaa kohti (kolme pehmeää kerrosta).
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			var corner := Vector2(3600.0 * sx, 2200.0 * sy)
+			for i in range(3):
+				var r := 620.0 - i * 170.0
+				draw_circle(corner, r, Color(0.02, 0.08, 0.05, 0.16 + 0.07 * i))
+	# Latvusto: puita massiiviportaiden päälle (kasvatettu reunus -> puut
+	# valuvat hieman kiven yli, mikä rikkoo suorat linjat luonnollisesti).
+	for step in _corner_massifs:
+		var zone := (step as Rect2).grow(26.0)
+		var count := int(zone.size.x / 68.0)
+		for i in range(count):
+			var p := Vector2(rng.randf_range(zone.position.x, zone.end.x),
+				rng.randf_range(zone.position.y, zone.end.y))
+			var r := rng.randf_range(16.0, 34.0)
+			draw_circle(p + Vector2(4, 6), r + 4.0, Color("04100988"))
+			draw_circle(p, r, Color(0.13, 0.34, 0.19, 0.92))
+			draw_circle(p + Vector2(-r * 0.28, -r * 0.3), r * 0.5, Color("4b9558aa"))
+			if rng.randf() < 0.3:
+				draw_circle(p + Vector2(r * 0.2, -r * 0.15), r * 0.24, Color("6fc17b66"))
+	# Hehkuva sammal + tulikärpäset portaiden reunoille: pieni elävä valo
+	# muuten pimeään kulmaan (staattinen; overlay-animaatio ei koske karttaa).
+	for step in _corner_massifs:
+		var rect := step as Rect2
+		for i in range(3):
+			var edge := Vector2(rng.randf_range(rect.position.x + 20.0, rect.end.x - 20.0),
+				rect.position.y + (0.0 if rng.randf() < 0.5 else rect.size.y))
+			draw_circle(edge, rng.randf_range(10.0, 18.0), Color(0.35, 0.78, 0.5, 0.13))
+			draw_circle(edge, 3.2, Color(0.62, 0.95, 0.66, 0.5))
+		if rng.randf() < 0.45:
+			var fly := Vector2(rng.randf_range(rect.position.x, rect.end.x),
+				rng.randf_range(rect.position.y, rect.end.y))
+			draw_circle(fly, 7.0, Color(1.0, 0.91, 0.55, 0.14))
+			draw_circle(fly, 2.4, Color(1.0, 0.93, 0.66, 0.66))
+	# Sienirykelmät kulmataskujen (juke-puskien) kupeeseen: pehmeä maamerkki
+	# joka auttaa lukemaan taskun sijainnin kaukaakin.
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			var base := Vector2(3050.0 * sx, 1810.0 * sy)
+			for i in range(4):
+				var p := base + Vector2(rng.randf_range(-46.0, 46.0), rng.randf_range(-30.0, 30.0))
+				var r := rng.randf_range(7.0, 13.0)
+				draw_circle(p + Vector2(0, r * 0.4), r * 0.5, Color("d8cfae99"))
+				draw_circle(p, r, Color("c2564acc"))
+				draw_circle(p + Vector2(-r * 0.3, -r * 0.25), r * 0.3, Color("f2e6d799"))
 
 
 func _draw_route_marks() -> void:
