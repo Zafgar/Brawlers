@@ -9,6 +9,7 @@ var team := 0             # 0 = sininen, 1 = oranssi
 var hero_id := ""
 var is_bot := false
 var display_name := ""
+var moba_position := ""    # lobbyn positiovalinta: "top"/"jungle"/"carry"/"support" ("" = auto)
 var bot_level := -1        # -1 = käytä Game.bot_level; muuten oma taso (simulaatio)
 
 var stats := {}

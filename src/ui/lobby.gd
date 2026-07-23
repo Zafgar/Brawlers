@@ -4,7 +4,7 @@ extends Control
 ## Jokainen laite (näppäimistö + jokainen ohjain) pollataan erikseen,
 ## joten kaikki paikallispelaajat toimivat itsenäisesti yhtä aikaa.
 
-enum Phase { JOIN, HEROES, STARTING }
+enum Phase { JOIN, POSITIONS, HEROES, STARTING }
 
 # 23 sankaria mahtuu neljään riviin. Oikean puolen kykypaneeli ja alareunan
 # pelaajakortit jäävät vapaiksi myös yhdellä 1080p-ruudulla.
@@ -12,6 +12,17 @@ const COLS := 6
 const TILE_W := 164.0
 const TILE_H := 142.0
 const TILE_GAP := 14.0
+
+# Positiovalinta ennen sankarivalintaa: pelaaja valitsee paikan (top/jungle/
+# carry/support) ja vasta sitten sankarin -> samaa sankaria voi kokeilla eri
+# paikoissa. Saman joukkueen sisällä positio voi olla vain yhdellä.
+const POSITIONS := ["top", "jungle", "carry", "support"]
+const POSITION_INFO := {
+	"top": {"name": "YLÄLINJA", "desc": "Yksinäinen linja ylhäällä.\nKestävyys ja kaksinkamppailut."},
+	"jungle": {"name": "VIIDAKKO", "desc": "Farmaa leirit, gankkaa linjoja\nja hallitse Dragon & Baron."},
+	"carry": {"name": "CARRY", "desc": "Alalinjan vahingontekijä.\nFarmaa ja ratkaise taistelut."},
+	"support": {"name": "TUKI", "desc": "Suojaa carrya alalinjalla ja\nkierrä auttamaan muita."},
+}
 
 var phase: int = Phase.JOIN
 
@@ -99,6 +110,8 @@ func _handle_input(device: int, edge: Dictionary) -> void:
 	match phase:
 		Phase.JOIN:
 			_handle_join_input(device, edge)
+		Phase.POSITIONS:
+			_handle_positions_input(device, edge)
 		Phase.HEROES:
 			_handle_heroes_input(device, edge)
 
@@ -178,7 +191,8 @@ func _join(device: int) -> void:
 		profile.team = 1
 	else:
 		profile.team = 0
-	players.append({"profile": profile, "ready": false, "cursor": 0, "locked": false})
+	players.append({"profile": profile, "ready": false, "cursor": 0, "locked": false,
+		"pos_cursor": 0, "pos_locked": false})
 	AudioMgr.play("ui_lock")
 
 
@@ -188,7 +202,76 @@ func _check_all_ready() -> void:
 	for entry in players:
 		if not entry.ready:
 			return
-	_enter_heroes()
+	_enter_positions()
+
+
+# --- POSITIONS-vaihe ---
+
+func _enter_positions() -> void:
+	phase = Phase.POSITIONS
+	AudioMgr.play("ui_open")
+	for i in range(players.size()):
+		players[i].pos_cursor = i % POSITIONS.size()
+		players[i].pos_locked = false
+		players[i].profile.moba_position = ""
+
+
+## Onko positio jo lukittu saman joukkueen toisella pelaajalla?
+func _position_taken(team: int, pos: String, exclude: Dictionary) -> bool:
+	for entry in players:
+		if entry == exclude:
+			continue
+		if entry.profile.team == team and entry.pos_locked \
+				and entry.profile.moba_position == pos:
+			return true
+	return false
+
+
+func _handle_positions_input(device: int, edge: Dictionary) -> void:
+	var entry := _player_by_device(device)
+	if entry.is_empty():
+		return
+
+	if not entry.pos_locked:
+		if edge.left:
+			entry.pos_cursor = (int(entry.pos_cursor) + POSITIONS.size() - 1) % POSITIONS.size()
+			AudioMgr.play("ui_move")
+		elif edge.right:
+			entry.pos_cursor = (int(entry.pos_cursor) + 1) % POSITIONS.size()
+			AudioMgr.play("ui_move")
+
+	if edge.accept and not entry.pos_locked:
+		var pos: String = POSITIONS[entry.pos_cursor]
+		if _position_taken(entry.profile.team, pos, entry):
+			_deny = {"tile": entry.pos_cursor, "t": 0.5}
+			AudioMgr.play("ui_deny")
+		else:
+			entry.pos_locked = true
+			entry.profile.moba_position = pos
+			AudioMgr.play("ui_lock")
+			if _all_positions_locked():
+				_enter_heroes()
+		return
+
+	if edge.cancel:
+		if entry.pos_locked:
+			entry.pos_locked = false
+			entry.profile.moba_position = ""
+			AudioMgr.play("ui_back")
+		else:
+			phase = Phase.JOIN
+			for other in players:
+				other.ready = false
+				other.pos_locked = false
+				other.profile.moba_position = ""
+			AudioMgr.play("ui_back")
+
+
+func _all_positions_locked() -> bool:
+	for entry in players:
+		if not entry.pos_locked:
+			return false
+	return true
 
 
 func _enter_heroes() -> void:
@@ -210,6 +293,26 @@ func _enter_heroes() -> void:
 			bot.team = team
 			bot.display_name = "Botti %d" % _bot_counter
 			bots.append(bot)
+	_assign_bot_positions()
+
+
+## Botit täyttävät joukkueen vapaiksi jääneet positiot (ihmisten valinnat
+## kunnioitetaan). Täyttöjärjestys pitää kokoonpanon toimivana vajaallakin
+## ihmismäärällä: jungle ja tuki ensin, sitten top ja carry.
+func _assign_bot_positions() -> void:
+	for team in [0, 1]:
+		var taken: Dictionary = {}
+		for entry in players:
+			if entry.profile.team == team and entry.profile.moba_position != "":
+				taken[entry.profile.moba_position] = true
+		var free: Array = []
+		for pos in ["jungle", "support", "top", "carry"]:
+			if not taken.has(pos):
+				free.append(pos)
+		for bot in bots:
+			if bot.team != team:
+				continue
+			bot.moba_position = str(free.pop_front()) if not free.is_empty() else ""
 
 
 func _team_total_count(team: int) -> int:
@@ -282,12 +385,14 @@ func _handle_heroes_input(device: int, edge: Dictionary) -> void:
 				bot.hero_id = ""
 			AudioMgr.play("ui_back")
 		else:
-			phase = Phase.JOIN
+			# Takaisin positiovalintaan (ei suoraan JOINiin): sankarivalinnat
+			# tyhjenevät, positiot avataan uudelleen valittaviksi.
+			phase = Phase.POSITIONS
 			bots.clear()
 			for other in players:
-				other.ready = false
 				other.locked = false
 				other.profile.hero_id = ""
+				other.pos_locked = false
 			AudioMgr.play("ui_back")
 
 
@@ -327,19 +432,35 @@ func _bot_pick(bot: PlayerProfile) -> void:
 			candidates.append(hero_id)
 	if candidates.is_empty():
 		candidates = HeroDef.ORDER.duplicate()
-	# MOBA-kokoonpano tarvitsee ensin junglerin, sitten etulinjan/tuen.
-	var roles_present: Array = []
-	for hero_id in taken:
-		roles_present.append(HeroDef.get_def(hero_id)["role"])
+	# Botti valitsee sankarin POSITIONSA mukaan (jungle -> jungleri, support ->
+	# tuki, top -> tankki/fighter, carry -> ranger/mage). Ilman positiota vanha
+	# heuristiikka: jungleri ensin, sitten puuttuva etulinja/tuki.
+	var wanted_roles: Array = []
+	match bot.moba_position:
+		"jungle":
+			wanted_roles = [HeroDef.ROLE_JUNGLER]
+		"support":
+			wanted_roles = ["Tuki"]
+		"top":
+			wanted_roles = ["Tankki", "Fighter"]
+		"carry":
+			wanted_roles = ["Ranger", "Mage"]
 	var preferred: Array = []
-	if not HeroDef.ROLE_JUNGLER in roles_present:
-		for hero_id in candidates:
-			if HeroDef.get_def(hero_id)["role"] == HeroDef.ROLE_JUNGLER:
-				preferred.append(hero_id)
 	for hero_id in candidates:
-		var role: String = HeroDef.get_def(hero_id)["role"]
-		if preferred.is_empty() and role in ["Tankki", "Tuki"] and not role in roles_present:
+		if HeroDef.get_def(hero_id)["role"] in wanted_roles:
 			preferred.append(hero_id)
+	if preferred.is_empty():
+		var roles_present: Array = []
+		for hero_id in taken:
+			roles_present.append(HeroDef.get_def(hero_id)["role"])
+		if not HeroDef.ROLE_JUNGLER in roles_present:
+			for hero_id in candidates:
+				if HeroDef.get_def(hero_id)["role"] == HeroDef.ROLE_JUNGLER:
+					preferred.append(hero_id)
+		for hero_id in candidates:
+			var role: String = HeroDef.get_def(hero_id)["role"]
+			if preferred.is_empty() and role in ["Tankki", "Tuki"] and not role in roles_present:
+				preferred.append(hero_id)
 	var pool := preferred if not preferred.is_empty() else candidates
 	bot.hero_id = pool[randi() % pool.size()]
 
@@ -350,12 +471,140 @@ func _draw() -> void:
 	match phase:
 		Phase.JOIN:
 			_draw_join()
+		Phase.POSITIONS:
+			_draw_positions()
 		Phase.HEROES:
 			_draw_heroes()
 		Phase.STARTING:
 			_draw_heroes()
 			UiKit.draw_text(self, Vector2(960, 1000), "4V4 MOBA ALKAA...", 44,
 				Palette.glow(Palette.GOLD, 1.3), true, 6)
+
+
+# --- POSITIONS-piirto ---
+
+func _draw_positions() -> void:
+	_draw_title("VALITSE POSITIO", 90)
+	UiKit.draw_text(self, Vector2(960, 170), "Positio ensin — sankari valitaan seuraavaksi. Sama sankari taipuu eri paikkoihin.",
+		22, Palette.TEXT_DIM, true)
+
+	var card_w := 360.0
+	var card_h := 430.0
+	var gap := 36.0
+	var total: float = POSITIONS.size() * card_w + (POSITIONS.size() - 1) * gap
+	var x0: float = 960.0 - total / 2.0
+	var y0 := 260.0
+
+	for i in range(POSITIONS.size()):
+		var pos_id: String = POSITIONS[i]
+		var info: Dictionary = POSITION_INFO[pos_id]
+		var rect := Rect2(x0 + i * (card_w + gap), y0, card_w, card_h)
+		var hovered := false
+		for entry in players:
+			if not entry.pos_locked and int(entry.pos_cursor) == i:
+				hovered = true
+		var border: Color = Palette.with_alpha(Palette.TEXT_DIM, 0.4)
+		if hovered:
+			border = Palette.glow(Palette.GOLD, 1.2)
+		_card(rect, Palette.with_alpha(Palette.UI_PANEL, 0.85), border, 3 if hovered else 2, 18)
+		# Kieltovälähdys (positio jo varattu omassa joukkueessa).
+		if _deny.t > 0.0 and int(_deny.tile) == i:
+			_card(rect, Palette.with_alpha(Palette.BAD, 0.25 * _deny.t), Palette.BAD, 3, 18)
+
+		var cx := rect.position.x + card_w / 2.0
+		_draw_position_glyph(pos_id, Vector2(cx, y0 + 110.0), 56.0)
+		UiKit.draw_text(self, Vector2(cx, y0 + 210.0), str(info["name"]), 34, Palette.TEXT_MAIN, true, 4)
+		var desc_lines: PackedStringArray = str(info["desc"]).split("\n")
+		for li in range(desc_lines.size()):
+			UiKit.draw_text(self, Vector2(cx, y0 + 252.0 + li * 26.0), desc_lines[li],
+				18, Palette.TEXT_DIM, true)
+
+		# Lukinneet pelaajat: värichipit joukkueväreillä kortin alaosaan.
+		var chip_y := rect.position.y + card_h - 56.0
+		var lockers: Array = []
+		for entry in players:
+			if entry.pos_locked and entry.profile.moba_position == pos_id:
+				lockers.append(entry)
+		for li in range(lockers.size()):
+			var entry: Dictionary = lockers[li]
+			var chip_x: float = cx + (li - (lockers.size() - 1) / 2.0) * 60.0
+			var pc: Color = entry.profile.color()
+			draw_circle(Vector2(chip_x, chip_y), 20.0, pc)
+			draw_arc(Vector2(chip_x, chip_y), 24.0, 0.0, TAU, 26,
+				Palette.team(entry.profile.team), 3.0)
+			UiKit.draw_text(self, Vector2(chip_x, chip_y + 1.0), str(entry.profile.index + 1),
+				18, Palette.TEXT_DARK, true)
+
+		# Kursorit: kunkin valitsemattoman pelaajan värillinen kehys (sisennys
+		# pelaajittain, jotta useampi kursori näkyy samalla kortilla).
+		for entry in players:
+			if entry.pos_locked or int(entry.pos_cursor) != i:
+				continue
+			var inset: float = 6.0 + float(entry.profile.index) * 5.0
+			var crect := Rect2(rect.position + Vector2(inset, inset),
+				rect.size - Vector2(inset * 2.0, inset * 2.0))
+			_card(crect, Color(0, 0, 0, 0.0), entry.profile.color(), 3, 14)
+			UiKit.draw_text(self, rect.position + Vector2(24.0 + float(entry.profile.index) * 26.0, 26.0),
+				str(entry.profile.index + 1), 18, entry.profile.color(), true, 3)
+
+	UiKit.draw_text(self, Vector2(960, y0 + card_h + 70.0),
+		"Liiku ◄ ► · Lukitse (A / Enter) · Peru (B / Esc)", 22, Palette.TEXT_DIM, true)
+
+
+## Position tunnuskuvio: top = miekka, jungle = lehti, carry = jousi+nuoli,
+## support = kilpi+sydän. Piirretty koodilla samaan tapaan kuin sankari-ikonit.
+func _draw_position_glyph(pos_id: String, center: Vector2, r: float) -> void:
+	var ink := Color("f4f7ff")
+	var shade := Color(0.06, 0.08, 0.16, 0.55)
+	draw_circle(center, r + 14.0, Palette.with_alpha(Palette.UI_PANEL, 0.9))
+	draw_arc(center, r + 14.0, 0.0, TAU, 40, Palette.with_alpha(ink, 0.25), 2.0)
+	match pos_id:
+		"top":
+			# Miekka vinottain
+			var tip := center + Vector2(0.6, -0.6) * r
+			var tail := center + Vector2(-0.45, 0.45) * r
+			draw_line(tail, tip, ink, r * 0.14)
+			draw_colored_polygon(PackedVector2Array([
+				tip + Vector2(0.2, -0.2) * r * 0.5, tip + Vector2(-0.25, 0.0) * r * 0.4,
+				tip + Vector2(0.0, 0.25) * r * 0.4]), ink)
+			var g1 := center + Vector2(-0.25, 0.25) * r
+			draw_line(g1 + Vector2(-0.28, -0.28) * r, g1 + Vector2(0.28, 0.28) * r, shade, r * 0.1)
+			draw_circle(tail + Vector2(-0.1, 0.1) * r, r * 0.12, ink)
+		"jungle":
+			# Lehti ruotoineen
+			var leaf := PackedVector2Array([
+				center + Vector2(0, -0.85) * r, center + Vector2(0.55, -0.2) * r,
+				center + Vector2(0.35, 0.55) * r, center + Vector2(0, 0.85) * r,
+				center + Vector2(-0.35, 0.55) * r, center + Vector2(-0.55, -0.2) * r])
+			draw_colored_polygon(leaf, ink)
+			draw_line(center + Vector2(0, -0.7) * r, center + Vector2(0, 0.7) * r, shade, r * 0.09)
+			for side in [-1.0, 1.0]:
+				draw_line(center, center + Vector2(side * 0.3, 0.25) * r, shade, r * 0.06)
+		"carry":
+			# Jousi + nuoli oikealle
+			var bc := center + Vector2(-r * 0.3, 0)
+			draw_arc(bc, r * 0.75, -1.0, 1.0, 20, ink, r * 0.12)
+			var e1: Vector2 = bc + Vector2(cos(-1.0), sin(-1.0)) * r * 0.75
+			var e2: Vector2 = bc + Vector2(cos(1.0), sin(1.0)) * r * 0.75
+			draw_line(e1, e2, ink, r * 0.05)
+			var atip := center + Vector2(r * 0.75, 0)
+			draw_line(center + Vector2(-r * 0.35, 0), atip, ink, r * 0.09)
+			draw_colored_polygon(PackedVector2Array([
+				atip + Vector2(r * 0.16, 0), atip + Vector2(-r * 0.1, -r * 0.14),
+				atip + Vector2(-r * 0.1, r * 0.14)]), ink)
+		"support":
+			# Kilpi + sydän
+			var shield := PackedVector2Array([
+				center + Vector2(-0.6, -0.55) * r, center + Vector2(0, -0.7) * r,
+				center + Vector2(0.6, -0.55) * r, center + Vector2(0.6, 0.15) * r,
+				center + Vector2(0, 0.8) * r, center + Vector2(-0.6, 0.15) * r])
+			draw_colored_polygon(shield, ink)
+			var hc := center + Vector2(0, -0.05) * r
+			for side in [-1.0, 1.0]:
+				draw_circle(hc + Vector2(side * 0.16, -0.1) * r, r * 0.18, shade)
+			draw_colored_polygon(PackedVector2Array([
+				hc + Vector2(-0.33, -0.02) * r, hc + Vector2(0.33, -0.02) * r,
+				hc + Vector2(0, 0.42) * r]), shade)
 
 
 func _panel_style(border: Color) -> StyleBoxFlat:

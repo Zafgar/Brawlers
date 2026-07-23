@@ -19,6 +19,16 @@ var alert_timer := 0.0             # hetkellinen hälytystila (reliikki vaihtoi 
 var threatened_structure = null    # oma rakennus jota vihollissankari juuri uhkaa (MOBA)
 var defender: Hero = null          # lähin liittolainen nimetty puolustamaan sitä
 
+# MOBA-rotaatio: kun jokin linja on pahasti alakynnessä (vihollisia selvästi
+# enemmän kuin puolustajia tai torni uhattuna ylivoimalla), taululle merkitään
+# hätälinja ja sinne KUTSUTAAN apuun sopivimmat vapaat botit (jungle ensin,
+# sitten tuki jonka carry on turvassa, sitten muut joiden oma linja on rauhassa).
+# Kutsu poistuu kun kriisi laukeaa -> autetut palaavat omille linjoilleen.
+var help_lane := ""                # hätälinja ("top"/"bottom", "" = ei kriisiä)
+var help_pos := Vector2.ZERO       # piste jonne apu suunnataan
+var helpers: Array = []            # apuun kutsutut sankarit (Hero)
+var _help_timer := 0.0             # kriisiarvion tahdistus (ei joka framea)
+
 
 func setup(p_arena, p_team: int) -> void:
 	arena = p_arena
@@ -149,6 +159,153 @@ func update(delta: float) -> void:
 					defender = ally
 			if defender == null:
 				defender = best_any
+
+		# Linjakriisi + apuun kutsuttavat (tahdistettu, ei joka framea).
+		_help_timer -= delta
+		if _help_timer <= 0.0:
+			_help_timer = 0.6
+			_update_moba_crisis(allies, enemies)
+
+
+## Arvioi linjojen tilanteen ja kutsuu apuun sopivimmat botit. Kriisi = linjalla
+## on selvä vihollisylivoima (erotus >= 2) TAI oma torni siellä on uhattuna
+## ylivoimalla (erotus >= 1). Apuun kutsutaan enintään 2 bottia kerralla, jotta
+## koko joukkue ei hylkää omia linjojaan. Ihmisiä ei komenneta.
+func _update_moba_crisis(allies: Array, enemies: Array) -> void:
+	var prev_helpers: Array = helpers.filter(func(h): return is_instance_valid(h) and h.alive)
+	help_lane = ""
+	help_pos = Vector2.ZERO
+	helpers = []
+	var mm := arena.map as MapMoba
+	if mm == null:
+		return
+
+	var worst_lane := ""
+	var worst_deficit := 0
+	var worst_center := Vector2.ZERO
+	var worst_tower_threat := false
+	var threat_lane := _structure_lane(mm, threatened_structure)
+	const LANE_NEAR := 480.0
+	for lane in [MapMoba.TOP, MapMoba.BOTTOM]:
+		var enemy_n := 0
+		var enemy_sum := Vector2.ZERO
+		for e in enemies:
+			if mm.distance_to_lane(e.global_position, str(lane)) < LANE_NEAR:
+				enemy_n += 1
+				enemy_sum += e.global_position
+		if enemy_n == 0:
+			continue
+		var ally_n := 0
+		for a in allies:
+			if mm.distance_to_lane(a.global_position, str(lane)) < LANE_NEAR:
+				ally_n += 1
+		var tower_threat: bool = threat_lane == str(lane)
+		var deficit: int = enemy_n - ally_n
+		# Torniuhka laskee kynnystä: yksikin ylivoima riittää kriisiin.
+		var is_crisis: bool = deficit >= 2 or (tower_threat and deficit >= 1)
+		if not is_crisis:
+			continue
+		if deficit > worst_deficit or (deficit == worst_deficit and tower_threat):
+			worst_deficit = deficit
+			worst_lane = str(lane)
+			worst_center = enemy_sum / float(enemy_n)
+			worst_tower_threat = tower_threat
+
+	if worst_lane == "":
+		return
+	help_lane = worst_lane
+	# Apu suunnataan uhatulle tornille jos sellainen on, muuten vihollisryhmään.
+	if worst_tower_threat and threatened_structure != null \
+			and is_instance_valid(threatened_structure):
+		help_pos = threatened_structure.global_position
+	else:
+		help_pos = worst_center
+
+	# Valitse auttajat: botit jotka EIVÄT jo ole hätälinjalla, terveet, lähimmät.
+	# Jungle on paras rotatoija; tuki lähtee vain jos sen carry on turvassa (tai
+	# carry lähtee myös); muut vain jos oma linja on rauhassa.
+	var need: int = clampi(worst_deficit - 1, 1, 2)
+	var scored: Array = []
+	for a in allies:
+		if not (a.controller is BotBrain):
+			continue
+		if a.hp < a.max_hp * 0.4:
+			continue
+		if mm.distance_to_lane(a.global_position, help_lane) < LANE_NEAR:
+			continue   # on jo siellä -> ei "apua", vaan puolustaja
+		var brain: BotBrain = a.controller
+		var score := 0.0
+		match str(brain._moba_job):
+			"jungle":
+				score = 3.0
+			"bottom":
+				if str(brain._moba_duty) == "support":
+					# Tuki irtoaa carrysta vain jos carry ei ole vaarassa.
+					if not _ally_in_danger(_bottom_carry(allies)):
+						score = 2.0
+					else:
+						continue
+				else:
+					score = 1.0 if not _lane_contested(mm, a, enemies) else 0.0
+			_:
+				score = 1.0 if not _lane_contested(mm, a, enemies) else 0.0
+		if score <= 0.0:
+			continue
+		if a in prev_helpers:
+			score += 1.5   # hystereesi: sama auttaja jatkaa, ei sinkoilua
+		score -= a.global_position.distance_to(help_pos) / 2200.0
+		scored.append({"hero": a, "score": score})
+	scored.sort_custom(func(x, y): return float(x["score"]) > float(y["score"]))
+	for i in range(mini(need, scored.size())):
+		helpers.append(scored[i]["hero"])
+	if helpers.is_empty():
+		help_lane = ""
+
+
+## Minkä linjan rakennus on (lähin linja); "" jos ei rakennusta.
+func _structure_lane(mm: MapMoba, s) -> String:
+	if s == null or not is_instance_valid(s):
+		return ""
+	var best := ""
+	var best_d := 1.0e20
+	for lane in [MapMoba.TOP, MapMoba.BOTTOM]:
+		var d: float = mm.distance_to_lane(s.global_position, str(lane))
+		if d < best_d:
+			best_d = d
+			best = str(lane)
+	return best
+
+
+## Bottom-duon carry (ei-tuki-bottom-botti); null jos ei löydy.
+func _bottom_carry(allies: Array) -> Hero:
+	for a in allies:
+		if not (a.controller is BotBrain):
+			continue
+		var brain: BotBrain = a.controller
+		if str(brain._moba_job) == "bottom" and str(brain._moba_duty) != "support":
+			return a
+	return null
+
+
+## Onko liittolainen vaarassa (vihollissankari lähellä tai matala HP)?
+func _ally_in_danger(ally: Hero) -> bool:
+	if ally == null or not is_instance_valid(ally) or not ally.alive:
+		return false
+	if ally.hp < ally.max_hp * 0.45:
+		return true
+	return not arena.heroes_in_circle(ally.global_position, 560.0, 1 - team, true, true).is_empty()
+
+
+## Onko botin OMALLA linjalla vihollissankareita (linja kiistetty)?
+func _lane_contested(mm: MapMoba, a: Hero, enemies: Array) -> bool:
+	var brain: BotBrain = a.controller
+	var lane := str(brain._moba_lane)
+	if lane == "":
+		return false
+	for e in enemies:
+		if mm.distance_to_lane(e.global_position, lane) < 480.0:
+			return true
+	return false
 
 
 func on_relic_taken(_hero) -> void:

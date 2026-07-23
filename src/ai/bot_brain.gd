@@ -60,6 +60,7 @@ var _is_ranged := false
 var _is_jungler_role := false
 var _moba_job := ""
 var _moba_lane := ""
+var _moba_duty := ""             # bottom-duon työnjako: "carry"/"support" ("" = roolin mukaan)
 var _moba_goal := Vector2.INF
 var _lane_returning := false      # laner ajautui liian kauas omalta kaareltaan
 
@@ -267,20 +268,51 @@ func _setup_role(hero: Hero) -> void:
 func _ensure_moba_assignment(hero: Hero, arena) -> void:
 	if _moba_job != "":
 		return
+	# 1) Lobbyssa valittu positio (top/jungle/carry/support) ohittaa heuristiikan:
+	#    pelaaja/botti pelaa juuri sitä paikkaa jonka valitsi.
+	match str(hero.profile.moba_position):
+		"jungle":
+			_moba_job = "jungle"
+			_moba_lane = ""
+			return
+		"top":
+			_moba_job = "top"
+			_moba_lane = MapMoba.TOP
+			return
+		"carry":
+			_moba_job = "bottom"
+			_moba_lane = MapMoba.BOTTOM
+			_moba_duty = "carry"
+			return
+		"support":
+			_moba_job = "bottom"
+			_moba_lane = MapMoba.BOTTOM
+			_moba_duty = "support"
+			return
+	# 2) Automaattijako (ei valittua positiota): ohita positiot jotka joku muu
+	#    on jo nimenomaisesti valinnut lobbyssa.
 	var team_heroes: Array = []
 	for h in arena.heroes:
 		if is_instance_valid(h) and not h.is_unit and h.team == hero.team:
 			team_heroes.append(h)
 	team_heroes.sort_custom(func(a, b): return a.profile.index < b.profile.index)
-	var bots: Array = team_heroes.filter(func(h): return h.controller is BotBrain)
-	var designated = null
-	# Tuleva Jungleri-rooli saa paikan aina ensin, myös jos pelaaja valitsee sen.
+	var claimed: Dictionary = {}
 	for h in team_heroes:
-		if HeroDef.get_def(h.hero_id).get("role", "") == HeroDef.ROLE_JUNGLER:
-			designated = h
-			break
-	if designated == null and not bots.is_empty():
-		designated = bots[1] if bots.size() > 1 else bots[0]
+		var p := str(h.profile.moba_position)
+		if p != "":
+			claimed[p] = true
+	var unassigned: Array = team_heroes.filter(
+		func(h): return str(h.profile.moba_position) == "")
+	var bots: Array = unassigned.filter(func(h): return h.controller is BotBrain)
+	var designated = null
+	if not claimed.has("jungle"):
+		# Tuleva Jungleri-rooli saa paikan aina ensin, myös jos pelaaja valitsee sen.
+		for h in unassigned:
+			if HeroDef.get_def(h.hero_id).get("role", "") == HeroDef.ROLE_JUNGLER:
+				designated = h
+				break
+		if designated == null and not bots.is_empty():
+			designated = bots[1] if bots.size() > 1 else bots[0]
 	if hero == designated:
 		_moba_job = "jungle"
 		_moba_lane = ""
@@ -289,12 +321,13 @@ func _ensure_moba_assignment(hero: Hero, arena) -> void:
 	# Support kuuluu oletuksena bottom-duoon. Valitse topiksi ensimmäinen muu
 	# sankari, jotta XP-roolit ja lane-käyttäytyminen vastaavat 1/1/2-jakoa.
 	var top_laner = null
-	for candidate in bot_laners:
-		if str(HeroDef.get_def(candidate.hero_id).get("role", "")) != "Tuki":
-			top_laner = candidate
-			break
-	if top_laner == null and not bot_laners.is_empty():
-		top_laner = bot_laners[0]
+	if not claimed.has("top"):
+		for candidate in bot_laners:
+			if str(HeroDef.get_def(candidate.hero_id).get("role", "")) != "Tuki":
+				top_laner = candidate
+				break
+		if top_laner == null and not bot_laners.is_empty():
+			top_laner = bot_laners[0]
 	if hero == top_laner:
 		_moba_job = "top"
 		_moba_lane = MapMoba.TOP
@@ -542,6 +575,14 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 		_defend_pos = bb.threatened_structure.global_position
 		_mode = Mode.FIGHT
 		return
+	# ROTAATIO: tiimitaulu kutsui minut auttamaan hätälinjaa (esim. top pahasti
+	# alakynnessä tai koko vihollisjoukkue puskee yhtä linjaa) -> mene sinne.
+	# Kutsu poistuu taululta kun kriisi laukeaa, jolloin normaali lane-logiikka
+	# palauttaa omalle linjalle. Ohittaa myös tuen carry-liimauksen (SUPPORT).
+	if bb.help_lane != "" and hero in bb.helpers:
+		_moba_goal = bb.help_pos
+		_mode = Mode.FIGHT
+		return
 	var lane_map := arena.map as MapMoba
 	if _moba_job != "jungle" and _moba_lane != "" and lane_map != null \
 			and lane_map.distance_to_lane(hero.global_position, _moba_lane) > 520.0:
@@ -551,7 +592,10 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 		_moba_goal = _moba_lane_route_goal(hero, arena, hero.global_position)
 		_mode = Mode.FIGHT
 		return
-	if _is_support and _moba_job == "bottom":
+	# Tuen työnjako: nimenomainen support-positio TAI (ilman positiota) tukiroolin
+	# sankari bottomissa pelaa suojaavaa duo-peliä.
+	if _moba_job == "bottom" and (_moba_duty == "support" \
+			or (_moba_duty == "" and _is_support)):
 		_mode = Mode.SUPPORT
 		return
 	# Vain oikea vihollissankari laukaisee tiimitaistelun — minionit ja tornit
