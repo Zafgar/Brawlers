@@ -371,7 +371,9 @@ func _apply_level_stats(show_feedback: bool) -> void:
 	var spell_f: float = prof.get("spell", 1.0)
 	var melee_f: float = prof.get("melee", 1.0)
 	var regen_f: float = prof.get("regen", 1.0)
-	max_hp = _level_base_max_hp * (1.0 + steps * HP_GROWTH_PER_LEVEL * hp_f)
+	# Itemien kiinteä HP lisätään tasokasvun päälle (ei kertaudu kasvun kanssa).
+	max_hp = _level_base_max_hp * (1.0 + steps * HP_GROWTH_PER_LEVEL * hp_f) \
+		+ item_stat("hp")
 	level_damage_mult = 1.0 + steps * DAMAGE_GROWTH_PER_LEVEL * dmg_f
 	level_spell_mult = 1.0 + steps * SPELL_GROWTH_PER_LEVEL * spell_f
 	level_melee_mult = 1.0 + steps * MELEE_GROWTH_PER_LEVEL * melee_f
@@ -435,8 +437,8 @@ func rank_up(slot: String) -> bool:
 	var new_rank: int = ability_ranks[slot]
 	# Jäähdytysalennus lasketaan aina setupin lopussa otetusta pohjasta, joten
 	# se ei kertaudu eikä sodi sankarien omien cd_max-asetusten kanssa.
-	if (slot == "a1" or slot == "a2" or slot == "dodge") and _base_cd_max.has(slot):
-		cd_max[slot] = float(_base_cd_max[slot]) * (1.0 - RANK_CD_STEP * float(new_rank))
+	# Sama laskin yhdistää rankit ja itemien CDR:n/hyökkäysnopeuden.
+	_recompute_cooldowns()
 	_on_rank_up(slot, new_rank)
 	# Lopullinen build talteen raporttia varten (turvallinen lisäavain).
 	if profile != null:
@@ -467,8 +469,11 @@ func combat_damage_mult() -> float:
 	var mult := level_damage_mult
 	if _cast_context == "basic":
 		mult *= level_melee_mult
+		mult *= 1.0 + item_stat("attack")   # itemit: perusvahinko
 	elif _cast_context == "a1" or _cast_context == "a2" or _cast_context == "ult":
 		mult *= level_spell_mult
+		# Itemit: kykyvahinko + arkkisauvan momentum-pinot (+1 %/pino).
+		mult *= 1.0 + item_stat("ap") + 0.01 * float(_ap_momentum)
 	if _cast_context != "":
 		mult *= rank_power(_cast_context)
 	return mult
@@ -704,7 +709,8 @@ func _physics_process(delta: float) -> void:
 	var mv := Vector2.ZERO
 	if root_timer <= 0.0 and stun_timer <= 0.0:
 		mv = controller.move_vector()
-	var speed := base_speed * slow_factor * haste_factor * _move_speed_mult()
+	var speed := base_speed * slow_factor * haste_factor * _move_speed_mult() \
+		* (1.0 + item_stat("ms"))
 	if carrying:
 		speed *= CARRY_SPEED_MULT
 	if arena.map != null:
@@ -840,10 +846,15 @@ func _physics_process(delta: float) -> void:
 	_update_recall(delta)
 	_fountain_regen(delta)
 
-	# Palautuminen
+	# Palautuminen. Itemit: hp_regen vahvistaa; elonlähteen elinvoima pitää
+	# palautumisen käynnissä taistelussakin puolella teholla.
 	since_damage += delta
-	if not regen_disabled and since_damage > REGEN_DELAY and hp < max_hp:
-		hp = minf(hp + REGEN_PER_SEC * delta, max_hp)
+	if not regen_disabled and hp < max_hp:
+		var regen_rate := REGEN_PER_SEC * (1.0 + item_stat("hp_regen"))
+		if since_damage > REGEN_DELAY:
+			hp = minf(hp + regen_rate * delta, max_hp)
+		elif items.has("elonlähde"):
+			hp = minf(hp + regen_rate * 0.5 * delta, max_hp)
 	if red_buff > 0.0 and hp < max_hp:
 		var before_red_hp := hp
 		hp = minf(hp + 9.0 * delta, max_hp)   # Red: jatkuva elämän palautuminen
@@ -908,6 +919,11 @@ func _tick_status(delta: float) -> void:
 	blue_camp_buff = maxf(blue_camp_buff - delta, 0.0)
 	baron_buff = maxf(baron_buff - delta, 0.0)
 	dragon_buff = maxf(dragon_buff - delta, 0.0)
+	# Itemipassiivien ajastimet.
+	armor_shred_timer = maxf(armor_shred_timer - delta, 0.0)
+	_spellshield_cd = maxf(_spellshield_cd - delta, 0.0)
+	_frost_cd = maxf(_frost_cd - delta, 0.0)
+	_root_burst_cd = maxf(_root_burst_cd - delta, 0.0)
 	void_stack_timer = maxf(void_stack_timer - delta, 0.0)
 	if void_stack_timer <= 0.0 and void_stacks > 0:
 		void_stacks = 0
@@ -1256,7 +1272,9 @@ func _tick_resource(delta: float) -> void:
 		# resurssi todella loppuu eikä regen-tippa pidä kykyä hengissä.
 		# _regen_level_mult: regen kasvaa tasojen myötä (profiilin regen-kerroin).
 		if _channel_slot == "":
-			res = minf(res + res_regen * boost * _regen_level_mult * delta, res_max)
+			# Itemit: mana_regen vahvistaa passiivista palautumista.
+			res = minf(res + res_regen * boost * _regen_level_mult
+				* (1.0 + item_stat("mana_regen")) * delta, res_max)
 	elif res_type == "rage":
 		_rage_idle += delta
 		if _rage_idle > 3.5:
@@ -1281,13 +1299,14 @@ func _reset_resource() -> void:
 func _can_afford(slot: String) -> bool:
 	if res_type == "":
 		return true
-	return res >= float(res_cost.get(slot, 0.0))
+	# Ylivuoto (manaydin): kyvyt maksavat 15 % vähemmän.
+	return res >= float(res_cost.get(slot, 0.0)) * resource_cost_mult()
 
 
 func _spend(slot: String) -> void:
 	if res_type == "":
 		return
-	res = maxf(res - float(res_cost.get(slot, 0.0)), 0.0)
+	res = maxf(res - float(res_cost.get(slot, 0.0)) * resource_cost_mult(), 0.0)
 	if res_type == "rage":
 		_rage_idle = 0.0
 
@@ -1600,6 +1619,171 @@ func item_stat(key: String) -> float:
 	return float(_item_stats.get(key, 0.0))
 
 
+## Laskee itemistatit uudelleen (osto/myynti). Max-HP:n muutos hyvitetään
+## nykyiseen HP:hen kuten level-upissa (vain erotus, ei täysparannusta), ja
+## jäähdytykset lasketaan pohjasta uudelleen.
+func _recompute_items() -> void:
+	_item_stats.clear()
+	for id in items:
+		var s: Dictionary = ItemDef.get_item(str(id)).get("stats", {})
+		for key in s:
+			_item_stats[key] = float(_item_stats.get(key, 0.0)) + float(s[key])
+	var old_max := max_hp
+	var old_hp := hp
+	_apply_level_stats(false)
+	if alive:
+		hp = clampf(old_hp + (max_hp - old_max), 1.0, max_hp)
+	_recompute_cooldowns()
+
+
+## Jäähdytysten yhteislaskin: a1/a2/väistö = pohja * rankkialennus * itemien
+## CDR (katto 40 %); perus = pohja / (1 + hyökkäysnopeus). Pohja _base_cd_max
+## on setupin lopusta (sisältää sankarisäädöt ja botin kertoimet), joten
+## kertoimet eivät koskaan kertaudu.
+func _recompute_cooldowns() -> void:
+	if _base_cd_max.is_empty():
+		return
+	var cdr := minf(item_stat("cdr"), 0.4)
+	for slot in ["a1", "a2", "dodge"]:
+		if _base_cd_max.has(slot):
+			var rank: int = int(ability_ranks.get(slot, 0))
+			cd_max[slot] = float(_base_cd_max[slot]) \
+				* (1.0 - RANK_CD_STEP * float(rank)) * (1.0 - cdr)
+	if _base_cd_max.has("basic"):
+		cd_max["basic"] = float(_base_cd_max["basic"]) \
+			/ (1.0 + maxf(item_stat("attack_speed"), 0.0))
+
+
+## Kauppa on käytettävissä omassa sanctuaryssa TAI kuolleena (respawn on
+## lähteellä) — kuten oikeassa MOBAssa.
+func _can_shop() -> bool:
+	if arena == null or arena.mode != "moba" or is_unit or profile == null:
+		return false
+	if not alive:
+		return true
+	var mm := arena.map as MapMoba
+	return mm != null and mm.is_in_own_sanctuary(global_position, team)
+
+
+## Ostaa itemin: validoi sijainnin, paikat (komponenttien kulutuksen jälkeen
+## enintään 6), lompakon ja legendan artefaktivaatimuksen. Omistetut
+## komponentit kuluvat yhdistelmään ja yhdistelmähinta hyvittää ne.
+func buy_item(id: String) -> bool:
+	var item := ItemDef.get_item(id)
+	if item.is_empty() or not _can_shop():
+		return false
+	if bool(item.get("require_artifact", false)) and not legendary_artifact:
+		return false
+	var consumed := ItemDef.components_consumed(id, items)
+	if items.size() - consumed.size() + 1 > MAX_ITEMS:
+		return false
+	var cost := ItemDef.combine_cost(id, items)
+	if profile.wallet() < cost:
+		return false
+	profile.stats.gold_spent = int(profile.stats.gold_spent) + cost
+	for comp in consumed:
+		items.erase(comp)
+	items.append(id)
+	if bool(item.get("require_artifact", false)):
+		legendary_artifact = false   # artefakti kuluu legendan ostoon
+	_recompute_items()
+	if not Game.simulating and profile.is_human():
+		arena.popup(global_position + Vector2(0, -64),
+			"%s  -%dG" % [str(item.get("name", id)), cost], Palette.GOLD, 15)
+		AudioMgr.play("pickup", 0.04, -4.0, global_position)
+	return true
+
+
+## Myy itemin: 70 % kokonaisarvosta takaisin lompakkoon (gold_spent pienenee,
+## kumulatiivinen gold ei muutu).
+func sell_item(id: String) -> bool:
+	if not _can_shop() or not items.has(id):
+		return false
+	var item := ItemDef.get_item(id)
+	var refund := int(round(float(int(item.get("cost", 0))) * 0.7))
+	items.erase(id)
+	profile.stats.gold_spent = maxi(int(profile.stats.gold_spent) - refund, 0)
+	_recompute_items()
+	if not Game.simulating and profile.is_human():
+		arena.popup(global_position + Vector2(0, -64),
+			"MYYTY %s  +%dG" % [str(item.get("name", id)), refund], Palette.GOLD, 15)
+		AudioMgr.play("ui_back", 0.04, -6.0)
+	return true
+
+
+## Kykyjen resurssikustannuskerroin (manaydin: ylivuoto -15 %).
+func resource_cost_mult() -> float:
+	return 0.85 if items.has("manaydin") else 1.0
+
+
+## Itemien puolustusstatit kohteessa (self): kyvyt vaimentaa taikavastus,
+## kaikki muu (perus, tornit, minionit, olennot) panssari. Kaava 100/(100+p).
+## armor_pen ohittaa osan panssarista ja panssarinmurskaimen repimä kohde
+## menettää 20 % panssaristaan.
+func _mitigate_item_defense(amount: float, source: Hero) -> float:
+	if amount <= 0.0 or _item_stats.is_empty():
+		return amount
+	var ability := false
+	if source != null and is_instance_valid(source):
+		ability = source._cast_context in ["a1", "a2", "ult"]
+	if ability:
+		var mr := item_stat("mr")
+		if mr > 0.0:
+			amount *= 100.0 / (100.0 + mr)
+	else:
+		var armor := item_stat("armor")
+		if armor_shred_timer > 0.0:
+			armor *= 0.8   # panssarinmurskain
+		if source != null and is_instance_valid(source):
+			armor *= 1.0 - clampf(source.item_stat("armor_pen"), 0.0, 1.0)
+		if armor > 0.0:
+			amount *= 100.0 / (100.0 + armor)
+	return amount
+
+
+## Itemiproccit osumasta sankariin: ketjusalama (joka 4. perusosuma),
+## momentum ja kaiku (joka 3. kykyosuma). _item_proc_active estää proccien
+## ketjuuntumisen (procin vahinko ei prociita uudelleen).
+func _item_on_hit(target: Hero, dealt: float) -> void:
+	if is_unit or _item_proc_active or _item_stats.is_empty() or arena == null:
+		return
+	if target == null or not is_instance_valid(target) or target.is_unit:
+		return
+	# Normalisointi: deal_damage_to kertoo vahingon uudelleen tasokertoimilla,
+	# joten procin pohja jaetaan niillä jotta osuus pysyy ~nimellisenä.
+	var norm := dealt / maxf(dmg_out_mult * combat_damage_mult(), 0.05)
+	if _cast_context == "basic":
+		if items.has("myrskynsilma"):
+			_chain_hits += 1
+			if _chain_hits >= 4:
+				_chain_hits = 0
+				# Ketjusalama: 35 % lähimpään toiseen vihollissankariin (300 px).
+				var best: Hero = null
+				var best_d := 300.0
+				for enemy in arena.enemy_heroes(team):
+					if enemy == target:
+						continue
+					var d: float = enemy.global_position.distance_to(target.global_position)
+					if d <= best_d:
+						best_d = d
+						best = enemy
+				if best != null:
+					_item_proc_active = true
+					deal_damage_to(best, norm * 0.35)
+					_item_proc_active = false
+	elif _cast_context in ["a1", "a2", "ult"]:
+		if items.has("arkkisauva"):
+			_ap_momentum = mini(_ap_momentum + 1, 10)   # momentum-pino
+		if items.has("kaikukide"):
+			_echo_hits += 1
+			if _echo_hits >= 3:
+				_echo_hits = 0
+				# Kaiku: toista 30 % vahingosta samaan kohteeseen.
+				_item_proc_active = true
+				deal_damage_to(target, norm * 0.30)
+				_item_proc_active = false
+
+
 # --- Taisteluapurit ---
 
 ## phase_walls: syöksy menee sisäseinien läpi (mutta EI kartan ulkopuolelle;
@@ -1733,6 +1917,8 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 			gain_res(dealt * 0.4)
 		elif res_type == "energy":
 			gain_res(dealt * 0.2)   # energia kertyy myös hyökkäämisestä (assassinit)
+		# Itemiproccit (ketjusalama, momentum, kaiku) sankariosumista.
+		_item_on_hit(target, dealt)
 	return dealt
 
 
@@ -1770,11 +1956,57 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 			if source.blue_camp_buff > 0.0:
 				source.profile.stats.blue_bonus_damage += amount * 0.14
 			amount *= 1.14         # Blue: spell power
+		# Itemit hyökkääjällä: krit (perusosumat), giljotiini, alfa-hidaste,
+		# ansa ja viidakkovahinko. Krit heitetään ENNEN panssarivaimennusta.
+		if not source.is_unit and not source._item_stats.is_empty():
+			if source._cast_context == "basic":
+				var crit_chance: float = source.item_stat("crit")
+				if crit_chance > 0.0 and randf() < crit_chance:
+					amount *= 1.7
+					arena.popup(global_position + Vector2(0, -58), "KRIT!",
+						Color("ffb54a"), 17)
+					# Panssarinmurskain: krit repii 20 % kohteen panssarista 3 s.
+					if source.items.has("teräsarmä"):
+						armor_shred_timer = 3.0
+				if not is_unit:
+					# Giljotiini: perusosumat matalaan sankariin +25 %.
+					if source.items.has("kuninkaansurma") and hp < max_hp * 0.25:
+						amount *= 1.25
+					# Alfa: leirin kaadon lataama perusosuma hidastaa sankaria.
+					if source._alpha_slow_ready:
+						source._alpha_slow_ready = false
+						apply_slow(0.70, 1.5)
+			# Ansa: hidastettu/juurtunut kohde ottaa ansalangalta lisävahinkoa.
+			if (slow_timer > 0.0 or root_timer > 0.0) and source.items.has("ansalanka"):
+				amount *= 1.12
+			# Viidakkovahinko olentoihin (+ alfan bonus Baroniin/Dragoniin).
+			if self is Critter:
+				var jd: float = source.item_stat("jungle_dmg")
+				if jd > 0.0:
+					amount *= 1.0 + jd
+				if source.items.has("alfaturkki"):
+					var cr := self as Critter
+					if cr.kind == Critter.Kind.BOSS or cr.kind == Critter.Kind.DRAGON:
+						amount *= 1.5
 	amount *= dmg_in_mult
 
 	# Merkitty kohde (Scoutin vaahtomerkki) ottaa lisävahinkoa kaikilta.
 	if mark_timer > 0.0:
 		amount *= mark_amp
+
+	# Loitsukilpi (torjuntakupu): torjuu 40 % yhden kyvyn vahingosta 8 s välein.
+	if amount > 0.0 and items.has("torjuntakupu") and _spellshield_cd <= 0.0 \
+			and source != null and is_instance_valid(source) and not source.is_unit \
+			and source._cast_context in ["a1", "a2", "ult"]:
+		_spellshield_cd = 8.0
+		var blocked := amount * 0.4
+		amount -= blocked
+		profile.stats.prevented += blocked
+		arena.popup(global_position + Vector2(0, -58), "LOITSUKILPI", Palette.SHIELD, 14)
+		AudioMgr.play("shield", 0.08, -7.0, global_position)
+
+	# Itemien panssari/taikavastus vaimentaa (kaava yhdessä apurissa).
+	amount = _mitigate_item_defense(amount, source)
 
 	# Kiviho (heijastus): heijasta osa otetusta vahingosta takaisin hyökkäävälle
 	# vihollissankarille. Vain oikeat sankarit (ei tornit/olennot/minionit) ja
@@ -1858,6 +2090,51 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 		controller_rumble(0.0, clampf(amount / max_hp * 1.8, 0.25, 0.7), 0.14)
 	add_ult(amount * 0.07)   # otettu vahinko lataa maltillisesti (oli 0.14)
 
+	# Itemipassiivit osuman ottajalla: huurre (hidastaa lyöjää) ja juurakko
+	# (hätäjuurrutus + parannus kun HP putoaa alle 30 %:n). Telemetriakonteksti
+	# tyhjennetään hetkeksi, ettei CC kirjaudu hyökkääjän kyvyn ansioksi.
+	if not is_unit and not _item_stats.is_empty() and arena != null:
+		var frost: bool = items.has("jäätikkövyö") and _frost_cd <= 0.0 \
+			and source != null and is_instance_valid(source) \
+			and not source.is_unit and source.alive
+		var burst: bool = items.has("maailmanpuu") and _root_burst_cd <= 0.0 \
+			and hp > 0.0 and hp < max_hp * 0.30 and hp + amount >= max_hp * 0.30
+		if frost or burst:
+			var prev_hero = arena._act_hero
+			var prev_slot: String = arena._act_slot
+			arena._act_hero = null
+			arena._act_slot = ""
+			if frost:
+				_frost_cd = 0.8
+				source.apply_slow(0.88, 1.2)
+			if burst:
+				_root_burst_cd = 60.0
+				for enemy in arena.enemy_heroes(team):
+					if enemy.global_position.distance_to(global_position) <= 260.0:
+						enemy.apply_root(1.0)
+				hp = minf(hp + max_hp * 0.10, max_hp)
+				arena.popup(global_position + Vector2(0, -70), "JUURAKKO!",
+					Palette.HEAL, 16)
+				Fx.ring(arena, global_position, Palette.with_alpha(Palette.HEAL, 0.8),
+					radius + 30.0, 0.5, 4.0)
+			arena._act_hero = prev_hero
+			arena._act_slot = prev_slot
+
+	# Elämänimu/loitsuimu: lyöjä parantuu osuudella lopullisesta vahingosta.
+	# Verikuu tuplaa imun kun lyöjä on alle 35 % HP:sta.
+	if source != null and is_instance_valid(source) and not source.is_unit \
+			and not (self is Structure) and source.alive:
+		var leech := 0.0
+		if source._cast_context == "basic":
+			leech = source.item_stat("lifesteal")
+			if leech > 0.0 and source.items.has("verikuu") \
+					and source.hp < source.max_hp * 0.35:
+				leech *= 2.0
+		elif source._cast_context in ["a1", "a2", "ult"]:
+			leech = source.item_stat("spellvamp")
+		if leech > 0.0 and source.hp < source.max_hp:
+			source.hp = minf(source.hp + amount * leech, source.max_hp)
+
 	if source != null:
 		# Käytä peliaikaa, jotta ikkunan pituus pysyy samana myös nopeutetussa
 		# simulaatiossa (Time.get_ticks_msec mittaa oikeaa seinäkelloa).
@@ -1891,6 +2168,9 @@ func heal_hp(amount: float, source: Hero) -> float:
 	if source != null and is_instance_valid(source) and arena != null \
 			and arena._act_hero == source and arena._act_slot != "":
 		amount *= source.rank_power(arena._act_slot)
+		# Hoiva (hoivasydän): antajan parannukset muille +20 %.
+		if source != self and source.items.has("hoivasydän"):
+			amount *= 1.2
 	var healed := minf(amount, max_hp - hp)
 	hp += healed
 	if source != null and source != self:
@@ -1900,6 +2180,10 @@ func heal_hp(amount: float, source: Hero) -> float:
 		# Per-kykypaikka parannus toimijalle (arenan aktiivikonteksti).
 		if arena != null and arena._act_hero == source and arena._act_slot != "":
 			source._slot_rec(arena._act_slot)["heal"] += healed
+		# Koitto (Aamunkoiton kruunu): parannettu liittolainen saa vauhtia.
+		if healed > 0.0 and is_instance_valid(source) and source.team == team \
+				and source.items.has("aamunkoitto"):
+			apply_haste(1.15, 2.0, false)
 	arena.popup(global_position + Vector2(0, -46), "+%d" % int(healed), Palette.HEAL, 18)
 	Fx.heal_sparkle(arena, global_position)
 	return healed
@@ -1913,12 +2197,19 @@ func add_shield(amount: float, duration: float, source: Hero, record := true) ->
 	if record and source != null and is_instance_valid(source) \
 			and source._cast_context != "":
 		amount *= source.rank_power(source._cast_context)
+		# Hoiva (hoivasydän): antajan kilvet muille +20 %.
+		if source != self and source.items.has("hoivasydän"):
+			amount *= 1.2
 	shield_hp = maxf(shield_hp, amount)
 	shield_timer = duration
 	shield_source = source
 	# Kirjaa antajan aktiivinen kykypaikka -> imetty vahinko osataan kohdistaa
 	# oikealle kyvylle (esim. Luman kupla vs. Maestron kilpi).
 	shield_slot = source._cast_context if (record and source != null and is_instance_valid(source)) else ""
+	# Koitto (Aamunkoiton kruunu): kilven saanut liittolainen saa vauhtia.
+	if source != null and is_instance_valid(source) and source != self \
+			and source.team == team and source.items.has("aamunkoitto"):
+		apply_haste(1.15, 2.0, false)
 	AudioMgr.play("shield", 0.08, 0.0, global_position)
 	Fx.ring(arena, global_position, Palette.SHIELD, radius + 14.0, 0.35)
 
@@ -2124,6 +2415,14 @@ func _knockout(source: Hero) -> void:
 	mark_timer = 0.0
 	_pending_dodge_shield = 0.0
 	_spend_locked.clear()
+	# Itemipassiivien tila nollautuu kuollessa; itemit itsessään SÄILYVÄT
+	# (ottelun mittaisia, kuten rankit). Momentum menetetään kokonaan.
+	_ap_momentum = 0
+	_chain_hits = 0
+	_echo_hits = 0
+	armor_shred_timer = 0.0
+	_alpha_slow_ready = false
+	_item_proc_active = false
 	# HUOM: ability_ranks ja skill_points säilyvät — rankit ovat ottelun mittaisia.
 
 	var now: float = arena.match_elapsed if arena != null \
@@ -2275,6 +2574,17 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	_ult_ready_announced = ult_charge >= 100.0 and ult_unlocked()
 	_pending_dodge_shield = 0.0
 	_spend_locked.clear()
+	# Itemit säilyvät erien yli (ottelun mittaisia); passiivilaskurit nollataan.
+	_ap_momentum = 0
+	_chain_hits = 0
+	_echo_hits = 0
+	_spellshield_cd = 0.0
+	_frost_cd = 0.0
+	_root_burst_cd = 0.0
+	armor_shred_timer = 0.0
+	_alpha_slow_ready = false
+	_item_proc_active = false
+	_shop_tick = 0.0
 	# HUOM: ability_ranks ja skill_points säilyvät erien yli (ottelun mittaisia).
 	_dodge_was_cooling = false
 	_heartbeat_t = 0.0

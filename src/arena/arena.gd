@@ -618,6 +618,12 @@ func on_critter_ko(critter, source) -> void:
 		_update_economy_milestones(source)
 		if source.has_method("on_jungle_camp_defeated"):
 			source.on_jungle_camp_defeated(c)
+		# Itemien leirikoukut: saalistaja parantaa kaadosta, alfa lataa
+		# seuraavaan sankariperusosumaan hidastuksen.
+		if source.items.has("riistanraatelija") and source.alive:
+			source.heal_hp(source.max_hp * 0.08, source)
+		if source.items.has("alfaturkki"):
+			source._alpha_slow_ready = true
 	# Lähellä auttanut support/top saa pienen osuuden eikä menetä koko roam-aikaa.
 	# Palkinto ei vähennä junglerin omaa XP:tä; major-objective jakaa enemmän.
 	if mode == "moba":
@@ -726,16 +732,24 @@ func _grant_damage_buff(source) -> void:
 func _grant_red_buff(source) -> void:
 	if source == null or not is_instance_valid(source) or source.is_unit:
 		return
-	source.red_buff = maxf(source.red_buff, RED_CAMP_BUFF)
-	source.red_camp_buff = maxf(source.red_camp_buff, RED_CAMP_BUFF)
+	# Saalistaja (riistanraatelija): leiribuffit kestävät +40 %.
+	var dur := RED_CAMP_BUFF
+	if source.items.has("riistanraatelija"):
+		dur *= 1.4
+	source.red_buff = maxf(source.red_buff, dur)
+	source.red_camp_buff = maxf(source.red_camp_buff, dur)
 	source.profile.stats.red_pickups += 1
 
 
 func _grant_blue_buff(source) -> void:
 	if source == null or not is_instance_valid(source) or source.is_unit:
 		return
-	source.blue_buff = maxf(source.blue_buff, BLUE_CAMP_BUFF)
-	source.blue_camp_buff = maxf(source.blue_camp_buff, BLUE_CAMP_BUFF)
+	# Saalistaja (riistanraatelija): leiribuffit kestävät +40 %.
+	var dur := BLUE_CAMP_BUFF
+	if source.items.has("riistanraatelija"):
+		dur *= 1.4
+	source.blue_buff = maxf(source.blue_buff, dur)
+	source.blue_camp_buff = maxf(source.blue_camp_buff, dur)
 	source.profile.stats.blue_pickups += 1
 
 
@@ -953,6 +967,8 @@ func _tick_moba_economy(delta: float) -> void:
 		if h.profile == null:
 			continue
 		var income := PASSIVE_GOLD_PER_SEC * delta
+		# Itemit: kultatulo (gold_per_sec) lasketaan passiivituloon.
+		income += float(h.item_stat("gold_per_sec")) * delta
 		h.profile.stats.gold += income
 		h.profile.stats.passive_gold += income
 		_record_buff_economy(h, income, 0.0)
@@ -1117,6 +1133,17 @@ func on_minion_ko(minion: Minion, source: Hero) -> void:
 		_grant_moba_xp(h, xp_share, "lane", recipients.size() > 1)
 		_record_buff_economy(h, MINION_PROXIMITY_GOLD, 0.0)
 		_update_economy_milestones(h)
+	# Palkkio (kolikkotalismaani): lähellä kaatuva minioni antaa omistajalle
+	# +2 kultaa vaikkei last hit osuisi (ei vie CS:ää).
+	for h in heroes:
+		if not is_instance_valid(h) or not h.alive or h.is_unit or h is Structure:
+			continue
+		if h.team != reward_team or h.profile == null \
+				or not h.items.has("kolikkotalismaani"):
+			continue
+		if h.global_position.distance_to(minion.global_position) <= 760.0:
+			h.profile.stats.gold += 2
+			_record_buff_economy(h, 2.0, 0.0)
 	if valid_last_hit and source.profile != null:
 		source.profile.stats.gold += MINION_LAST_HIT_BONUS
 		source.profile.stats.last_hit_gold += MINION_LAST_HIT_BONUS
