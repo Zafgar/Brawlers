@@ -277,16 +277,24 @@ func distance_to_lane(pos: Vector2, lane_id: String) -> float:
 ## Paluubotit tähtäävät aukon lane-puolelle, eivät seinän läpi lähimpään
 ## geometriseen pisteeseen.
 func nearest_lane_entry(pos: Vector2, lane_id: String) -> Vector2:
-	var y := -1395.0 if lane_id == TOP else 1395.0
-	var best := Vector2(0.0, y)
+	var best := Vector2.ZERO
 	var best_sq := INF
-	for x in [-2350.0, -1020.0, 0.0, 1020.0, 2350.0]:
-		var candidate := Vector2(x, y)
-		var d_sq := pos.distance_squared_to(candidate)
+	for candidate in lane_entries(lane_id):
+		var d_sq: float = pos.distance_squared_to(candidate)
 		if d_sq < best_sq:
 			best_sq = d_sq
 			best = candidate
 	return best
+
+
+## Harjanteen aukkojen lane-puoleiset pisteet (yksi totuus geometrialle —
+## myös bottien _safe_lane_entry suodattaa näistä).
+func lane_entries(lane_id: String) -> Array:
+	var y := -1395.0 if lane_id == TOP else 1395.0
+	var out: Array = []
+	for x in [-2350.0, -1020.0, 0.0, 1020.0, 2350.0]:
+		out.append(Vector2(x, y))
+	return out
 
 
 func assigned_role(slot: int) -> String:
@@ -631,12 +639,12 @@ func _draw_base_grounds() -> void:
 		draw_circle(lantern, 16.0, Color(1.0, 0.85, 0.5, 0.16))
 		draw_rect(Rect2(lantern + Vector2(-5.0, -7.0), Vector2(10.0, 14.0)), Color("caa04c"))
 		draw_circle(lantern, 4.0, Color("ffe9a8"))
-		var sign := sp + Vector2(-56.0, -34.0)
-		draw_line(sign + Vector2(0, 28.0), sign, Color("53381c"), 5.0)
-		draw_circle(sign, 13.0, Palette.with_alpha(GOLD, 0.25))
-		draw_circle(sign, 10.0, Color("d5aa49"))
-		draw_arc(sign, 10.0, 0, TAU, 20, Color("8a6a2a"), 2.0)
-		UiKit.draw_text(self, sign, "G", 13, Color("6b4e18"), true)
+		var coin_sign := sp + Vector2(-56.0, -34.0)
+		draw_line(coin_sign + Vector2(0, 28.0), coin_sign, Color("53381c"), 5.0)
+		draw_circle(coin_sign, 13.0, Palette.with_alpha(GOLD, 0.25))
+		draw_circle(coin_sign, 10.0, Color("d5aa49"))
+		draw_arc(coin_sign, 10.0, 0, TAU, 20, Color("8a6a2a"), 2.0)
+		UiKit.draw_text(self, coin_sign, "G", 13, Color("6b4e18"), true)
 		UiKit.draw_text(self, sp + Vector2(0, 52.0), "KAUPPA", 17,
 			Palette.with_alpha(Palette.glow(GOLD, 1.2), 0.9), true, 2)
 

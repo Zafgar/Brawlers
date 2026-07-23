@@ -64,6 +64,8 @@ var _is_jungler_role := false
 var _moba_job := ""
 var _moba_lane := ""
 var _moba_duty := ""             # bottom-duon työnjako: "carry"/"support" ("" = roolin mukaan)
+var _gank_victim: Hero = null    # tilaisuusgankin lukittu uhri (hystereesi)
+var _gank_gate := Vector2.INF    # lukitun uhrin gank-portti
 var _moba_goal := Vector2.INF
 var _lane_returning := false      # laner ajautui liian kauas omalta kaareltaan
 
@@ -1481,28 +1483,50 @@ func _moba_lane_route_goal(hero: Hero, arena, pos: Vector2,
 ## rankit eivät tunnista tilaisuutta (jungle_focus) eikä hutera botti gankkaa.
 func _gank_opportunity(hero: Hero, arena, mm: MapMoba) -> Vector2:
 	if jungle_focus < 0.25 or hero.hp < hero.max_hp * 0.45:
+		_gank_victim = null
 		return Vector2.INF
-	var own_sign: float = -1.0 if hero.team == 0 else 1.0
-	var best := Vector2.INF
+	# Hystereesi: pidä valittu uhri ja portti niin kauan kuin uhri täyttää ehdot
+	# — muuten portti sinkoilisi (1020<->2350 / top<->bottom) joka päätöstikillä.
+	# Huom: tunnistus toimii minimap-tiedolla (ei vaadi näköyhteyttä) — tämä on
+	# tarkoituksellista: ylityöntö NÄKYY kartalla, ja gank rankaisee siitä.
+	if _gank_victim != null and is_instance_valid(_gank_victim) \
+			and _gank_gate_if_valid(hero, mm, _gank_victim) != Vector2.INF:
+		return _gank_gate
+	_gank_victim = null
 	var best_d := 1900.0   # gank-matkan katto: ei ristiin koko kartan yli
 	for e in arena.enemy_heroes(hero.team):
-		# Syvyys MEIDÄN puolellamme: joen yli vähintään 200 px.
-		var depth: float = e.global_position.x * own_sign
-		if depth < 200.0:
+		var gate := _gank_gate_if_valid(hero, mm, e)
+		if gate == Vector2.INF:
 			continue
-		var lane := mm.nearest_lane(e.global_position)
-		if mm.distance_to_lane(e.global_position, lane) > 520.0:
-			continue   # syvällä junglessa oleva ei ole lane-gank-kohde
 		var d: float = hero.global_position.distance_to(e.global_position)
 		if d >= best_d:
 			continue
 		best_d = d
-		# Lähesty omalta puolelta sen gank-portin kautta joka on lähinnä uhria.
-		var gate_x: float = own_sign * (1020.0 \
-			if absf(e.global_position.x) < 1650.0 else 2350.0)
-		var gate_y: float = -1130.0 if lane == MapMoba.TOP else 1130.0
-		best = Vector2(gate_x, gate_y)
-	return best
+		_gank_victim = e
+		_gank_gate = gate
+	return _gank_gate if _gank_victim != null else Vector2.INF
+
+
+## Uhrin gank-portti jos uhri on kelvollinen (meidän puolella, linjan tuntumassa,
+## matkakaton sisällä); muuten Vector2.INF. Portin syvyysvalinnassa leveä
+## vaihtokaista (1500/1800) estää edestakaisen vaihtelun rajalla.
+func _gank_gate_if_valid(hero: Hero, mm: MapMoba, e: Hero) -> Vector2:
+	if not is_instance_valid(e) or not e.alive:
+		return Vector2.INF
+	var own_sign: float = -1.0 if hero.team == 0 else 1.0
+	var depth: float = e.global_position.x * own_sign
+	if depth < 200.0:
+		return Vector2.INF
+	var lane := mm.nearest_lane(e.global_position)
+	if mm.distance_to_lane(e.global_position, lane) > 520.0:
+		return Vector2.INF
+	if hero.global_position.distance_to(e.global_position) > 1900.0:
+		return Vector2.INF
+	var deep_gate: bool = absf(e.global_position.x) >= \
+		(1500.0 if e == _gank_victim and absf(_gank_gate.x) > 2000.0 else 1800.0)
+	var gate_x: float = own_sign * (2350.0 if deep_gate else 1020.0)
+	var gate_y: float = -1130.0 if lane == MapMoba.TOP else 1130.0
+	return Vector2(gate_x, gate_y)
 
 
 ## Vihollistornien rintaman syvyys tällä linjalla: etumaisimman ELOSSA olevan
@@ -1525,20 +1549,20 @@ func _enemy_tower_frontier(hero: Hero, arena, lane: String) -> float:
 ## vihollistornien takana (botti käveli aiemmin vihollisen sisä- ja base-tornin
 ## VÄLIIN palatessaan junglen kautta ja joutui kävelemään sieltä pois).
 func _safe_lane_entry(hero: Hero, arena, mm: MapMoba) -> Vector2:
-	var y := -1395.0 if _moba_lane == MapMoba.TOP else 1395.0
 	var frontier := _enemy_tower_frontier(hero, arena, _moba_lane)
-	var best := Vector2(0.0, y)
+	var best := Vector2.ZERO
 	var best_sq := INF
-	for x in [-2350.0, -1020.0, 0.0, 1020.0, 2350.0]:
-		# Syvyys vihollisen suuntaan: sininen työntää +x, oranssi -x.
-		var depth: float = x if hero.team == 0 else -x
+	for candidate in mm.lane_entries(_moba_lane):
+		var entry: Vector2 = candidate
+		# Syvyys vihollisen suuntaan: sininen työntää +x, oranssi -x. Oman
+		# puolen aukot läpäisevät aina (frontier >= 790 kun torneja pystyssä).
+		var depth: float = entry.x if hero.team == 0 else -entry.x
 		if depth > frontier:
 			continue
-		var candidate := Vector2(x, y)
-		var d_sq := hero.global_position.distance_squared_to(candidate)
+		var d_sq: float = hero.global_position.distance_squared_to(entry)
 		if d_sq < best_sq:
 			best_sq = d_sq
-			best = candidate
+			best = entry
 	return best
 
 

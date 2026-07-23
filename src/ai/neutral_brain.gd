@@ -92,8 +92,10 @@ func update(hero, delta: float) -> void:
 	else:
 		# Laiduntelu: kotipesässä olento kiertelee hitaasti pienellä kehällä sen
 		# sijaan että seisoisi naulittuna — leirit näyttävät eläviltä kaukaakin.
-		# Vaihe johdetaan kodista (deterministinen), joten leirit eivät tanssi tahdissa.
-		var graze: float = _strafe_t * 0.9 + home.x * 0.013 + home.y * 0.007
+		# Monotoninen kello (match_elapsed) -> aito kierto ilman sahalaitahyppyä;
+		# vaihesiirto johdetaan kodista, joten leirit eivät tanssi tahdissa.
+		var graze: float = hero.arena.match_elapsed * 0.9 \
+			+ home.x * 0.013 + home.y * 0.007
 		var spot: Vector2 = home + Vector2(cos(graze), sin(graze)) * 34.0
 		if pos.distance_to(spot) > 14.0:
 			_mv = (spot - pos).normalized() * 0.3
