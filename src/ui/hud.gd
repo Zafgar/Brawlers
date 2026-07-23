@@ -510,7 +510,10 @@ class PaneHud:
 		resource_y += 10.0 if compact else 13.0
 		var ult_frac: float = clampf(hero.ult_charge / 100.0, 0.0, 1.0)
 		var ult_col := Palette.GOLD
-		if ult_frac >= 0.999:
+		if not bool(hero.ult_unlocked()):
+			# Lukittu ulti: lataus kertyy ja näkyy, mutta himmeänä ilman valmis-hehkua.
+			ult_col = Palette.with_alpha(Palette.GOLD, 0.4)
+		elif ult_frac >= 0.999:
 			ult_col = Palette.glow(Palette.GOLD, 1.25 + 0.18 * sin(_time * 6.0))
 		draw_rect(Rect2(left, resource_y, right - left, 5.0 if compact else 7.0),
 			Color(0.01, 0.02, 0.05, 0.86))
@@ -527,6 +530,22 @@ class PaneHud:
 			_draw_ability_slot(Rect2(sx + i * (slot_size + gap), sy, slot_size, slot_size),
 				slots[i], not narrow)
 
+		# Käyttämättömät kykypisteet: sykkivä kultamerkki muotokuvan kulmassa ja
+		# lyhyt kehitysohje telakan yllä (piilossa simulaatiossa).
+		if int(hero.skill_points) > 0 and hero.alive and not Game.simulating:
+			var badge := portrait + Vector2(portrait_r * 0.72, -portrait_r * 0.72)
+			draw_circle(badge, 11.0 if compact else 14.0,
+				Palette.glow(Palette.GOLD, 1.05 + 0.25 * sin(_time * 5.0)))
+			UiKit.draw_text(self, badge + Vector2(0, 1), "+%d" % int(hero.skill_points),
+				10 if compact else 12, Palette.TEXT_DARK, true, 2)
+			var pad_hint: bool = hero.profile.device >= 0
+			var hint := "KEHITÄ: PIDÄ D-PAD YLÖS + KYKYNAPPI" if pad_hint \
+				else "KEHITÄ: PIDÄ T + KYKYNAPPI"
+			UiKit.draw_text(self, Vector2(rect.get_center().x, rect.position.y - 12.0), hint,
+				10 if compact else 12,
+				Palette.with_alpha(Palette.glow(Palette.GOLD, 1.2), 0.7 + 0.3 * sin(_time * 5.0)),
+				true, 2)
+
 		if hero.carrying:
 			var gem := rect.position + Vector2(18, 18)
 			_draw_diamond(gem, 8.0 + sin(_time * 6.0), Palette.glow(Palette.GOLD, 1.5))
@@ -542,6 +561,7 @@ class PaneHud:
 
 	func _slot_data(hero) -> Array:
 		var pad: bool = hero.profile.device >= 0
+		var spend: bool = bool(hero._spend_mode_active())
 		var abilities: Dictionary = HeroDef.get_def(hero.hero_id)["abilities"]
 		var keys := {
 			"basic": "R2" if pad else "M1",
@@ -566,6 +586,9 @@ class PaneHud:
 			out.append({
 				"hero_id": hero.hero_id, "slot": slot, "name": str(abilities[slot]["name"]), "key": str(keys[slot]),
 				"frac": frac, "cd": cd, "color": col,
+				"rank": int(hero.ability_ranks[slot]), "can_rank": bool(hero.can_rank(slot)),
+				"locked": slot == "ult" and not bool(hero.ult_unlocked()), "spend": spend,
+				"lock_level": (int(hero.ULT_RANK_LEVELS[0]) if slot == "ult" else 0),
 			})
 		return out
 
@@ -588,6 +611,35 @@ class PaneHud:
 		if float(data["cd"]) > 0.25:
 			UiKit.draw_text(self, center + Vector2(0, 2), str(int(ceil(float(data["cd"])))),
 				16 if rect.size.x < 58.0 else 20, Palette.TEXT_MAIN, true, 4)
+		var rank := int(data.get("rank", 0))
+		var locked := bool(data.get("locked", false))
+		var spend_mode := bool(data.get("spend", false))
+		var rankable := bool(data.get("can_rank", false))
+		if locked:
+			# Ulti lukossa avaukseen asti: tumma peite, lukkosymboli ja tasovaatimus.
+			_panel(rect, Color(0.02, 0.03, 0.06, 0.74),
+				Palette.with_alpha(Palette.TEXT_DIM, 0.42), 10.0, 1.5)
+			var lc := center + Vector2(0, -4.0)
+			draw_arc(lc + Vector2(0, -3.0), 5.0, PI, TAU, 10, Palette.TEXT_DIM, 2.2)
+			draw_rect(Rect2(lc + Vector2(-6.5, -3.0), Vector2(13.0, 10.0)), Palette.TEXT_DIM)
+			UiKit.draw_text(self, Vector2(center.x, rect.end.y - 24.0),
+				"TASO %d" % int(data.get("lock_level", 4)), 9, Palette.TEXT_DIM, true, 2)
+		# Rankkipippurit: kolme lovea yläreunassa, otetut rankit täyttyvät kullalla.
+		var pip_w := 9.0
+		var pip_x := rect.end.x - 5.0 - 3.0 * pip_w - 2.0 * 2.0
+		for p in range(3):
+			var pr := Rect2(pip_x + float(p) * (pip_w + 2.0), rect.position.y + 4.0, pip_w, 3.5)
+			if rank > p:
+				draw_rect(pr, Palette.glow(Palette.GOLD, 1.2))
+			else:
+				draw_rect(pr, Color(1, 1, 1, 0.1))
+		# Kehitystila (pidä ylös/T): rankattavat paikat hehkuvat, muut himmenevät.
+		if spend_mode and rankable:
+			_panel(rect.grow(3.0), Color(0, 0, 0, 0),
+				Palette.with_alpha(Palette.glow(Palette.GOLD, 1.4),
+					0.6 + 0.4 * sin(_time * 7.0)), 12.0, 2.5)
+		elif spend_mode:
+			draw_rect(rect, Color(0, 0, 0, 0.35))
 		var key_rect := Rect2(rect.position.x + 4.0, rect.end.y - 17.0,
 			minf(rect.size.x - 8.0, 38.0), 14.0)
 		_panel(key_rect, Color(0.015, 0.025, 0.055, 0.84), Palette.with_alpha(col, 0.45),

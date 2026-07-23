@@ -8,7 +8,9 @@ extends RefCounted
 ##
 ## PS5-ohjain:  vasen tatti = liike, oikea tatti = tähtäys, R2 = perushyökkäys,
 ## R1 = kyky 1, L1 = kyky 2, Risti = väistö, L2 = ultimate, Ympyrä = pudota,
-## D-pad alas = paluu baseen (pidä pohjassa; näppäimistöllä B).
+## D-pad alas = paluu baseen (pidä pohjassa; näppäimistöllä B),
+## D-pad ylös = kykypisteiden kehitystila (pidä pohjassa + kyvyn nappi;
+## näppäimistöllä T).
 ## Ulti on L2-liipaisimessa: helpompi pitää pohjassa ja tähdätä oikealla tatilla
 ## kuin kolmiolla. Kolmio toimii yhä vaihtoehtoisena ultinappina.
 
@@ -29,6 +31,7 @@ const PAD_BUTTONS := {
 	"dodge": JOY_BUTTON_A,
 	"drop": JOY_BUTTON_B,
 	"recall": JOY_BUTTON_DPAD_DOWN,
+	"spend": JOY_BUTTON_DPAD_UP,
 }
 
 var device := -1
@@ -82,6 +85,7 @@ func _update_keyboard_mouse(hero) -> void:
 		"ult": Input.is_physical_key_pressed(KEY_E),
 		"drop": Input.is_physical_key_pressed(KEY_F),
 		"recall": Input.is_physical_key_pressed(KEY_B),
+		"spend": Input.is_physical_key_pressed(KEY_T),
 	}
 
 
@@ -206,6 +210,12 @@ func drop_just() -> bool:
 ## Paluukanavointi (B / D-pad alas): pidetään pohjassa koko kanavoinnin ajan.
 func recall_held() -> bool:
 	return bool(_pressed.get("recall", false))
+
+
+## Kykypisteiden kehitystila (D-pad ylös / T): pidä pohjassa ja paina kyvyn
+## nappia — painallus käyttää kykypisteen castin sijaan.
+func spend_held() -> bool:
+	return bool(_pressed.get("spend", false))
 
 
 func is_bot() -> bool:
