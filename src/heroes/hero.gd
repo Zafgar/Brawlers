@@ -656,6 +656,8 @@ func _physics_process(delta: float) -> void:
 		_ult_holding = false
 		_beam_active = false
 		respawn_timer -= delta
+		# Kuolleena voi ostaa (respawn on lähteellä) — kuten oikeassa MOBAssa.
+		_bot_shop_tick(delta)
 		if respawn_timer <= 0.0:
 			_respawn()
 		return
@@ -1510,6 +1512,8 @@ func _fountain_regen(delta: float) -> void:
 		return
 	if not mm.is_in_own_sanctuary(global_position, team):
 		return
+	# Botit ostavat itemejä tukikohtakäynnillä (recall, respawn, lähdevisiitti).
+	_bot_shop_tick(delta)
 	if global_position.distance_to(mm.fountain_spot(team)) > FOUNTAIN_RADIUS:
 		return
 	var healed := 0.0
@@ -1714,6 +1718,58 @@ func sell_item(id: String) -> bool:
 ## Kykyjen resurssikustannuskerroin (manaydin: ylivuoto -15 %).
 func resource_cost_mult() -> float:
 	return 0.85 if items.has("manaydin") else 1.0
+
+
+## Bottiostojen kuristin: enintään kerran sekunnissa. Kutsutaan lähderegen-
+## polusta (sanctuary jo varmistettu) ja kuolleena respawn-odotuksesta.
+func _bot_shop_tick(delta: float) -> void:
+	if controller == null or not controller.is_bot() or is_unit or profile == null:
+		return
+	if arena == null or arena.mode != "moba":
+		return
+	_shop_tick -= delta
+	if _shop_tick > 0.0:
+		return
+	_shop_tick = 1.0
+	_bot_shop()
+
+
+## Botin ostokierros: kävele roolibuildin tavoitteet järjestyksessä ja osta
+## nykyisen keskeneräisen tavoitteen halvin ostettava pala niin kauan kuin
+## lompakko riittää. Baron-artefakti nostaa roolin legendan listan kärkeen.
+func _bot_shop() -> void:
+	if not (controller is BotBrain):
+		return
+	# Täysi build: 6 valmista epic/legendary-itemiä -> ei enää ostettavaa.
+	var finished := 0
+	for id in items:
+		var tier := str(ItemDef.get_item(str(id)).get("tier", ""))
+		if tier == "epic" or tier == "legendary":
+			finished += 1
+	if finished >= MAX_ITEMS:
+		return
+	var goals: Array = []
+	if legendary_artifact:
+		# Artefakti hallussa: roolin legenda listan kärkeen heti kun siihen on
+		# varaa (muuten jatketaan normaalia buildia, ei jäädä säästämään).
+		var leg: String = controller._item_legendary()
+		if leg != "" and not items.has(leg) \
+				and profile.wallet() >= ItemDef.combine_cost(leg, items):
+			goals.append(leg)
+	goals.append_array(controller._item_build())
+	var guard := 0
+	while guard < 12:
+		guard += 1
+		var goal := ""
+		for g in goals:
+			if not items.has(str(g)):
+				goal = str(g)
+				break
+		if goal == "":
+			return
+		var pick := ItemDef.next_purchase(goal, items, profile.wallet())
+		if pick == "" or not buy_item(pick):
+			return
 
 
 ## Itemien puolustusstatit kohteessa (self): kyvyt vaimentaa taikavastus,

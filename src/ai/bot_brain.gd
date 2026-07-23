@@ -2589,5 +2589,54 @@ func spend_held() -> bool:
 	return false
 
 
+# --- Itemien ostolista (Hero._bot_shop kutsuu tukikohdassa/kuolleena) ---
+
+## Botin roolibuildin ostoprioriteetti: rooliavain työnjaosta (_moba_job/duty)
+## tai sankarin roolista jos työnjakoa ei ole vielä tehty.
+func _item_role() -> String:
+	var role := _role
+	if role == "" and _hero != null:
+		role = str(HeroDef.get_def(_hero.hero_id).get("role", ""))
+	if _moba_job == "jungle" or role == HeroDef.ROLE_JUNGLER:
+		return "jungle"
+	if _moba_duty == "support" or role == "Tuki":
+		return "support"
+	if role == "Tankki":
+		return "tank"
+	if role == "Mage":
+		return "ap"
+	return "carry"
+
+
+## Roolin tavoite-epicit järjestyksessä. Hero ostaa keskeneräisen tavoitteen
+## osat ItemDef.next_purchase-apurilla halvimmasta ostettavasta päästä
+## (commonit -> raret -> epic).
+func _item_build() -> Array:
+	match _item_role():
+		"jungle":
+			return ["riistanraatelija", "ansalanka", "varjoviitta"]
+		"support":
+			return ["kolikkotalismaani", "vartiolyhty", "hoivasydän"]
+		"tank":
+			return ["jäätikkövyö", "torjuntakupu", "elonlähde"]
+		"ap":
+			return ["arkkisauva", "kaikukide", "manaydin"]
+	return ["myrskynsilma", "verikuu", "teräsarmä"]
+
+
+## Roolin legenda: ostetaan heti kun Baron-artefakti on hallussa ja varaa on.
+func _item_legendary() -> String:
+	match _item_role():
+		"jungle":
+			return "alfaturkki"
+		"support":
+			return "aamunkoitto"
+		"tank":
+			return "maailmanpuu"
+		"ap":
+			return "tyhjyydenydin"
+	return "kuninkaansurma"
+
+
 func is_bot() -> bool:
 	return true
