@@ -201,3 +201,18 @@ func _aim_default_range(_slot: String) -> float:
 
 func _aim_target_radius(_slot: String) -> float:
 	return 130.0
+
+
+## Tasoskaalaus: mage-hypercarry — ketjusalamat skaalautuvat kovimmin.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.85, "damage": 1.10, "spell": 1.35, "melee": 0.95, "regen": 1.00}
+
+
+## Väistön kehitys: vauhti (kelamestari kiertää taistelun reunaa).
+func _dodge_evolution() -> String:
+	return "haste"
+
+
+## Botin rankkausjärjestys: Ketjusalama ensin, salamakenttä toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "basic", "dodge"]

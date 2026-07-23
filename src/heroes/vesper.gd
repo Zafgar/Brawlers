@@ -164,3 +164,18 @@ func bot_wants_utility() -> bool:
 	var target = controller.get("_target")
 	return _drone_active <= 0.0 and is_instance_valid(target) and target is Critter \
 		and ((target as Critter).is_major_objective() or hp < max_hp * 0.68)
+
+
+## Tasoskaalaus: ranged tracker -hypercarry — merkit ja pultit kasvavat.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.85, "damage": 1.15, "spell": 1.20, "melee": 1.05, "regen": 0.95}
+
+
+## Väistön kehitys: vauhti (jäljittäjä pitää saalistusetäisyyden).
+func _dodge_evolution() -> String:
+	return "haste"
+
+
+## Botin rankkausjärjestys: Merkkipultit ensin, ansa toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "basic", "dodge"]

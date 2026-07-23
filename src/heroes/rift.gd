@@ -251,3 +251,18 @@ class VoidMark:
 		draw_circle(Vector2.ZERO, 5.0, Palette.glow(color, 1.6))
 		draw_arc(Vector2.ZERO, 12.0, _time * 9.0, _time * 9.0 + TAU * 0.7, 16,
 			Palette.glow(color, 1.3), 2.0)
+
+
+## Tasoskaalaus: void-assassiini — pinoräjäytys ja perus kasvavat.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.90, "damage": 1.10, "spell": 1.10, "melee": 1.10, "regen": 0.95}
+
+
+## Väistön kehitys: faasi (void-olento liukuu todellisuuden läpi).
+func _dodge_evolution() -> String:
+	return "phase"
+
+
+## Botin rankkausjärjestys: Pinoräjäytys ensin, perus (pinot) toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a2", "basic", "a1", "dodge"]

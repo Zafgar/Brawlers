@@ -246,3 +246,18 @@ func _clear_mines() -> void:
 		if is_instance_valid(m):
 			m.queue_free()
 	_mines = []
+
+
+## Tasoskaalaus: tuhotyöläinen-hypercarry — räjähteet skaalautuvat rajusti.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.85, "damage": 1.15, "spell": 1.30, "melee": 0.90, "regen": 0.95}
+
+
+## Väistön kehitys: vauhti (miinoittaja pitää välimatkan).
+func _dodge_evolution() -> String:
+	return "haste"
+
+
+## Botin rankkausjärjestys: Morttari ensin, miinat toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a2", "a1", "basic", "dodge"]

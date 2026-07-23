@@ -248,3 +248,18 @@ func _respawn() -> void:
 func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	super(keep_ult_fraction)
 	_charging = 0.0
+
+
+## Tasoskaalaus: tankki — valtava kesto, heijastus tekee työn.
+func _level_scaling() -> Dictionary:
+	return {"hp": 1.35, "damage": 0.80, "spell": 0.90, "melee": 0.90, "regen": 0.95}
+
+
+## Väistön kehitys: kilpi (obsidiaanipanssari paksunee väistössä).
+func _dodge_evolution() -> String:
+	return "shield"
+
+
+## Botin rankkausjärjestys: Louhintaloikka ensin, kiviho toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "basic", "dodge"]

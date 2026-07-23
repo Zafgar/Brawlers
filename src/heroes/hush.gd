@@ -242,3 +242,18 @@ func _passive_update(delta: float) -> void:
 	_pulse_timer = 0.0
 	target.add_shield(PULSE_SHIELD, PULSE_DUR, self)
 	Fx.ring(arena, target.global_position, Palette.with_alpha(Palette.SHIELD, 0.8), 40.0, 0.35)
+
+
+## Tasoskaalaus: kontrollituki — maltillinen vahinko, vahva regen.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.95, "damage": 0.80, "spell": 0.85, "melee": 0.85, "regen": 1.20}
+
+
+## Väistön kehitys: puhdistus (tuki irtoaa kontrollista auttaakseen).
+func _dodge_evolution() -> String:
+	return "cleanse"
+
+
+## Botin rankkausjärjestys: Kilvet ensin, dissonanssikenttä toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "dodge", "basic"]

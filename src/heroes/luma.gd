@@ -114,3 +114,18 @@ func _ultimate(_dir: Vector2) -> void:
 func _passive_update(delta: float) -> void:
 	if since_damage > 3.0 and hp < max_hp:
 		hp = minf(hp + 6.0 * delta, max_hp)
+
+
+## Tasoskaalaus: parannustuki — hauras, mutta mana riittää pitkään.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.85, "damage": 0.80, "spell": 0.85, "melee": 0.80, "regen": 1.25}
+
+
+## Väistön kehitys: puhdistus (parantaja irtoaa hidasteista hoitamaan).
+func _dodge_evolution() -> String:
+	return "cleanse"
+
+
+## Botin rankkausjärjestys: Hoitokehä ensin, kupla toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "dodge", "basic"]

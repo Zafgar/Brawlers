@@ -169,3 +169,18 @@ func _ultimate(_dir: Vector2) -> void:
 		ally.red_buff = maxf(ally.red_buff, ULT_DUR)
 		ally.apply_haste(1.3, ULT_DUR)
 		Fx.ring(arena, ally.global_position, Palette.glow(hero_color(), 1.4), 46.0, 0.5)
+
+
+## Tasoskaalaus: sädetuki — säteet skaalautuvat, runko pysyy hauraana.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.95, "damage": 0.95, "spell": 1.05, "melee": 0.85, "regen": 1.15}
+
+
+## Väistön kehitys: vauhti (prisma liukuu säteiden kantamalle).
+func _dodge_evolution() -> String:
+	return "haste"
+
+
+## Botin rankkausjärjestys: Polttosäde ensin, hoitosäde toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "dodge", "basic"]

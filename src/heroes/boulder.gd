@@ -305,3 +305,18 @@ class RockWall:
 				var cx: float = x + (c - 1) * r * 0.35
 				draw_line(Vector2(cx, -r * 0.6), Vector2(cx + r * 0.2, r * 0.5),
 					Palette.with_alpha(Color("39424d"), fade * (0.4 + dmg_frac * 0.5)), 1.5 + dmg_frac)
+
+
+## Tasoskaalaus: tankki — kivinen kesto, matala vahinko.
+func _level_scaling() -> Dictionary:
+	return {"hp": 1.30, "damage": 0.90, "spell": 0.90, "melee": 0.90, "regen": 0.95}
+
+
+## Väistön kehitys: kilpi (kivipanssari tiivistyy väistössä).
+func _dodge_evolution() -> String:
+	return "shield"
+
+
+## Botin rankkausjärjestys: Piikkikartio ensin, muurit toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a2", "a1", "basic", "dodge"]

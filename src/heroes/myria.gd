@@ -244,3 +244,18 @@ func bot_wants_utility() -> bool:
 		if essence != selected_essence and int(essence_counts.get(essence, 0)) > 0:
 			return true
 	return false
+
+
+## Tasoskaalaus: mage-jungleri/tuki — essenssit ja kentät, ei raakaa voimaa.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.95, "damage": 0.90, "spell": 0.90, "melee": 0.80, "regen": 1.20}
+
+
+## Väistön kehitys: puhdistus (essenssinkerääjä livahtaa kontrollista).
+func _dodge_evolution() -> String:
+	return "cleanse"
+
+
+## Botin rankkausjärjestys: Essenssikenttä ensin, pultti toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a2", "a1", "dodge", "basic"]

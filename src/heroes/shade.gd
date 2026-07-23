@@ -358,3 +358,18 @@ class Shuriken:
 				pts.append(Vector2(cos(a), sin(a)) * 14.0)
 			draw_colored_polygon(pts, Palette.glow(color, 1.4))
 		draw_circle(Vector2.ZERO, 4.0, Palette.glow(Color.WHITE, 1.3))
+
+
+## Tasoskaalaus: varjoassassiini — purskevahinko kasvaa loppupeliin.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.85, "damage": 1.10, "spell": 1.10, "melee": 1.10, "regen": 0.95}
+
+
+## Väistön kehitys: faasi (varjo kulkee seinien läpi).
+func _dodge_evolution() -> String:
+	return "phase"
+
+
+## Botin rankkausjärjestys: Varjoloikka ensin, shuriken toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "basic", "dodge"]

@@ -116,3 +116,18 @@ func _shadow_dance() -> void:
 func _passive_update(_delta: float) -> void:
 	if since_damage > 2.0:
 		apply_haste(1.08, 0.2)
+
+
+## Tasoskaalaus: assassiini — hauras mutta piikikäs loppupeliä kohti.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.85, "damage": 1.10, "spell": 1.10, "melee": 1.10, "regen": 0.95}
+
+
+## Väistön kehitys: faasi (katoaa syöksyssä seinienkin läpi).
+func _dodge_evolution() -> String:
+	return "phase"
+
+
+## Botin rankkausjärjestys: Valoviuhka ja selkäänisku ensin, teleportti utilityna.
+func _bot_skill_order() -> Array:
+	return ["ult", "a2", "basic", "a1", "dodge"]

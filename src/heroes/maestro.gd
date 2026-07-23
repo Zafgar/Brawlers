@@ -105,3 +105,18 @@ func _passive_update(delta: float) -> void:
 			continue
 		if ally.global_position.distance_to(global_position) < 300.0:
 			ally.add_ult(delta * 0.8)   # ultiakku skaalattu uuteen talouteen (oli 1.5)
+
+
+## Tasoskaalaus: vauhtituki — buffit tärkeämpiä kuin oma vahinko.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.95, "damage": 0.80, "spell": 0.85, "melee": 0.80, "regen": 1.20}
+
+
+## Väistön kehitys: vauhti (kapellimestari kiihdyttää itsensäkin).
+func _dodge_evolution() -> String:
+	return "haste"
+
+
+## Botin rankkausjärjestys: Kiihdytysriffi ensin, bassoisku toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "dodge", "basic"]

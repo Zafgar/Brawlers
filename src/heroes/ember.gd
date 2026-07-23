@@ -183,3 +183,18 @@ func _firestorm() -> void:
 			"visual": "ember_storm",
 		})
 		await get_tree().create_timer(0.4).timeout
+
+
+## Tasoskaalaus: mage-hypercarry — loitsuvahinko skaalautuu kovaa.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.85, "damage": 1.05, "spell": 1.30, "melee": 0.95, "regen": 1.00}
+
+
+## Väistön kehitys: vauhti (alueiden hallitsija pitää etäisyyden).
+func _dodge_evolution() -> String:
+	return "haste"
+
+
+## Botin rankkausjärjestys: Liekkilammikko ensin, lämpöaalto toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "basic", "dodge"]

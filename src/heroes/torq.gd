@@ -190,3 +190,18 @@ func bot_wants_utility() -> bool:
 	var target = controller.get("_target")
 	return is_instance_valid(target) and target is Critter \
 		and (hp < max_hp * 0.7 or (target as Critter).is_major_objective())
+
+
+## Tasoskaalaus: tankki-jungleri — kesto edellä, vasara mukana.
+func _level_scaling() -> Dictionary:
+	return {"hp": 1.20, "damage": 0.90, "spell": 0.90, "melee": 1.00, "regen": 0.95}
+
+
+## Väistön kehitys: kilpi (ankkuroitu linnake suojaa myös liikkeessä).
+func _dodge_evolution() -> String:
+	return "shield"
+
+
+## Botin rankkausjärjestys: Majakka ensin, pulssi toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "basic", "dodge"]

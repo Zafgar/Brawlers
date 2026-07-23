@@ -326,3 +326,25 @@ func _respawn() -> void:
 func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	super(keep_ult_fraction)
 	_clear_scout_state()
+
+
+## Tasoskaalaus: konekivääri-hypercarry — perusvahinko skaalautuu kovimmin.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.85, "damage": 1.15, "spell": 0.95, "melee": 1.35, "regen": 0.95}
+
+
+## Väistön kehitys: vauhti (rulla + pyrähdys = uusi tuliasema).
+func _dodge_evolution() -> String:
+	return "haste"
+
+
+## Botin rankkausjärjestys: Konekivääri ensin, tainnutuskranaatti toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "basic", "a2", "a1", "dodge"]
+
+
+## Signatuuri: konekiväärin ranki kasvattaa lipasta kahdella patruunalla.
+func _on_rank_up(slot: String, _new_rank: int) -> void:
+	if slot == "basic":
+		ammo_max += 2
+		ammo = mini(ammo + 2, ammo_max)

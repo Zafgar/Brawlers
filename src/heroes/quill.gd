@@ -212,3 +212,18 @@ func _aim_default_range(_slot: String) -> float:
 
 func _aim_target_radius(_slot: String) -> float:
 	return 130.0
+
+
+## Tasoskaalaus: ranger — ladattu jousi on pääase, skaalautuu kovaa.
+func _level_scaling() -> Dictionary:
+	return {"hp": 0.95, "damage": 1.15, "spell": 1.00, "melee": 1.25, "regen": 0.95}
+
+
+## Väistön kehitys: vauhti (jousiampuja kitettää etäisyyttä).
+func _dodge_evolution() -> String:
+	return "haste"
+
+
+## Botin rankkausjärjestys: Ladattava jousi ensin, erikoisnuolet toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "basic", "a1", "a2", "dodge"]

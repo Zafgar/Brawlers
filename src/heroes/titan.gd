@@ -342,3 +342,24 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	_berserk = 0.0
 	_brace_started = false
 	_drop_target()
+
+
+## Tasoskaalaus: puhdas tankki — roolina kestää ja hallita, ei vahinko.
+func _level_scaling() -> Dictionary:
+	return {"hp": 1.40, "damage": 0.80, "spell": 0.85, "melee": 0.85, "regen": 1.00}
+
+
+## Väistön kehitys: kilpi (jättiläinen suojautuu liikkuessaan).
+func _dodge_evolution() -> String:
+	return "shield"
+
+
+## Botin rankkausjärjestys: Tartunta ensin, raivosuoja toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "dodge", "basic"]
+
+
+## Signatuuri: ultin ranki juurruttaa jättiläisen — lisää tönäisyvastusta.
+func _on_rank_up(slot: String, _new_rank: int) -> void:
+	if slot == "ult":
+		kb_resist = minf(kb_resist + 0.04, 0.75)

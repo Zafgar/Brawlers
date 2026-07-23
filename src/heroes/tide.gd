@@ -213,3 +213,25 @@ func _passive_update(delta: float) -> void:
 		if _dash_recharge <= 0.0:
 			ammo += 1
 			_dash_recharge = DASH_RECHARGE
+
+
+## Tasoskaalaus: virtafighter — kestävä lakaisija, aalto skaalautuu.
+func _level_scaling() -> Dictionary:
+	return {"hp": 1.05, "damage": 1.10, "spell": 1.00, "melee": 1.10, "regen": 1.00}
+
+
+## Väistön kehitys: faasi (vesisyöksy pitenee — Tide faasaa jo valmiiksi).
+func _dodge_evolution() -> String:
+	return "phase"
+
+
+## Botin rankkausjärjestys: Aalto ensin, keihäspisto toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "a2", "basic", "a1", "dodge"]
+
+
+## Signatuuri: vesisyöksyn ranki 3 antaa neljännen syöksylatauksen.
+func _on_rank_up(slot: String, new_rank: int) -> void:
+	if slot == "a1" and new_rank >= 3:
+		ammo_max += 1
+		ammo = mini(ammo + 1, ammo_max)

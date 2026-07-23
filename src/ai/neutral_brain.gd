@@ -37,6 +37,11 @@ func is_bot() -> bool:
 	return true
 
 
+## Kykypisteiden kehitystila ei koske yksiköitä.
+func spend_held() -> bool:
+	return false
+
+
 func update(hero, delta: float) -> void:
 	_attack = false
 	_mv = Vector2.ZERO

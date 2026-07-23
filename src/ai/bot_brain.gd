@@ -1957,7 +1957,8 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 	var diving: bool = _tower_diving(hero, arena)
 
 	# Ultimate — arvokkain, käytetään herkemmin kaikilla vaikeustasoilla.
-	if hero.ult_charge >= 100.0:
+	# Lukittua ulttia (ranki 0, aukeaa tasolla 4) ei edes harkita.
+	if hero.ult_charge >= 100.0 and hero.ult_unlocked():
 		if not diving and _want_ult(hero, arena, bb, dist, near_enemies) and randf() < ult_chance:
 			_flags.ult = true
 			_begin_ult_combo(hero)
@@ -2538,6 +2539,12 @@ func drop_just() -> bool:
 ## Paluukanavointi: botti "pitää nappia pohjassa" niin kauan kuin päätös elää.
 func recall_held() -> bool:
 	return _recall
+
+
+## Kykypisteiden kehitystila on vain ihmisille; botti käyttää pisteet suoraan
+## Hero._bot_spend_points-polun kautta.
+func spend_held() -> bool:
+	return false
 
 
 func is_bot() -> bool:

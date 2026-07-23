@@ -180,3 +180,18 @@ func bot_wants_utility() -> bool:
 	var target = controller.get("_target")
 	return is_instance_valid(target) and target is Critter \
 		and (hp < max_hp * 0.72 or (target as Critter).is_major_objective())
+
+
+## Tasoskaalaus: melee-bruiser-jungleri — poran perusvahinko kasvaa.
+func _level_scaling() -> Dictionary:
+	return {"hp": 1.05, "damage": 1.10, "spell": 0.95, "melee": 1.15, "regen": 0.95}
+
+
+## Väistön kehitys: vauhti (pora jahtaa kohdetta leiriltä gankkiin).
+func _dodge_evolution() -> String:
+	return "haste"
+
+
+## Botin rankkausjärjestys: Poraketju (perus) ensin, pyörreisku toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "basic", "a2", "a1", "dodge"]

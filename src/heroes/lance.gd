@@ -292,3 +292,18 @@ func _end_spear_dash() -> void:
 		_spear_dashing = false
 		set_collision_mask_value(2, true)
 	_dash_hits = []
+
+
+## Tasoskaalaus: kaksintaistelija — merkit rakentuvat perusiskuista.
+func _level_scaling() -> Dictionary:
+	return {"hp": 1.05, "damage": 1.10, "spell": 1.00, "melee": 1.20, "regen": 0.90}
+
+
+## Väistön kehitys: puhdistus (kaksintaistelija ei jää sidotuksi).
+func _dodge_evolution() -> String:
+	return "cleanse"
+
+
+## Botin rankkausjärjestys: Keihäspisto (merkit) ensin, syöksy toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "basic", "a1", "a2", "dodge"]

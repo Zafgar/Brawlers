@@ -168,3 +168,25 @@ func _passive_update(_delta: float) -> void:
 		shield_hp = 24.0
 		shield_timer = 1.5
 		shield_source = self
+
+
+## Tasoskaalaus: rintamatankki — paljon kestoa, maltillinen vahinko.
+func _level_scaling() -> Dictionary:
+	return {"hp": 1.30, "damage": 0.90, "spell": 0.85, "melee": 0.90, "regen": 0.95}
+
+
+## Väistön kehitys: kilpi (rintaman kallio suojautuu myös liikkuessaan).
+func _dodge_evolution() -> String:
+	return "shield"
+
+
+## Botin rankkausjärjestys: Kilpivalli ensin, sitten vetoisku.
+func _bot_skill_order() -> Array:
+	return ["ult", "a1", "a2", "basic", "dodge"]
+
+
+## Signatuuri: Kilpivallin ranki kasvattaa energiavarastoa hieman.
+func _on_rank_up(slot: String, _new_rank: int) -> void:
+	if slot == "a1":
+		res_max += 8.0
+		res = minf(res + 8.0, res_max)

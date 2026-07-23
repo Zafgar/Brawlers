@@ -145,3 +145,18 @@ func _grow_garden(center: Vector2) -> void:
 		enemy.apply_root(0.8)
 		Fx.burst(arena, enemy.global_position, Palette.glow(Color("7ed957"), 1.45), 8, 150.0, 0.35, 3.5)
 	_act_end()
+
+
+## Tasoskaalaus: fighter — elämänvarkaus nojaa perusosumiin.
+func _level_scaling() -> Dictionary:
+	return {"hp": 1.05, "damage": 1.10, "spell": 0.95, "melee": 1.10, "regen": 0.95}
+
+
+## Väistön kehitys: puhdistus (köynnökset eivät sido ruoskijaa itseään).
+func _dodge_evolution() -> String:
+	return "cleanse"
+
+
+## Botin rankkausjärjestys: Ruoska (lifesteal) ensin, sidonta toisena.
+func _bot_skill_order() -> Array:
+	return ["ult", "basic", "a1", "a2", "dodge"]
