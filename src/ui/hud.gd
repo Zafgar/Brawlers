@@ -887,6 +887,8 @@ class PaneHud:
 			var scol := Palette.glow(Palette.team(structure.team), 1.2)
 			if structure.kind == Structure.Kind.NEXUS:
 				_draw_diamond(sp, 5.0 if compact else 7.0, scol)
+			elif structure.kind == Structure.Kind.CRYSTAL:
+				_draw_diamond(sp, 3.5 if compact else 4.5, Palette.glow(scol, 1.2))
 			else:
 				draw_rect(Rect2(sp - Vector2(3.0, 3.0), Vector2(6.0, 6.0)), scol)
 

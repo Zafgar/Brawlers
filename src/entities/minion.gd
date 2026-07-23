@@ -4,7 +4,7 @@ extends Hero
 ## tukikohtaa, hyökkää matkalla vastaan tulevia vihollisia (minionit, sankarit,
 ## tornit). Kuuluu joukkueeseen (0/1) mutta on yksikkö (is_unit).
 
-enum Kind { MELEE, RANGED }
+enum Kind { MELEE, RANGED, SUPER }
 
 var kind := Kind.MELEE
 var attack_reach := 62.0
@@ -38,10 +38,29 @@ func setup_minion(p_arena, p_team: int, pos: Vector2, waypoints: Array,
 	profile.team = p_team
 	profile.index = 0
 	profile.hero_id = "minion"
-	profile.display_name = "Etuvartio" if kind == Kind.MELEE else "Sädevahti"
+	match kind:
+		Kind.SUPER:
+			profile.display_name = "Superminioni"
+		Kind.MELEE:
+			profile.display_name = "Etuvartio"
+		_:
+			profile.display_name = "Sädevahti"
 	ult_gain_mult = 0.0
 
-	if kind == Kind.MELEE:
+	if kind == Kind.SUPER:
+		# Superminioni (murretun linjan palkinto): ~3x etuvartion HP, ~1.8x
+		# vahinko, hieman isompi ja lähes töytäisynkestävä. Vahvempi ja
+		# vaikuttava aallon kärki — ei kuitenkaan tajuton raidboss.
+		max_hp = 372.0
+		radius = 22.0
+		base_speed = 138.0
+		attack_reach = 66.0
+		attack_dmg = 20.5
+		cd_max.basic = 0.8
+		kb_resist = 0.85
+		gold_value = 40
+		xp_value = 80
+	elif kind == Kind.MELEE:
 		max_hp = 124.0
 		radius = 17.0
 		base_speed = 140.0
@@ -60,6 +79,9 @@ func setup_minion(p_arena, p_team: int, pos: Vector2, waypoints: Array,
 	attack_dmg *= 1.0 + late * LATE_DMG_SCALE
 	hp = max_hp
 	_color = Palette.team(p_team).lerp(Color("d8e6ff") if p_team == 0 else Color("ffe6d0"), 0.25)
+	if kind == Kind.SUPER:
+		# Kristallinhohtoinen kärkiväri: erottuu aallosta mutta joukkue näkyy.
+		_color = Palette.glow(Palette.team(p_team).lerp(Color("e6f6ff"), 0.35), 1.15)
 
 	var brain := MinionBrain.new()
 	brain.waypoints = waypoints
@@ -325,10 +347,12 @@ class MinionVisual:
 		draw_circle(Vector2.ZERO, r + 2.0, Color(0.02, 0.03, 0.06, 0.4))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		var body := Vector2(0, -bob)
-		if m.kind == Kind.MELEE:
-			_draw_melee(m, body, r, col, dark, moving)
-		else:
+		if m.kind == Kind.RANGED:
 			_draw_ranged(m, body, r, col, dark, moving)
+		else:
+			_draw_melee(m, body, r, col, dark, moving)
+			if m.kind == Kind.SUPER:
+				_draw_crown(body, r, col)
 		if _flash > 0.0:
 			draw_circle(body, r * 1.05, Color(1, 1, 1, _flash * 0.7))
 		# Pieni HP-viiva
@@ -387,6 +411,30 @@ class MinionVisual:
 		draw_circle(body + forward * r * 0.18, r * 0.42, dark)
 		draw_line(body + forward * r * 0.43 - side * r * 0.24,
 			body + forward * r * 0.43 + side * r * 0.24, Color("eaffff"), 3.0)
+
+	## Superminionin kruunu + sykkivä kristallisärmä: kruunattu siluetti ja
+	## kidehehku erottavat murretun linjan kärkiyksikön aallosta heti.
+	func _draw_crown(body: Vector2, r: float, col: Color) -> void:
+		var glow: Color = Palette.glow(col, 1.5)
+		var top := body + Vector2(0, -r * 0.95)
+		var crown := PackedVector2Array([
+			top + Vector2(-r * 0.52, 0), top + Vector2(-r * 0.52, -r * 0.18),
+			top + Vector2(-r * 0.30, -r * 0.02), top + Vector2(-r * 0.12, -r * 0.34),
+			top + Vector2(0.0, -r * 0.06), top + Vector2(r * 0.12, -r * 0.34),
+			top + Vector2(r * 0.30, -r * 0.02), top + Vector2(r * 0.52, -r * 0.18),
+			top + Vector2(r * 0.52, 0),
+		])
+		draw_colored_polygon(crown, Color("ffd76d"))
+		draw_polyline(PackedVector2Array(Array(crown) + [crown[0]]),
+			Palette.with_alpha(Color("8a6a2a"), 0.8), 1.5)
+		var pulse := 0.6 + 0.4 * sin(_time * 6.0)
+		var gem := top + Vector2(0, -r * 0.16)
+		var shard := PackedVector2Array([
+			gem + Vector2(0, -r * 0.2), gem + Vector2(r * 0.12, 0),
+			gem + Vector2(0, r * 0.14), gem + Vector2(-r * 0.12, 0)])
+		draw_colored_polygon(shard, Palette.with_alpha(glow, 0.6 + 0.3 * pulse))
+		# Kevyt kidehehku koko yksikön ympärillä.
+		draw_arc(body, r + 5.0, 0.0, TAU, 26, Palette.with_alpha(glow, 0.18 + 0.14 * pulse), 2.0)
 
 	func _draw_ranged(_m: Minion, body: Vector2, r: float, col: Color,
 			dark: Color, moving: float) -> void:

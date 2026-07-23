@@ -850,7 +850,10 @@ func _pick_push_target(hero: Hero, arena) -> Hero:
 		# ettei botti kävele turhaan sisemmän tornin/nexuksen alueelle.
 		if s.is_protected():
 			continue
-		if _moba_lane != "" and s.kind == Structure.Kind.TOWER and s.lane_id != _moba_lane:
+		# Linjasuodatus koskee torneja JA kristalleja (kristalli on suojaamaton
+		# ja siksi aina kelvollinen työntökohde omalla linjalla).
+		if _moba_lane != "" and s.kind != Structure.Kind.NEXUS \
+				and s.lane_id != "" and s.lane_id != _moba_lane:
 			continue
 		var d: float = hero.global_position.distance_to(s.global_position)
 		if d < best_d:

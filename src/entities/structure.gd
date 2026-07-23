@@ -8,7 +8,7 @@ extends Hero
 ## kohde: se on suojattu (haavoittumaton) kunnes MOLEMPIEN linjojen base-tornit
 ## (tier 2) on tuhottu — torniketju pakottaa järjestyksen uloin -> sisin -> base.
 
-enum Kind { TOWER, NEXUS }
+enum Kind { TOWER, NEXUS, CRYSTAL }
 
 const SHOT_RANGE := 440.0      # kasvatettu (oli 360: liian moni pystyi pokettamaan
                               # tornia turvassa ulkopuolelta). Ei ylety silti pisimmän
@@ -87,6 +87,14 @@ func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2,
 			_invuln = true
 			gold_value = 0
 			xp_value = 0
+		Kind.CRYSTAL:
+			# Kristallikello (inhibiittori-suoja): EI hyökkää — se vain palauttaa
+			# nexuksen suojaan niin kauan kuin se seisoo. Kohtuu-HP, jotta
+			# superminioniaalto + sankari murtavat sen järkevässä ajassa.
+			max_hp = 900.0
+			radius = 40.0
+			gold_value = 150
+			xp_value = 180
 	_color = Palette.team(p_team).lerp(Color.WHITE, 0.15)
 	hp = max_hp
 
@@ -111,6 +119,8 @@ func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2,
 func _sname() -> String:
 	if kind == Kind.NEXUS:
 		return "Nexus"
+	if kind == Kind.CRYSTAL:
+		return "%s kristalli" % lane_id.capitalize() if lane_id != "" else "Kristalli"
 	if lane_id != "":
 		return "%s %s" % [lane_id.capitalize(), "base-torni" if lane_tier == 2 else "torni"]
 	return "Torni"
@@ -122,6 +132,12 @@ func hero_color() -> Color:
 
 func set_vulnerable() -> void:
 	_invuln = false
+
+
+## Nexuksen suojaustilan asetus keskitetysti (arena._refresh_nexus_protection):
+## kristallikello voi palauttaa suojan base-tornien kaatumisen jälkeenkin.
+func set_protected(value: bool) -> void:
+	_invuln = value
 
 
 ## Asettaa tornin "suojaajan": tämä torni on immuuni kunnes suojaaja (edessä
@@ -149,6 +165,8 @@ func _passive_update(delta: float) -> void:
 	global_position = _anchor
 	velocity = Vector2.ZERO
 	_protected_audio_cd = maxf(_protected_audio_cd - delta, 0.0)
+	if kind == Kind.CRYSTAL:
+		return   # kristalli ei hyökkää — se vain suojaa nexusta seisomalla
 	if kind == Kind.NEXUS:
 		_nexus_laser(delta)
 		return
@@ -418,6 +436,8 @@ class StructureVisual:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if s.kind == Structure.Kind.TOWER:
 			_paint_tower(s, r, col, dark)
+		elif s.kind == Structure.Kind.CRYSTAL:
+			_paint_crystal(s, r, col, dark)
 		else:
 			_paint_nexus(s, r, col, dark)
 		if _flash > 0.0:
@@ -562,6 +582,59 @@ class StructureVisual:
 			draw_arc(Vector2.ZERO, r + 8.0, 0.0, TAU, 40,
 				Palette.with_alpha(Palette.SHIELD, sp), 3.0)
 
+	## Kristallikello: pulssaava monitahoinen kide matalalla jalustalla —
+	## selvästi eri siluetti kuin torneilla (ei piippua, ei kantamakehää) tai
+	## nexuksella. Joukkueen väri + valonsäde ylös = "tuhoa tämä" näkyy kaukaa.
+	func _paint_crystal(s: Structure, r: float, col: Color, dark: Color) -> void:
+		var glow: Color = Palette.glow(col, 1.5)
+		var pulse: float = 0.5 + 0.5 * sin(_time * 5.0)
+		var hp_frac: float = clampf(s.hp / maxf(s.max_hp, 1.0), 0.0, 1.0)
+		# Jalusta: matala kuusikulmio ja hehkuvat riimukivet ympärillä.
+		var plinth := PackedVector2Array()
+		for i in range(6):
+			var a: float = TAU * float(i) / 6.0 + PI / 6.0
+			plinth.append(Vector2(cos(a) * r * 1.05, r * 0.55 + sin(a) * r * 0.36))
+		draw_colored_polygon(plinth, Palette.darker(dark, 0.25))
+		for i in range(6):
+			var a2: float = TAU * float(i) / 6.0
+			var p2 := Vector2(cos(a2), sin(a2) * 0.6) * r * 0.92 + Vector2(0, r * 0.5)
+			draw_circle(p2, r * 0.10, Palette.with_alpha(glow, 0.4 + 0.3 * pulse))
+		# Suojakehä: kide suojaa nexusta — hehkuva sidosrengas sykkii.
+		draw_arc(Vector2.ZERO, r + 14.0, 0.0, TAU, 40,
+			Palette.with_alpha(glow, 0.20 + 0.18 * pulse), 3.0)
+		# Pääkide: korkea viisitahoinen timantti.
+		var tip := Vector2(0, -r * 1.35)
+		var base_y := r * 0.45
+		var core := PackedVector2Array([
+			tip, Vector2(r * 0.52, -r * 0.25), Vector2(r * 0.3, base_y),
+			Vector2(-r * 0.3, base_y), Vector2(-r * 0.52, -r * 0.25)])
+		draw_colored_polygon(core, Palette.with_alpha(col, 0.85))
+		draw_polyline(PackedVector2Array(Array(core) + [core[0]]),
+			Palette.with_alpha(glow, 0.8), 2.5)
+		draw_line(tip, Vector2(0, base_y), Palette.with_alpha(Color.WHITE, 0.45), 2.0)
+		# Sivukiteet nojaavat pääkiteeseen.
+		for side_f in [-1.0, 1.0]:
+			var sv: float = side_f
+			var side_tip := Vector2(sv * r * 0.78, -r * 0.55)
+			var shard := PackedVector2Array([
+				side_tip, Vector2(sv * r * 0.95, r * 0.1),
+				Vector2(sv * r * 0.45, r * 0.42)])
+			draw_colored_polygon(shard, Palette.with_alpha(col, 0.65))
+			draw_polyline(PackedVector2Array(Array(shard) + [shard[0]]),
+				Palette.with_alpha(glow, 0.6), 2.0)
+		# Halkeamat kertovat HP:n menetyksen ilman palkin lukemista.
+		for crack_i in range(int(ceil((1.0 - hp_frac) * 5.0))):
+			var ca: float = -1.1 + crack_i * 0.55
+			var cp0 := Vector2.RIGHT.rotated(ca) * r * 0.14 + Vector2(0, -r * 0.3)
+			var cp1 := Vector2.RIGHT.rotated(ca + 0.25) * r * 0.5 + Vector2(0, -r * 0.3)
+			draw_line(cp0, cp1, Palette.with_alpha(Color("140f12"), 0.6), 2.0)
+		# Sykkivä ydin + valonsäde ylös.
+		draw_circle(Vector2(0, -r * 0.3), r * (0.22 + 0.06 * pulse),
+			Palette.with_alpha(Color.WHITE, 0.5 + 0.3 * pulse))
+		if s.show_range_visual:
+			draw_rect(Rect2(-r * 0.16, -r * 4.6, r * 0.32, r * 3.2),
+				Palette.with_alpha(glow, 0.08 + 0.06 * pulse))
+
 	func _paint_nexus(s: Structure, r: float, col: Color, dark: Color) -> void:
 		var vuln: bool = not s.is_protected()
 		var glow: Color = Palette.glow(col, 1.45)
@@ -677,6 +750,9 @@ class StructureVisual:
 			UiKit.draw_text(self, Vector2(0, by - 28.0),
 				"SUOJATTU" if s.is_protected() else "AVOIN — TUHOA",
 				11, Palette.SHIELD if s.is_protected() else Palette.BAD, true, 2)
+		elif s.kind == Structure.Kind.CRYSTAL:
+			UiKit.draw_text(self, Vector2(0, by - 28.0),
+				"SUOJAA NEXUSTA — TUHOA", 11, Palette.BAD, true, 2)
 		draw_rect(Rect2(-bw / 2.0, by, bw, 7.0), Color(0, 0, 0, 0.6))
 		draw_rect(Rect2(-bw / 2.0, by, bw * frac, 7.0), Palette.glow(col, 1.15))
 		draw_rect(Rect2(-bw / 2.0, by, bw, 7.0), Palette.with_alpha(Color.WHITE, 0.25), false, 1.0)

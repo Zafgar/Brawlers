@@ -59,6 +59,12 @@ const WAVE_SIZE := 5              # 3 melee + 2 ranged per linja per joukkue
 # useammin ja vie pelit maaliin.
 const LATE_WAVE_TIME := 840.0
 const MINION_CAP := 96
+# Kristallikello (LoL-inhibiittori käänteisenä): base-tornin kaaduttua murtaja
+# saa +1 superminionin per aalto sillä linjalla, kunnes puolustajan kristalli
+# nousee tornin paikalle (45 s viive). Elossa oleva kristalli pysäyttää
+# superminionit JA toimii linjan base-tornina nexuksen suojaketjussa. Murrettu
+# kristalli nousee aina 45 s kuluttua uudelleen — sykli jatkuu.
+const CRYSTAL_RESPAWN := 45.0
 const DRAGON_FIRST := 90.0
 const BARON_FIRST := 180.0
 const PASSIVE_GOLD_PER_SEC := 1.5
@@ -81,6 +87,9 @@ var _lane_towers: Array = [{}, {}]     # team -> lane -> outer/inner/base
 var _wave_timer := WAVE_FIRST
 var _moba_camp_queue: Array = []
 var _moba_camps_active := false
+var _crystal_lanes: Dictionary = {}    # "team:lane" -> {team, lane, spot, timer, crystal}
+var super_minions_spawned := [0, 0]    # telemetria: superminionit per joukkue
+var crystals_broken := [0, 0]          # telemetria: murskatut kristallit per murtajajoukkue
 var first_wave_crash_time := -1.0
 var _dragon_critter = null
 var _dragon_timer := DRAGON_FIRST
@@ -785,6 +794,9 @@ func _setup_moba() -> void:
 	_moba_camp_queue.clear()
 	_moba_camps_active = false
 	first_wave_crash_time = -1.0
+	_crystal_lanes.clear()
+	super_minions_spawned = [0, 0]
+	crystals_broken = [0, 0]
 	for cpos in mm.red_camps():
 		_moba_camp_queue.append([Critter.Kind.RED_CAMP, cpos])
 	for cpos in mm.blue_camps():
@@ -873,6 +885,7 @@ func _moba_physics(delta: float) -> void:
 	_cleanup_minions()
 	_check_first_wave_crash()
 	_advance_moba_objectives(delta)
+	_tick_crystals(delta)
 	# Minioniaallot molemmille joukkueille.
 	_wave_timer -= delta
 	if _wave_timer <= 0.0:
@@ -1193,6 +1206,15 @@ func _spawn_wave(team: int, lane_id: String = MapMoba.BOTTOM) -> void:
 		add_child(m)
 		heroes.append(m)
 		minions.append(m)
+	# Superminioni: kun vihollisen base-torni tällä linjalla on murrettu eikä
+	# suojaava kristalli seiso, joka aalto saa yhden kruunatun kärkiyksikön.
+	if _lane_super_active(team, lane_id):
+		var sm := Minion.new()
+		sm.setup_minion(self, team, base + lead * 60.0, path, lane_id, Minion.Kind.SUPER)
+		add_child(sm)
+		heroes.append(sm)
+		minions.append(sm)
+		super_minions_spawned[team] += 1
 
 
 ## Rakennus tuhottu: torni avaa nexuksen kun molemmat kaatuneet; nexus = voitto.
@@ -1242,19 +1264,39 @@ func on_structure_destroyed(structure, source) -> void:
 					Palette.glow(Palette.team(1 - s.team), 1.3), 18)
 		if s.lane_tier == 2:
 			hud.show_banner("%s BASE-TORNI KAATUI!" % s.lane_id.to_upper(),
-				"Linja on auki baseen — molemmat base-tornit avaavat Nexuksen", 2.2)
-		if _base_turrets_destroyed(s.team):
-			var nx := _nexus[s.team] as Structure
-			if nx != null and is_instance_valid(nx):
-				nx.set_vulnerable()
-			hud.show_banner("NEXUS AVOINNA!",
-				"%s nexus on nyt haavoittuvainen" % Game.team_name(s.team), 2.6)
-			# Uhkaava oma Nexus-cue kuuluu aina ja musiikki siirtyy loppupeliin.
-			AudioMgr.play("nexus_exposed", 0.02, -1.0)
-			if not Game.simulating:
-				AudioMgr.duck_music(7.0, 0.9)    # musiikki dippaa iskun alta
-				AudioMgr.play_music("battle4")   # raju huipennus loppupeliin
-			_sim_event("%s nexus avattu" % Game.team_name(s.team))
+				"%s saa superminioneja — kristalli nousee suojaksi %d s kuluttua" % [
+					Game.team_name(attacker_team), int(CRYSTAL_RESPAWN)], 2.4)
+			# Käynnistä kristallisykli: 45 s kuluttua puolustajan kristalli nousee
+			# tornin paikalle ja pysäyttää superminionit + suojaa nexuksen.
+			_crystal_lanes["%d:%s" % [s.team, s.lane_id]] = {
+				"team": s.team, "lane": s.lane_id,
+				"spot": s.global_position, "timer": CRYSTAL_RESPAWN, "crystal": null,
+			}
+		_refresh_nexus_protection(s.team)
+	elif s.kind == Structure.Kind.CRYSTAL:
+		var attacker_team := 1 - s.team
+		if source != null and is_instance_valid(source) and source.team <= 1:
+			attacker_team = source.team
+		crystals_broken[attacker_team] += 1
+		if source != null and is_instance_valid(source) and not source.is_unit:
+			source.profile.stats.gold += s.gold_value
+			source.profile.stats.tower_gold += s.gold_value
+			_grant_moba_xp(source, float(s.xp_value), "tower")
+			_record_buff_economy(source, s.gold_value, 0.0)
+			_update_economy_milestones(source)
+		# Sykli jatkuu: sama solmu kierrätetään respawnissa 45 s kuluttua.
+		var entry_v = _crystal_lanes.get("%d:%s" % [s.team, s.lane_id])
+		if entry_v != null:
+			var entry: Dictionary = entry_v
+			entry["crystal"] = s
+			entry["timer"] = CRYSTAL_RESPAWN
+		popup(s.global_position + Vector2(0, -90), "KRISTALLI MURSKATTU!",
+			Palette.glow(Palette.team(attacker_team), 1.4), 20)
+		hud.show_banner("%s KRISTALLI MURSKATTU!" % s.lane_id.to_upper(),
+			"Superminionit jatkavat — kristalli nousee uudelleen %d s kuluttua" % int(CRYSTAL_RESPAWN), 2.2)
+		hud.ko_feed("%s menetti %s-kristallin" % [Game.team_name(s.team), s.lane_id])
+		_sim_event("%s %s kristalli murskattu" % [Game.team_name(s.team), s.lane_id])
+		_refresh_nexus_protection(s.team)
 	else:
 		_end_reason = "nexus tuhottu"
 		_sim_event("%s nexus tuhottu" % Game.team_name(s.team))
@@ -1272,6 +1314,9 @@ func _team_has_active_buff(team: int, kind: String) -> bool:
 	return false
 
 
+## Nexuksen suojaehto: molempien linjojen base-tornit murrettu EIKÄ yhtään
+## elossa olevaa kristallia kummallakaan linjalla (kristalli toimii linjan
+## base-tornina suojaketjussa).
 func _base_turrets_destroyed(team: int) -> bool:
 	for lane_id in [MapMoba.TOP, MapMoba.BOTTOM]:
 		var lane_list: Array = _lane_towers[team].get(lane_id, [])
@@ -1280,7 +1325,100 @@ func _base_turrets_destroyed(team: int) -> bool:
 		var base_tower := lane_list[2] as Structure
 		if base_tower != null and is_instance_valid(base_tower) and base_tower.alive:
 			return false
+		if _lane_crystal(team, lane_id) != null:
+			return false
 	return true
+
+
+## Kristallisyklien eteneminen: kun linjan kristalli on murrettu (tai sitä ei
+## ole vielä noussut), ajastin laskee ja nollassa kristalli nousee (uudelleen).
+func _tick_crystals(delta: float) -> void:
+	for key in _crystal_lanes:
+		var entry: Dictionary = _crystal_lanes[key]
+		var cs := entry.get("crystal") as Structure
+		if cs != null and is_instance_valid(cs) and cs.alive:
+			continue
+		entry["timer"] = float(entry["timer"]) - delta
+		if entry["timer"] <= 0.0:
+			_spawn_crystal(entry)
+
+
+## Nostaa (tai herättää) puolustajan kristallin base-tornin paikalle: pysäyttää
+## superminionit sillä linjalla ja palauttaa nexuksen suojaketjuun.
+func _spawn_crystal(entry: Dictionary) -> void:
+	var team: int = int(entry["team"])
+	var lane: String = str(entry["lane"])
+	var spot: Vector2 = entry["spot"]
+	var cs := entry.get("crystal") as Structure
+	if cs != null and is_instance_valid(cs):
+		cs.reset_for_round()   # kierrätä sama solmu: täysi HP, törmäys, fysiikka
+	else:
+		cs = Structure.new()
+		cs.setup_structure(self, Structure.Kind.CRYSTAL, team, spot, lane, 2)
+		add_child(cs)
+		heroes.append(cs)
+		structures.append(cs)
+		entry["crystal"] = cs
+	entry["timer"] = CRYSTAL_RESPAWN
+	_refresh_nexus_protection(team)
+	popup(spot + Vector2(0, -90), "KRISTALLI SUOJAA NEXUSTA — TUHOA SE",
+		Palette.glow(Palette.team(team), 1.35), 18)
+	hud.show_banner("%s KRISTALLI NOUSI!" % lane.to_upper(),
+		"Kristalli suojaa %s nexusta ja pysäyttää superminionit — tuhoa se" % Game.team_name(team), 2.4)
+	hud.ko_feed("%s sai %s-kristallin suojakseen" % [Game.team_name(team), lane])
+	if not Game.simulating:
+		AudioMgr.play("tower_guard", 0.03, -4.0, spot)
+	Fx.ring(self, spot, Palette.glow(Palette.team(team), 1.5), 150.0, 0.8, 7.0)
+	_sim_event("%s %s kristalli nousi" % [Game.team_name(team), lane])
+
+
+## Linjan elossa oleva kristalli (tai null).
+func _lane_crystal(team: int, lane_id: String) -> Structure:
+	var entry_v = _crystal_lanes.get("%d:%s" % [team, lane_id])
+	if entry_v == null:
+		return null
+	var cs := (entry_v as Dictionary).get("crystal") as Structure
+	if cs != null and is_instance_valid(cs) and cs.alive:
+		return cs
+	return null
+
+
+## Saako joukkue superminionin tälle linjalle? Kyllä, jos vihollisen base-torni
+## linjalla on murrettu EIKÄ suojaava kristalli seiso pystyssä.
+func _lane_super_active(team: int, lane_id: String) -> bool:
+	var foe := 1 - team
+	var lane_list: Array = _lane_towers[foe].get(lane_id, [])
+	if lane_list.size() < 3:
+		return false
+	var base_tower := lane_list[2] as Structure
+	if base_tower != null and is_instance_valid(base_tower) and base_tower.alive:
+		return false
+	return _lane_crystal(foe, lane_id) == null
+
+
+## Nexuksen suojaketju yhdestä paikasta: nexus on haavoittuva vain kun molempien
+## linjojen base-tornit on murrettu EIKÄ yhtään kristallia seiso. Kristallin
+## nousu palauttaa suojan (ja laserin); murtuminen avaa nexuksen uudelleen.
+func _refresh_nexus_protection(team: int) -> void:
+	var nx := _nexus[team] as Structure
+	if nx == null or not is_instance_valid(nx) or not nx.alive:
+		return
+	var was_protected: bool = nx.is_protected()
+	var open := _base_turrets_destroyed(team)
+	nx.set_protected(not open)
+	if open and was_protected:
+		hud.show_banner("NEXUS AVOINNA!",
+			"%s nexus on nyt haavoittuvainen" % Game.team_name(team), 2.6)
+		# Uhkaava oma Nexus-cue kuuluu aina ja musiikki siirtyy loppupeliin.
+		AudioMgr.play("nexus_exposed", 0.02, -1.0)
+		if not Game.simulating:
+			AudioMgr.duck_music(7.0, 0.9)    # musiikki dippaa iskun alta
+			AudioMgr.play_music("battle4")   # raju huipennus loppupeliin
+		_sim_event("%s nexus avattu" % Game.team_name(team))
+	elif not open and not was_protected:
+		hud.show_banner("NEXUS SUOJATTU",
+			"Kristalli suojaa %s nexusta — tuhoa se ensin" % Game.team_name(team), 2.2)
+		_sim_event("%s nexus suojattu (kristalli)" % Game.team_name(team))
 
 
 ## Aikakaton ratkaisu ilman sokeaa sinisen suosintaa. Järjestys:
@@ -1442,6 +1580,8 @@ func sim_snapshot() -> Dictionary:
 		"tower_events": tower_events,
 		"jungle_clear_events": jungle_clear_events,
 		"objective_events": objective_events,
+		"super_minions": super_minions_spawned.duplicate(),
+		"crystals_broken": crystals_broken.duplicate(),
 		"heroes": heroes_data,
 	}
 
