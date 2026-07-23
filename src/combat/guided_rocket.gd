@@ -20,6 +20,7 @@ var hit_radius := 42.0
 var blast_radius := 230.0
 var dmg := 185.0
 var kb := 500.0
+var dmg_ramp_time := 2.0            # aika jonka lento tarvitsee täyteen tehoon
 var heading := Vector2.RIGHT
 var _dead := false
 var _t := 0.0
@@ -47,6 +48,7 @@ static func launch(p_pilot: Hero, pos: Vector2, dir: Vector2, cfg := {}) -> Guid
 	r.hit_radius = cfg.get("hit_radius", 42.0)
 	r.blast_radius = cfg.get("blast", 230.0)
 	r.dmg = cfg.get("dmg", 185.0)
+	r.dmg_ramp_time = cfg.get("ramp", 2.0)
 	r._team_color = Palette.team(p_pilot.team)
 	if p_pilot.profile != null and not p_pilot.profile.is_bot:
 		r._owner_color = p_pilot.profile.color()
@@ -66,6 +68,12 @@ func _ready() -> void:
 ## Osuuko rakettiin: vihollisjoukkue tai viidakko-olento, ei rakennus/liittolainen.
 func _is_target(h) -> bool:
 	return is_instance_valid(h) and h.alive and not (h is Structure) and h.team != team
+
+
+## Tehoramppi: laukaisussa lähes nolla, täysi kun lento on kiihtynyt (~ramp-ajan).
+## Lähipamautus naamalle on siis heikko — raketti palkitsee pitkän ohjatun lennon.
+func _power() -> float:
+	return clampf(0.05 + 0.95 * (_t / maxf(dmg_ramp_time, 0.1)), 0.05, 1.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -119,25 +127,30 @@ func _detonate() -> void:
 	if _dead:
 		return
 	_dead = true
+	# Teho lennon kiihtymisen mukaan: heti räjäytetty raketti on pieni pamaus,
+	# täyteen kiihtynyt tuhoisa. Myös alue, työntö ja efektit skaalautuvat.
+	var power := _power()
+	var blast: float = blast_radius * lerpf(0.5, 1.0, power)
 	if arena != null:
-		AudioMgr.play("salvo_rocket_impact", 0.03, 1.0, global_position)
-		arena.shake(0.9)
-		Fx.flash(arena, global_position, Palette.glow(Color("fff0a6"), 1.85), blast_radius * 0.82, 0.68)
-		Fx.ring(arena, global_position, Palette.glow(Color("ff5c28"), 1.8), blast_radius, 0.82, 13.0)
-		Fx.ring(arena, global_position, Palette.glow(Color("ffb03a"), 1.45), blast_radius * 0.68, 0.62, 8.0)
-		Fx.ring(arena, global_position, _team_color, blast_radius * 0.42, 0.48, 4.0)
-		Fx.burst(arena, global_position, Palette.glow(Color("ffd76d"), 1.75), 38, 520.0, 0.72, 9.0)
+		AudioMgr.play("salvo_rocket_impact", 0.03, 1.0 - (1.0 - power) * 6.0, global_position)
+		arena.shake(0.25 + 0.65 * power)
+		Fx.flash(arena, global_position, Palette.glow(Color("fff0a6"), 1.85), blast * 0.82, 0.68)
+		Fx.ring(arena, global_position, Palette.glow(Color("ff5c28"), 1.8), blast, 0.82, 13.0)
+		Fx.ring(arena, global_position, Palette.glow(Color("ffb03a"), 1.45), blast * 0.68, 0.62, 8.0)
+		Fx.ring(arena, global_position, _team_color, blast * 0.42, 0.48, 4.0)
+		Fx.burst(arena, global_position, Palette.glow(Color("ffd76d"), 1.75),
+			int(14 + 24 * power), 520.0, 0.72, 9.0)
 	if pilot != null and is_instance_valid(pilot):
 		pilot._act("ult")
 		for h in arena.heroes:
 			if not _is_target(h):
 				continue
 			var d: float = h.global_position.distance_to(global_position)
-			if d <= blast_radius + h.radius:
+			if d <= blast + h.radius:
 				var away: Vector2 = (h.global_position - global_position).normalized()
 				if away == Vector2.ZERO:
 					away = Vector2.UP
-				pilot.deal_damage_to(h, dmg, kb, away)
+				pilot.deal_damage_to(h, dmg * power, kb * lerpf(0.4, 1.0, power), away)
 		pilot._act_end()
 		if pilot.has_method("surface"):
 			pilot.surface()
@@ -165,10 +178,18 @@ func _draw() -> void:
 		Vector2(27, 0), Vector2(10, -7.0), Vector2(-17, -7.0),
 		Vector2(-19, 0), Vector2(-17, 7.0), Vector2(10, 7.0)])
 	draw_colored_polygon(plate, col)
-	# Kärkikartio ja vaararaidat erottavat ultin kaikista perusammuksista.
+	# Kärkikartio hehkuu tehorampin mukaan: himmeä laukaisussa, kirkas täydessä
+	# tehossa — lentäjä näkee suoraan koska raketti on tuhoisimmillaan.
+	var power := _power()
+	var tip_col: Color = Color("8a6a45").lerp(Palette.glow(Color("ffd76d"), 1.7), power)
 	draw_colored_polygon(PackedVector2Array([
-		Vector2(31, 0), Vector2(12, -10), Vector2(12, 10)]),
-		Palette.glow(Color("ffd76d"), 1.55))
+		Vector2(31, 0), Vector2(12, -10), Vector2(12, 10)]), tip_col)
+	# Tehomittari raketin ympärillä (täyttyvä kaari omalla värillä).
+	draw_arc(Vector2.ZERO, 42.0, -PI / 2.0, -PI / 2.0 + TAU * power, 30,
+		Palette.with_alpha(Palette.glow(_owner_color, 1.3), 0.5 + 0.3 * power), 3.0)
+	if power >= 0.999:
+		draw_arc(Vector2.ZERO, 48.0, 0.0, TAU, 34,
+			Palette.with_alpha(Palette.glow(Color("ffd76d"), 1.6), 0.35 + 0.2 * sin(_t * 9.0)), 2.0)
 	for x in [-12.0, -3.0, 6.0]:
 		draw_line(Vector2(x, -7), Vector2(x + 6, 7), Color("4c251d"), 3.0)
 	# Neljä vakainta ja joukkue-/pelaajamerkintä.

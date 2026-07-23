@@ -371,7 +371,7 @@ const HEROES := {
 			"a1": {"name": "Miina", "desc": "Heittää miinan, joka laukeaa vihollisen lähestyessä. Enintään 5 kentällä; kun raja täyttyy, vanhin räjähtää tehden tilaa.", "cd": 1.3},
 			"a2": {"name": "Kaarimorttari", "desc": "Pitkän kantaman voimakas kranaatti putoaa hitaasti merkittyyn pisteeseen. Pidä L1 pohjassa, siirrä maalia oikealla tatilla ja vapauta — vaikea osua, mutta kova vahinko.", "cd": 5.0},
 			"dodge": {"name": "Leijunta", "desc": "Nousee ilmaan kohdistamattomaksi (immuuni) hetkeksi ja liikkuu kelluen — voi käyttää kykyjä ilmassa. Pitkä jäähdytys.", "cd": 8.0},
-			"ult": {"name": "Bunkkeriohjus", "desc": "Lukittuu näkyväksi bunkkeriksi ja ottaa 72 % vähemmän vahinkoa. Laukaisee valtavan ohjuksen, joka kiihtyy koko lennon ajan ja muuttuu vaikeaksi kääntää. Ohjaa vasemmalla tai oikealla tatilla.", "cd": 0.0},
+			"ult": {"name": "Bunkkeriohjus", "desc": "Lukittuu näkyväksi bunkkeriksi ja ottaa 72 % vähemmän vahinkoa. Laukaisee valtavan ohjuksen, joka kiihtyy koko lennon ajan ja muuttuu vaikeaksi kääntää. Vahinko kasvaa lennon kiihtyessä: lähilaukaus on heikko, pitkä lento tuhoisa (tehomittari ohjuksen ympärillä). Ohjaa vasemmalla tai oikealla tatilla.", "cd": 0.0},
 		},
 	},
 	"kaira": {

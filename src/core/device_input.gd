@@ -12,7 +12,15 @@ extends RefCounted
 ## kuin kolmiolla. Kolmio toimii yhä vaihtoehtoisena ultinappina.
 
 const DEADZONE := 0.22
-const TRIGGER_THRESHOLD := 0.4
+# Liipaisimien hystereesi: painallus rekisteröityy 0.45:ssä mutta irtoaa vasta
+# 0.28:ssa. Ilman tätä liipaisimen värähtely kynnyksen ympärillä laukaisi
+# pito-ja-vapauta-ultin (L2) vahingossa kesken tähtäyksen.
+const TRIGGER_PRESS := 0.45
+const TRIGGER_RELEASE := 0.28
+# Vastekäyrät (expo): tatin keskialue on tarkempi, reuna yhä täysi nopeus.
+# Tähtäyksellä jyrkempi käyrä -> hienosäätö (maamaalit, skillshotit) ei nyki.
+const MOVE_EXPO := 1.15
+const AIM_EXPO := 1.45
 
 const PAD_BUTTONS := {
 	"a1": JOY_BUTTON_RIGHT_SHOULDER,
@@ -75,21 +83,29 @@ func _update_keyboard_mouse(hero) -> void:
 
 
 func _update_gamepad() -> void:
-	_move = _read_stick(JOY_AXIS_LEFT_X, JOY_AXIS_LEFT_Y)
-	var aim_stick := _read_stick(JOY_AXIS_RIGHT_X, JOY_AXIS_RIGHT_Y)
+	_move = _read_stick(JOY_AXIS_LEFT_X, JOY_AXIS_LEFT_Y, MOVE_EXPO)
+	var aim_stick := _read_stick(JOY_AXIS_RIGHT_X, JOY_AXIS_RIGHT_Y, AIM_EXPO)
 	_aim_cursor = aim_stick
-	if aim_stick.length() > 0.3:
+	# Suunta rekisteröityy jo kevyestä poikkeutuksesta (0.1 deadzonen jälkeen):
+	# nopeat flickit kääntävät tähtäyksen heti; voimakkuus ohjaa vain kursoria.
+	if aim_stick.length() > 0.1:
 		_aim = aim_stick.normalized()
-	_attack = Input.get_joy_axis(device, JOY_AXIS_TRIGGER_RIGHT) > TRIGGER_THRESHOLD
+	_attack = _trigger_held(JOY_AXIS_TRIGGER_RIGHT, _attack)
 	_pressed = {}
 	for key in PAD_BUTTONS:
 		_pressed[key] = Input.is_joy_button_pressed(device, PAD_BUTTONS[key])
 	# Ultimate = L2-liipaisin (helpompi tähdätä), kolmio vaihtoehtona.
-	_pressed["ult"] = Input.get_joy_axis(device, JOY_AXIS_TRIGGER_LEFT) > TRIGGER_THRESHOLD \
+	_pressed["ult"] = _trigger_held(JOY_AXIS_TRIGGER_LEFT, bool(_prev.get("ult", false))) \
 		or Input.is_joy_button_pressed(device, JOY_BUTTON_Y)
 
 
-func _read_stick(axis_x: int, axis_y: int) -> Vector2:
+## Liipaisimen luku hystereesillä: kynnys riippuu siitä oliko jo pohjassa.
+func _trigger_held(axis: int, was_held: bool) -> bool:
+	var value := Input.get_joy_axis(device, axis)
+	return value > (TRIGGER_RELEASE if was_held else TRIGGER_PRESS)
+
+
+func _read_stick(axis_x: int, axis_y: int, expo := 1.0) -> Vector2:
 	var v := Vector2(
 		Input.get_joy_axis(device, axis_x),
 		Input.get_joy_axis(device, axis_y)
@@ -98,8 +114,9 @@ func _read_stick(axis_x: int, axis_y: int) -> Vector2:
 	if magnitude < DEADZONE:
 		return Vector2.ZERO
 	# Pehmeä radiaalinen deadzone: liike alkaa nollasta deadzonen reunalta.
+	# Expo-käyrä tekee keskialueesta tarkan ilman että reunan huippunopeus kärsii.
 	var scaled: float = clampf((magnitude - DEADZONE) / (1.0 - DEADZONE), 0.0, 1.0)
-	return v / magnitude * scaled
+	return v / magnitude * pow(scaled, expo)
 
 
 # --- Luettava rajapinta (sama kuin BotBrainilla) ---

@@ -1348,6 +1348,9 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 	visual.flash()
 	arena.popup(global_position + Vector2(0, -46), str(int(amount)), Color.WHITE, 20)
 	AudioMgr.play("hit", 0.08, -6.0, global_position)   # tiheä ääni -> hillitympi taso
+	# Tuntopalaute isosta osumasta (>12 % maksimista): voimakkuus vahingon mukaan.
+	if amount > max_hp * 0.12:
+		controller_rumble(0.0, clampf(amount / max_hp * 1.8, 0.25, 0.7), 0.14)
 	add_ult(amount * 0.07)   # otettu vahinko lataa maltillisesti (oli 0.14)
 
 	if source != null:
@@ -1412,6 +1415,7 @@ func add_ult(points: float) -> void:
 	if ult_charge >= 100.0 and not _ult_ready_announced:
 		_ult_ready_announced = true
 		AudioMgr.play("ult_ready")
+		controller_rumble(0.3, 0.12, 0.2)   # tuntopalaute: ulti valmis
 		if arena != null:
 			arena.popup(global_position + Vector2(0, -70), "ULTI VALMIS!", Palette.GOLD, 20)
 
