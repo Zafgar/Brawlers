@@ -93,8 +93,12 @@ func _ready() -> void:
 	time_row.desc_key = "time"
 	_add_row(settings, time_row)
 
-	var bots_row := OptionRow.new("AI-vaikeus", Game.BOT_LEVEL_NAMES, Game.bot_level,
-		func(i): Game.bot_level = i)
+	# Vaikeus valitaan ranking-tasona (Wood..Challenger). Sama asteikko toimii
+	# myöhemmin pelaajan omana rankina (save/load): nousu divisioonien läpi.
+	var bots_row := OptionRow.new("AI-vaikeus (rank)", BotRank.TIER_NAMES, Game.bot_tier,
+		func(i):
+			Game.bot_tier = i
+			Game.bot_level = BotRank.to_legacy_level(BotRank.tier_default_rank(i)))
 	bots_row.desc_key = "bots"
 	_add_row(settings, bots_row)
 	var split_row := OptionRow.new("Paikallinen näkymä", ["Pelaajakohtainen split screen"],

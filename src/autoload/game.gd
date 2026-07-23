@@ -15,10 +15,18 @@ const OPTIONS_PATH := "user://arena_options.cfg"
 # Otteluasetukset
 var team_size := 4
 var rounds_to_win := 1          # MOBA on yksi 20 minuutin ottelu
-var bot_level := 2              # 0–5 (näytetään 1–6); oletus taso 3 (Normaali)
+var bot_level := 2              # 0–5 (vanha asteikko; pidetään synkassa tierin kanssa)
+var bot_tier := 2               # ranking-taso 0–7 (Wood..Challenger); oletus Silver
 var map_id := "moba"
 var mode_id := "moba"
 var practice := false
+
+
+## Ottelun bottien rank: valitun tierin divisioona III. Toimii myöhemmin
+## pelaajan oman ranking-tason pohjana (save/load): pelaaja kohtaa oman
+## tasonsa botteja ja nousee divisioonia voittamalla.
+func match_bot_rank() -> int:
+	return BotRank.tier_default_rank(bot_tier)
 
 # Kokoonpano (PlayerProfile-oliot, ihmiset ja botit)
 var roster: Array = []
@@ -138,6 +146,7 @@ func go_setup(practice_mode: bool) -> void:
 	_apply_moba_format()
 	if practice_mode:
 		bot_level = 0
+		bot_tier = 0
 		go_lobby()
 	else:
 		_swap(MatchSetup.new())
@@ -158,6 +167,7 @@ func try_hero(hero_id: String) -> void:
 	practice = true
 	_apply_moba_format()
 	bot_level = 0
+	bot_tier = 0
 
 	var human := PlayerProfile.new()
 	human.index = 0

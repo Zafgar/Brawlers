@@ -19,7 +19,8 @@ enum Mode { GET_RELIC, ATTACK_CARRIER, ESCORT, CARRY, RETREAT, FIGHT, SUPPORT, G
 
 const BACKLINE_ROLES := ["Tuki", "Ranger", "Mage"]
 
-var level := 1
+var level := 1                  # vanha 6-portainen taso (telemetria: ai_level)
+var rank := 13                  # ranking-porras 0..31 (BotRank: Wood IV .. Challenger I)
 
 # Vaikeustasoparametrit
 var reaction := 0.28
@@ -101,67 +102,53 @@ var _hold_timer := 0.0
 var _hold_pause := 0.0
 
 
-func _init(p_level: int) -> void:
-	level = clampi(p_level, 0, 5)
-	# Per-taso arvot (indeksi 0–5 = taso 1–6). Ylempi taso: nopeampi reagointi,
-	# tarkempi tähtäys, tiheämmät päätökset, enemmän väistöjä ja kykyjä sekä
-	# suurempi aggressio (kuinka suuren osan ajasta botti hyökkää).
-	var reactions := [0.85, 0.6, 0.4, 0.25, 0.15, 0.06]
-	var aims := [30.0, 22.0, 13.0, 8.0, 4.0, 1.2]
-	var decisions := [0.75, 0.6, 0.45, 0.32, 0.22, 0.15]
-	var dodges := [0.03, 0.12, 0.32, 0.52, 0.72, 0.95]
-	var abilities := [0.25, 0.42, 0.62, 0.78, 0.9, 1.0]
-	var predicts := [0.0, 0.15, 0.4, 0.62, 0.85, 1.0]
-	var aggros := [0.45, 0.62, 0.8, 0.9, 1.0, 1.0]
-	# Buffien haku ja vihollisen buffin rikkominen: ylemmät tasot osaavat ja
-	# ehtivät hoitaa buffit paremmin ja denyaavat vihollisen buffit.
-	var focuses := [0.05, 0.25, 0.5, 0.72, 0.9, 1.0]
-	var denies := [0.0, 0.0, 0.2, 0.45, 0.72, 0.95]
-	# Keskitetty tuli: ylemmät tasot iskevät yhdessä samaan kohteeseen.
-	var focus_fires := [0.0, 0.15, 0.45, 0.7, 0.9, 1.0]
-	# Assassiinin malttavuus (odottaa eristettyä/heikkoa kohdetta) ja
-	# itsesuojelu (pakenee kyvyillä hädässä) — ylemmät tasot osaavat molemmat.
-	var patiences := [0.0, 0.1, 0.35, 0.6, 0.82, 1.0]
-	var preserves := [0.0, 0.12, 0.35, 0.6, 0.85, 1.0]
-	# Viidakon objektiivitietoisuus: alemmat tasot taistelevat vain lähellä
-	# olevia olentoja, ylemmät hakevat leirit ja pomon aktiivisesti kauempaakin.
-	var jungle_foci := [0.0, 0.15, 0.45, 0.68, 0.88, 1.0]
-	var farm_skills := [0.05, 0.2, 0.45, 0.68, 0.88, 1.0]
-	# Vaikeustasot 1–2 osaavat kykyjen peruskäytön, mutta eivät vielä rakenna
-	# luotettavia ketjuja. Tasot 3–5 oppivat resurssit, jatkokyvyt ja turvalliset
-	# tornipäätökset. Taso 6 tekee tämän lähes virheettä (ja huijaa yllä kuvatusti).
-	var combo_skills := [0.05, 0.18, 0.45, 0.68, 0.9, 1.0]
-	var disciplines := [0.08, 0.22, 0.48, 0.72, 0.92, 1.0]
-	var tower_judgements := [0.55, 0.68, 0.8, 0.9, 0.97, 1.0]
-	reaction = reactions[level]
-	aim_error_deg = aims[level]
-	decision_interval = decisions[level]
-	dodge_chance = dodges[level]
-	ability_chance = abilities[level]
-	prediction = predicts[level]
-	aggression = aggros[level]
-	buff_focus = focuses[level]
-	buff_deny = denies[level]
-	focus_fire = focus_fires[level]
-	patience = patiences[level]
-	self_preserve = preserves[level]
-	jungle_focus = jungle_foci[level]
-	farm_skill = farm_skills[level]
-	combo_skill = combo_skills[level]
-	cooldown_discipline = disciplines[level]
-	tower_judgement = tower_judgements[level]
+func _init(p_level: int, p_rank := -1) -> void:
+	# Ranking-asteikko (BotRank): 32 porrasta Wood IV -> Challenger I. Vanha
+	# 6-portainen taso (0-5) kartoitetaan asteikolle, joten vanhat valikot ja
+	# simulaatiot toimivat ennallaan. Kaikki säätimet interpoloidaan
+	# MONOTONISESTI rankin mukaan -> alempi rank häviää ylemmälle (ladder).
+	rank = p_rank if p_rank >= 0 else BotRank.from_legacy_level(p_level)
+	rank = clampi(rank, 0, BotRank.MAX_RANK)
+	level = BotRank.to_legacy_level(rank)   # telemetria/raportit (ai_level)
+	var t := BotRank.t(rank)
+
+	# Reagointi ja mekaniikka: Wood on selvästi kömpelömpi kuin vanha taso 1
+	# (hidas reagointi, huono tähtäys, harvat päätökset), Challenger I lähes
+	# virheetön. Eksponentit sovittavat käyrän keskikohdan vanhoihin tasoihin.
+	reaction = lerpf(1.1, 0.05, pow(t, 0.75))
+	aim_error_deg = lerpf(38.0, 1.0, pow(t, 0.8))
+	decision_interval = lerpf(0.95, 0.14, pow(t, 0.85))
+	dodge_chance = lerpf(0.0, 0.95, pow(t, 1.35))
+	ability_chance = lerpf(0.15, 1.0, pow(t, 0.85))
+	prediction = pow(t, 1.5)
+	# Aggressio saavuttaa katon (jatkuva tuli) vasta Platinum-tasolla.
+	aggression = minf(lerpf(0.35, 1.15, t), 1.0)
+	# Buffien haku, deny ja keskitetty tuli: matalat tasot eivät osaa lainkaan.
+	buff_focus = pow(t, 1.1)
+	buff_deny = lerpf(0.0, 0.95, pow(t, 1.8))
+	focus_fire = pow(t, 1.2)
+	# Malttavuus, itsesuojelu ja viidakko-objektiivit kasvavat keskitasoilta.
+	patience = pow(t, 1.5)
+	self_preserve = pow(t, 1.3)
+	jungle_focus = pow(t, 1.2)
+	farm_skill = lerpf(0.05, 1.0, pow(t, 1.1))
+	combo_skill = lerpf(0.03, 1.0, pow(t, 1.3))
+	cooldown_discipline = lerpf(0.05, 1.0, pow(t, 1.1))
+	tower_judgement = lerpf(0.5, 1.0, pow(t, 0.9))
 	# Ultimatet ovat arvokkaimpia — niitä käytetään kaikilla tasoilla,
 	# heikommilla vain hieman huonommalla ajoituksella.
 	ult_chance = clampf(ability_chance + 0.35, 0.0, 1.0)
 
-	# Taso 6 (epäreilu) huijaa avoimesti: kovempi vahinko, vähemmän otettua,
-	# nopeammat jäähdytykset ja ultin lataus sekä hieman lisää vauhtia.
-	if level >= 5:
-		damage_mult = 1.35
-		damage_taken_mult = 0.7
-		cooldown_mult = 0.6
-		ult_gain_mult = 1.6
-		speed_mult = 1.1
+	# Huippupää (Champion IV -> Challenger I) huijaa avoimesti ja PORTAITTAIN:
+	# kovempi vahinko, vähemmän otettua, nopeammat jäähdytykset/ultit ja vauhtia.
+	# Portaaton kasvu takaa että Challenger voittaa Championin (ladder-testi).
+	var cheat := clampf((float(rank) - 23.0) / 8.0, 0.0, 1.0)
+	if cheat > 0.0:
+		damage_mult = 1.0 + 0.35 * cheat
+		damage_taken_mult = 1.0 - 0.3 * cheat
+		cooldown_mult = 1.0 - 0.4 * cheat
+		ult_gain_mult = 1.0 + 0.6 * cheat
+		speed_mult = 1.0 + 0.1 * cheat
 
 
 func _setup_role(hero: Hero) -> void:

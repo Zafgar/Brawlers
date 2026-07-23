@@ -11,6 +11,7 @@ var is_bot := false
 var display_name := ""
 var moba_position := ""    # lobbyn positiovalinta: "top"/"jungle"/"carry"/"support" ("" = auto)
 var bot_level := -1        # -1 = käytä Game.bot_level; muuten oma taso (simulaatio)
+var bot_rank := -1         # -1 = johda tasosta/ottelusta; muuten oma rank 0..31 (ladder-testi)
 
 var stats := {}
 

@@ -9,6 +9,7 @@ const MAX_LOCAL_PANES := 4
 var arena = null
 var _root: Control = null
 var _panes: Array = []
+var _scoreboard: Control = null
 
 
 func setup(p_arena) -> void:
@@ -31,9 +32,33 @@ func setup(p_arena) -> void:
 		_root.add_child(pane)
 		_panes.append(pane)
 
+	# Tulostaulu (pidä Tab / PS5-ohjaimen touchpad tai Create): koko ruudun
+	# jaettu overlay ruutujen PÄÄLLÄ — sama taulu kaikille paikallispelaajille.
+	_scoreboard = Scoreboard.new()
+	_scoreboard.arena = arena
+	_scoreboard.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_scoreboard.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_scoreboard.visible = false
+	_root.add_child(_scoreboard)
+
 	# Tavallisessa yhden viewportin pelissä SplitView ei asemoi HUDia.
 	if not arena.hosted:
 		_layout_single.call_deferred()
+
+
+## Tulostaulu näkyy niin kauan kuin nappia pidetään pohjassa (LoL-tyyli).
+## PS5 (pääohjain): touchpadin painallus tai Create; näppäimistö: Tab.
+func _process(_delta: float) -> void:
+	if _scoreboard == null:
+		return
+	var held := Input.is_physical_key_pressed(KEY_TAB)
+	if not held:
+		for pad in Input.get_connected_joypads():
+			if Input.is_joy_button_pressed(pad, JOY_BUTTON_TOUCHPAD) \
+					or Input.is_joy_button_pressed(pad, JOY_BUTTON_BACK):
+				held = true
+				break
+	_scoreboard.visible = held and arena != null and not Game.simulating
 
 
 func _layout_single() -> void:
@@ -976,3 +1001,171 @@ class PaneHud:
 			"rage":
 				return Color("ff7048")
 		return Palette.TEXT_DIM
+
+
+## Pelinaikainen tulostaulu (pidä Tab / touchpad): molemmat joukkueet, per
+## sankari taso, K/D/A, CS (last hitit), kulta, vahinko ja 6 tavaralokeroa
+## (varattu tulevalle item-järjestelmälle). Piirretään koko ruudun keskelle.
+class Scoreboard:
+	extends Control
+
+	const ROW_H := 56.0
+	const ITEM_SLOTS := 6
+
+	var arena = null
+
+	func _process(_delta: float) -> void:
+		if visible:
+			queue_redraw()
+
+	func _draw() -> void:
+		if arena == null:
+			return
+		var pw: float = minf(size.x - 120.0, 1560.0)
+		var ph := 96.0 + 2.0 * (44.0 + 4.0 * ROW_H) + 56.0
+		var px: float = (size.x - pw) / 2.0
+		var py: float = maxf((size.y - ph) / 2.0, 40.0)
+
+		# Tumma tausta koko ruudulle + paneeli.
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.03, 0.07, 0.55))
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Palette.with_alpha(Palette.UI_PANEL, 0.94)
+		sb.set_corner_radius_all(18)
+		sb.border_color = Palette.with_alpha(Palette.GOLD, 0.5)
+		sb.set_border_width_all(2)
+		sb.draw(get_canvas_item(), Rect2(px, py, pw, ph))
+
+		# Otsikkorivi: kellonaika keskellä, tapposummat sivuilla.
+		var kills := [0, 0]
+		for h in arena.heroes:
+			if is_instance_valid(h) and not h.is_unit and h.profile != null:
+				kills[h.team] += int(h.profile.stats.kos)
+		var mins := int(arena.match_elapsed) / 60
+		var secs := int(arena.match_elapsed) % 60
+		UiKit.draw_text(self, Vector2(px + pw / 2.0, py + 34.0), "%d:%02d" % [mins, secs],
+			30, Palette.TEXT_MAIN, true, 4)
+		UiKit.draw_text(self, Vector2(px + pw / 2.0 - 130.0, py + 34.0), str(kills[0]),
+			34, Palette.glow(Palette.team(0), 1.2), true, 4)
+		UiKit.draw_text(self, Vector2(px + pw / 2.0 + 130.0, py + 34.0), str(kills[1]),
+			34, Palette.glow(Palette.team(1), 1.2), true, 4)
+		UiKit.draw_text(self, Vector2(px + 24.0, py + 34.0), "TULOSTAULU", 24,
+			Palette.TEXT_DIM, false, 3)
+
+		var y := py + 72.0
+		for team in [0, 1]:
+			y = _team_block(px, y, pw, team)
+		UiKit.draw_text(self, Vector2(px + pw / 2.0, py + ph - 22.0),
+			"Pidä  TAB  /  ohjaimen touchpad", 16, Palette.TEXT_DIM, true)
+
+	## Joukkuelohko: otsakerivi + sankaririvit. Palauttaa seuraavan y:n.
+	func _team_block(px: float, y: float, pw: float, team: int) -> float:
+		var tc: Color = Palette.team(team)
+		draw_rect(Rect2(px + 14.0, y, pw - 28.0, 34.0), Palette.with_alpha(tc, 0.14))
+		UiKit.draw_text(self, Vector2(px + 30.0, y + 17.0), Game.team_name(team), 20,
+			Palette.glow(tc, 1.2), false, 3)
+		# Sarakeotsikot.
+		var cols := _columns(px, pw)
+		var head := ["", "POS", "LVL", "K / D / A", "CS", "KULTA", "VAHINKO", "TAVARAT"]
+		for i in range(1, head.size()):
+			UiKit.draw_text(self, Vector2(float(cols[i]), y + 17.0), str(head[i]), 15,
+				Palette.TEXT_DIM, true)
+		y += 44.0
+		var members: Array = []
+		for h in arena.heroes:
+			if is_instance_valid(h) and not h.is_unit and h.team == team:
+				members.append(h)
+		members.sort_custom(func(a, b): return a.profile.index < b.profile.index)
+		for h in members:
+			_hero_row(px, y, pw, h)
+			y += ROW_H
+		return y + 8.0
+
+	## Sarakkeiden keskikohdat: [nimi(vasen), POS, LVL, KDA, CS, KULTA, VAHINKO, TAVARAT(vasen)].
+	func _columns(px: float, pw: float) -> Array:
+		var items_w: float = ITEM_SLOTS * 46.0
+		return [
+			px + 40.0,
+			px + pw * 0.30,
+			px + pw * 0.36,
+			px + pw * 0.45,
+			px + pw * 0.53,
+			px + pw * 0.60,
+			px + pw * 0.68,
+			px + pw - items_w - 30.0,
+		]
+
+	func _hero_row(px: float, y: float, pw: float, h) -> void:
+		var cols := _columns(px, pw)
+		var cy := y + ROW_H / 2.0
+		var p: PlayerProfile = h.profile
+		var def := HeroDef.get_def(h.hero_id)
+		var c1: Color = def["color"]
+		var human: bool = p.is_human()
+		if human:
+			draw_rect(Rect2(px + 14.0, y + 2.0, pw - 28.0, ROW_H - 4.0),
+				Palette.with_alpha(p.color(), 0.08))
+		if not h.alive:
+			draw_rect(Rect2(px + 14.0, y + 2.0, pw - 28.0, ROW_H - 4.0),
+				Color(0.02, 0.03, 0.08, 0.45))
+
+		# Medaljonki + nimet.
+		var med := Vector2(float(cols[0]), cy)
+		draw_circle(med, 21.0, Palette.darker(c1, 0.55))
+		draw_circle(med, 18.0, Palette.with_alpha(c1, 1.0 if h.alive else 0.5))
+		HeroIcon.draw_symbol(self, h.hero_id, med, 12.0)
+		if human:
+			draw_arc(med, 23.0, 0.0, TAU, 26, p.color(), 2.5)
+		UiKit.draw_text(self, med + Vector2(34.0, -10.0), str(p.display_name), 17,
+			Palette.TEXT_MAIN, false, 2)
+		UiKit.draw_text(self, med + Vector2(34.0, 12.0), str(def["name"]), 14,
+			Palette.with_alpha(c1, 0.9), false)
+		if not h.alive:
+			UiKit.draw_text(self, med + Vector2(34.0, 12.0) + Vector2(120.0, 0.0),
+				"%ds" % int(ceil(h.respawn_timer)), 14, Palette.BAD, false)
+
+		# POS / LVL / KDA / CS / KULTA / VAHINKO.
+		UiKit.draw_text(self, Vector2(float(cols[1]), cy), _pos_label(h), 15,
+			Palette.TEXT_DIM, true)
+		UiKit.draw_text(self, Vector2(float(cols[2]), cy), str(h.level), 20,
+			Palette.glow(Palette.GOLD, 1.1), true, 2)
+		UiKit.draw_text(self, Vector2(float(cols[3]), cy), "%d / %d / %d" % [
+			int(p.stats.kos), int(p.stats.deaths), int(p.stats.assists)], 18,
+			Palette.TEXT_MAIN, true, 2)
+		UiKit.draw_text(self, Vector2(float(cols[4]), cy), str(int(p.stats.minion_kills)),
+			18, Palette.TEXT_MAIN, true, 2)
+		UiKit.draw_text(self, Vector2(float(cols[5]), cy), str(int(p.stats.gold)), 18,
+			Palette.glow(Palette.GOLD, 1.15), true, 2)
+		UiKit.draw_text(self, Vector2(float(cols[6]), cy), str(int(p.stats.damage)), 17,
+			Palette.TEXT_MAIN, true, 2)
+
+		# 6 tavaralokeroa (varattu tulevalle item-järjestelmälle).
+		var ix := float(cols[7])
+		for s in range(ITEM_SLOTS):
+			var srect := Rect2(ix + s * 46.0, cy - 19.0, 38.0, 38.0)
+			draw_rect(srect, Color(0, 0, 0, 0.4))
+			draw_rect(srect, Palette.with_alpha(Palette.TEXT_DIM, 0.3), false, 1.5)
+
+	## Position lyhenne: lobbyn valinta ensin, botilla työnjako, muuten tyhjä.
+	func _pos_label(h) -> String:
+		var pos := str(h.profile.moba_position)
+		if pos == "" and h.controller is BotBrain:
+			var brain: BotBrain = h.controller
+			match str(brain._moba_job):
+				"jungle":
+					pos = "jungle"
+				"top":
+					pos = "top"
+				"bottom":
+					pos = "support" if str(brain._moba_duty) == "support" \
+						or (str(brain._moba_duty) == "" and str(HeroDef.get_def(h.hero_id).get("role", "")) == "Tuki") \
+						else "carry"
+		match pos:
+			"top":
+				return "TOP"
+			"jungle":
+				return "JGL"
+			"carry":
+				return "CAR"
+			"support":
+				return "SUP"
+		return "—"

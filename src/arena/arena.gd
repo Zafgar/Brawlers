@@ -173,9 +173,14 @@ func _ready() -> void:
 		var hero := _make_hero(profile.hero_id)
 		var controller
 		if profile.is_bot:
-			# Simulaatiossa kullakin botilla voi olla oma taso (profile.bot_level).
+			# Simulaatiossa kullakin botilla voi olla oma taso (profile.bot_level)
+			# tai suora rank (profile.bot_rank, ladder-testi). Pelaajan ottelussa
+			# rank tulee valitusta ranking-tieristä (Game.match_bot_rank).
 			var lvl: int = profile.bot_level if profile.bot_level >= 0 else Game.bot_level
-			controller = BotBrain.new(lvl)
+			var rk: int = profile.bot_rank
+			if rk < 0 and profile.bot_level < 0:
+				rk = Game.match_bot_rank()
+			controller = BotBrain.new(lvl, rk)
 		else:
 			controller = DeviceInput.new(profile.device)
 		hero.setup(self, profile, controller)
