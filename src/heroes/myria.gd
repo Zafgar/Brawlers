@@ -132,7 +132,7 @@ func on_jungle_camp_defeated(camp: Critter) -> void:
 	essence_counts[gained] = mini(int(essence_counts[gained]) + 1, 3)
 	selected_essence = gained
 	_essence_flash = 1.0
-	add_ult(8.0 if camp.is_major_objective() else 3.0)
+	add_ult(5.0 if camp.is_major_objective() else 2.0)   # skaalattu uuteen ultitalouteen
 	if arena != null:
 		arena.popup(global_position + Vector2(0, -80), "+%s ESSENSSI" % gained.to_upper(),
 			essence_color_for(gained), 16)

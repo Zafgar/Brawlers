@@ -491,7 +491,9 @@ func _physics_process(delta: float) -> void:
 	if _dodge_was_cooling and cd.dodge <= 0.0 and not controller.is_bot():
 		AudioMgr.play("count_tick", 0.0, -14.0)
 	_dodge_was_cooling = cd.dodge > 0.0
-	add_ult(delta * 2.2)
+	# Passiivinen ultilataus on hidas pohjavire (täyteen ~2:47 tyhjän panttina):
+	# ulti ansaitaan taistelusta, ei odottamalla. (Oli 2.2/s = täysi 45 s -> spam.)
+	add_ult(delta * 0.6)
 
 	_passive_update(delta)
 	iframes = maxf(iframes - delta, 0.0)
@@ -1220,7 +1222,10 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 			if kb > 0.0:
 				rec["kb"] += 1
 		profile.add_score(dealt * 0.1)
-		add_ult(dealt * 0.22)
+		# Ulti latautuu taistelusta SANKAREITA vastaan; farmi (minionit, olennot,
+		# rakennukset) lataa vain murto-osan — aallon siivoaminen ei täytä ulttia.
+		# (Oli 0.22 kaikesta vahingosta -> ulti oli spam-kyky.)
+		add_ult(dealt * (0.12 if not target.is_unit else 0.03))
 		if res_type == "rage":
 			gain_res(dealt * 0.4)
 		elif res_type == "energy":
@@ -1343,7 +1348,7 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 	visual.flash()
 	arena.popup(global_position + Vector2(0, -46), str(int(amount)), Color.WHITE, 20)
 	AudioMgr.play("hit", 0.08, -6.0, global_position)   # tiheä ääni -> hillitympi taso
-	add_ult(amount * 0.14)
+	add_ult(amount * 0.07)   # otettu vahinko lataa maltillisesti (oli 0.14)
 
 	if source != null:
 		# Käytä peliaikaa, jotta ikkunan pituus pysyy samana myös nopeutetussa
@@ -1378,7 +1383,7 @@ func heal_hp(amount: float, source: Hero) -> float:
 	if source != null and source != self:
 		source.profile.stats.healing += healed
 		source.profile.add_score(healed * 0.12)
-		source.add_ult(healed * 0.15)
+		source.add_ult(healed * 0.08)   # parannus lataa maltillisesti (oli 0.15)
 		# Per-kykypaikka parannus toimijalle (arenan aktiivikonteksti).
 		if arena != null and arena._act_hero == source and arena._act_slot != "":
 			source._slot_rec(arena._act_slot)["heal"] += healed
@@ -1583,7 +1588,7 @@ func _knockout(source: Hero) -> void:
 		if source.dragon_buff > 0.0:
 			source.profile.stats.kos_during_dragon += 1
 		source.profile.add_score(30.0)
-		source.add_ult(20.0)
+		source.add_ult(15.0)   # tappo on iso mutta ei puolta ulttia (oli 20)
 		var assisted: Dictionary = {}
 		for entry in _recent_damagers:
 			if not is_instance_valid(entry.hero):

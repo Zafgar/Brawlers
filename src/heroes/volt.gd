@@ -38,7 +38,7 @@ func _basic(dir: Vector2) -> void:
 func _spark_jump(hit_hero: Hero, proj: Projectile) -> void:
 	if hit_hero == null or not is_instance_valid(hit_hero):
 		return
-	add_ult(4.0)
+	add_ult(2.0)   # skaalattu uuteen ultitalouteen (oli 4)
 	var next := _nearest_enemy(hit_hero.global_position, 260.0, [hit_hero])
 	if next != null:
 		Fx.bolt(arena, hit_hero.global_position, next.global_position, hero_color())

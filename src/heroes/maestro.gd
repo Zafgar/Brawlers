@@ -104,4 +104,4 @@ func _passive_update(delta: float) -> void:
 		if ally == self:
 			continue
 		if ally.global_position.distance_to(global_position) < 300.0:
-			ally.add_ult(delta * 1.5)
+			ally.add_ult(delta * 0.8)   # ultiakku skaalattu uuteen talouteen (oli 1.5)

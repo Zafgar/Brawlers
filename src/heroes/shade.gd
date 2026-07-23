@@ -169,7 +169,7 @@ func _ability2(dir: Vector2) -> void:
 func on_shuriken_caught() -> void:
 	_active_shuriken = null
 	cd.a2 = 0.3
-	add_ult(6.0)
+	add_ult(3.0)   # skaalattu uuteen ultitalouteen (oli 6)
 	arena.popup(global_position + Vector2(0, -70), "KOPPI!", Palette.glow(hero_color(), 1.4), 18)
 	Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.5), 40.0, 0.35)
 
@@ -183,7 +183,7 @@ func on_shuriken_expired() -> void:
 ## Väistö: varjoaskel, joka lataa ultia.
 func _dodge_action(dir: Vector2) -> void:
 	dash(dir, 1150.0, 0.12, true)
-	add_ult(6.0)
+	add_ult(3.0)   # skaalattu uuteen ultitalouteen (oli 6)
 	AudioMgr.play("smoke", 0.12, 3.0)
 	Fx.burst(arena, global_position, Palette.with_alpha(Palette.darker(hero_color(), 0.5), 0.5),
 		8, 150.0, 0.4, 5.0)
