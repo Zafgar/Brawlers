@@ -607,14 +607,21 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 		if _jungle_target == null:
 			var mm := arena.map as MapMoba
 			if mm != null:
-				var cycle := fposmod(arena.match_elapsed + hero.profile.index * 3.7, 24.0)
-				var phase := int(arena.match_elapsed / 24.0) + hero.profile.index
-				if cycle < 5.0:
-					var gank_lane := MapMoba.TOP if phase % 2 == 0 else MapMoba.BOTTOM
-					_moba_goal = mm.gank_point(hero.team, gank_lane, phase % 4 >= 2)
+				# TILAISUUSGANK ensin: jos vihollislaneri on työntynyt meidän
+				# puolellemme linjan tuntumassa, kierrä lähimmän gank-portin
+				# puskan kautta sen selustaan — aikataulukierto väistyy.
+				var ambush := _gank_opportunity(hero, arena, mm)
+				if is_finite(ambush.x):
+					_moba_goal = ambush
 				else:
-					var patrol_step := int(arena.match_elapsed / 6.0) + hero.profile.index
-					_moba_goal = mm.jungle_patrol(hero.team, patrol_step)
+					var cycle := fposmod(arena.match_elapsed + hero.profile.index * 3.7, 24.0)
+					var phase := int(arena.match_elapsed / 24.0) + hero.profile.index
+					if cycle < 5.0:
+						var gank_lane := MapMoba.TOP if phase % 2 == 0 else MapMoba.BOTTOM
+						_moba_goal = mm.gank_point(hero.team, gank_lane, phase % 4 >= 2)
+					else:
+						var patrol_step := int(arena.match_elapsed / 6.0) + hero.profile.index
+						_moba_goal = mm.jungle_patrol(hero.team, patrol_step)
 	else:
 		if _jungle_target == null:
 			_jungle_target = _pick_push_target(hero, arena)
@@ -998,6 +1005,11 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	# sijaan taistelussa. Yksiköt jäävät varasyyksi jos sankaria ei ole lähellä.
 	var hero_enemies: Array = arena.enemy_heroes(hero.team)
 	if arena.mode == "moba":
+		# Syväjahtauksen esto: linjapuoliskon vihollinen kelpaa kohteeksi vain
+		# jos se EI ole vetäytynyt vihollistornien taakse (muuten laneri seuraa
+		# pakenevaa syvälle vihollisjunglen/tornien väliin ja kävelee takaisin).
+		var chase_frontier: float = _enemy_tower_frontier(hero, arena, _moba_lane) \
+			if _moba_lane != "" else 3600.0
 		hero_enemies = hero_enemies.filter(func(e):
 			if not _moba_can_see(hero, e, arena):
 				return false
@@ -1008,8 +1020,12 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 			if _moba_lane == "":
 				return e.global_position.distance_to(pos) <= 520.0
 			var mm := arena.map as MapMoba
-			return e.global_position.distance_to(pos) < 360.0 or mm == null \
-				or mm.nearest_lane(e.global_position) == _moba_lane)
+			if e.global_position.distance_to(pos) < 360.0 or mm == null:
+				return true
+			var depth: float = e.global_position.x if hero.team == 0 \
+				else -e.global_position.x
+			return mm.nearest_lane(e.global_position) == _moba_lane \
+				and depth <= chase_frontier)
 	if _mode == Mode.ATTACK_CARRIER and bb.enemy_carrier != null \
 			and is_instance_valid(bb.enemy_carrier):
 		pick = bb.enemy_carrier
@@ -1449,7 +1465,7 @@ func _moba_lane_route_goal(hero: Hero, arena, pos: Vector2,
 	var on_jungle_side := (pos.y > -1250.0) if _moba_lane == MapMoba.TOP \
 		else (pos.y < 1250.0)
 	if best_sq > 260.0 * 260.0 and on_jungle_side:
-		return mm.nearest_lane_entry(pos, _moba_lane)
+		return _safe_lane_entry(hero, arena, mm)
 	if best_sq > 175.0 * 175.0:
 		return closest
 	if toward_enemy:
@@ -1457,6 +1473,73 @@ func _moba_lane_route_goal(hero: Hero, arena, pos: Vector2,
 		return path[mini(advance, path.size() - 1)]
 	var retreat := best_segment - (1 if best_t < 0.25 else 0)
 	return path[maxi(retreat, 0)]
+
+
+## Tilaisuusgank: vihollislaneri on ylittänyt joen meidän puolellemme linjan
+## tuntumassa -> palauta gank-portti (puskan kohta) josta jungleri lähestyy sen
+## selustaa. Vector2.INF jos tilaisuutta ei ole. Taito portitettu: matalat
+## rankit eivät tunnista tilaisuutta (jungle_focus) eikä hutera botti gankkaa.
+func _gank_opportunity(hero: Hero, arena, mm: MapMoba) -> Vector2:
+	if jungle_focus < 0.25 or hero.hp < hero.max_hp * 0.45:
+		return Vector2.INF
+	var own_sign: float = -1.0 if hero.team == 0 else 1.0
+	var best := Vector2.INF
+	var best_d := 1900.0   # gank-matkan katto: ei ristiin koko kartan yli
+	for e in arena.enemy_heroes(hero.team):
+		# Syvyys MEIDÄN puolellamme: joen yli vähintään 200 px.
+		var depth: float = e.global_position.x * own_sign
+		if depth < 200.0:
+			continue
+		var lane := mm.nearest_lane(e.global_position)
+		if mm.distance_to_lane(e.global_position, lane) > 520.0:
+			continue   # syvällä junglessa oleva ei ole lane-gank-kohde
+		var d: float = hero.global_position.distance_to(e.global_position)
+		if d >= best_d:
+			continue
+		best_d = d
+		# Lähesty omalta puolelta sen gank-portin kautta joka on lähinnä uhria.
+		var gate_x: float = own_sign * (1020.0 \
+			if absf(e.global_position.x) < 1650.0 else 2350.0)
+		var gate_y: float = -1130.0 if lane == MapMoba.TOP else 1130.0
+		best = Vector2(gate_x, gate_y)
+	return best
+
+
+## Vihollistornien rintaman syvyys tällä linjalla: etumaisimman ELOSSA olevan
+## vihollistornin |x| - marginaali. Syvemmälle (kohti vihollisnexusta) ei ole
+## turvallista kävellä ilman aaltoa. Kaikki tornit kaatuneet -> koko linja auki.
+func _enemy_tower_frontier(hero: Hero, arena, lane: String) -> float:
+	var frontier := 3600.0
+	var foe: int = 1 - hero.team
+	for st in arena.structures:
+		var s := st as Structure
+		if s == null or not s.alive or s.team != foe:
+			continue
+		if s.kind != Structure.Kind.TOWER or s.lane_id != lane:
+			continue
+		frontier = minf(frontier, absf(s.global_position.x) - 260.0)
+	return frontier
+
+
+## Lähin TURVALLINEN aukko omalle linjalle: ei koskaan aukkoa joka on
+## vihollistornien takana (botti käveli aiemmin vihollisen sisä- ja base-tornin
+## VÄLIIN palatessaan junglen kautta ja joutui kävelemään sieltä pois).
+func _safe_lane_entry(hero: Hero, arena, mm: MapMoba) -> Vector2:
+	var y := -1395.0 if _moba_lane == MapMoba.TOP else 1395.0
+	var frontier := _enemy_tower_frontier(hero, arena, _moba_lane)
+	var best := Vector2(0.0, y)
+	var best_sq := INF
+	for x in [-2350.0, -1020.0, 0.0, 1020.0, 2350.0]:
+		# Syvyys vihollisen suuntaan: sininen työntää +x, oranssi -x.
+		var depth: float = x if hero.team == 0 else -x
+		if depth > frontier:
+			continue
+		var candidate := Vector2(x, y)
+		var d_sq := hero.global_position.distance_squared_to(candidate)
+		if d_sq < best_sq:
+			best_sq = d_sq
+			best = candidate
+	return best
 
 
 ## Taisteluasemointi: lähesty kohdetta roolin ihannematkalle. Tankki peelaa.

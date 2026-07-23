@@ -588,15 +588,57 @@ func _draw_base_grounds() -> void:
 			Palette.with_alpha(Palette.glow(col, 1.25), 0.22), 4.0)
 		UiKit.draw_text(self, fp + Vector2(0, -6), "RESPAWN", 22,
 			Palette.with_alpha(Palette.glow(col, 1.4), 0.72), true, 3)
-		# Tuleva shop-piste. Ei ostologiikkaa vielä, mutta paikka ja API ovat valmiit.
+		# Kauppakoju (ostologiikka tulee myöhemmin — paikka ansaitsee jo arvonsa):
+		# kivetty piha, raidallinen markiisi, puutiski hehkuvine pulloineen,
+		# riippulyhty ja kolikkokyltti. Joukkueen väri sävyttää markiisin raidat.
 		var sp: Vector2 = _shop[team]
-		draw_circle(sp, 72.0, Color("111713dd"))
-		draw_arc(sp, 64.0, 0, TAU, 28, Palette.with_alpha(GOLD, 0.78), 5.0)
-		draw_rect(Rect2(sp - Vector2(30, 20), Vector2(60, 42)), Color("6b4e25"))
-		draw_colored_polygon(PackedVector2Array([sp + Vector2(-38, -20),
-			sp + Vector2(0, -48), sp + Vector2(38, -20)]), Color("d5aa49"))
-		UiKit.draw_text(self, sp + Vector2(0, 48), "SHOP", 16,
-			Palette.with_alpha(GOLD, 0.86), true, 2)
+		# Kivetty piha + kulkumatto lähteen suuntaan.
+		draw_circle(sp, 96.0, Color("120d08ee"))
+		for i in range(8):
+			var pa: float = TAU * float(i) / 8.0 + 0.4
+			draw_circle(sp + Vector2(cos(pa), sin(pa)) * 78.0, 11.0, Color("2a2118"))
+		draw_rect(Rect2(sp + Vector2(-26.0, -150.0), Vector2(52.0, 70.0)),
+			Palette.with_alpha(col, 0.16))
+		draw_rect(Rect2(sp + Vector2(-26.0, -150.0), Vector2(52.0, 70.0)),
+			Palette.with_alpha(GOLD, 0.35), false, 2.0)
+		draw_arc(sp, 88.0, 0, TAU, 40, Palette.with_alpha(GOLD, 0.55), 3.0)
+		# Puutiski ja tavarat: kolme hehkuvaa pulloa (heal/mana/kulta-eliksiiri).
+		draw_rect(Rect2(sp + Vector2(-48.0, -6.0), Vector2(96.0, 34.0)), Color("53381c"))
+		draw_rect(Rect2(sp + Vector2(-48.0, -6.0), Vector2(96.0, 9.0)), Color("7a5630"))
+		draw_rect(Rect2(sp + Vector2(-48.0, -6.0), Vector2(96.0, 34.0)),
+			Color("2e1d0d"), false, 2.0)
+		var potions := [Color("63e08c"), Color("5b8cff"), Color("ffd76d")]
+		for i in range(3):
+			var px := sp + Vector2(-26.0 + i * 26.0, -14.0)
+			draw_circle(px, 10.0, Palette.with_alpha(Palette.glow(potions[i], 1.4), 0.28))
+			draw_rect(Rect2(px + Vector2(-4.5, -6.0), Vector2(9.0, 12.0)),
+				Palette.with_alpha(potions[i], 0.95))
+			draw_rect(Rect2(px + Vector2(-2.0, -10.0), Vector2(4.0, 5.0)), Color("d8cfae"))
+		# Markiisi: joukkueen väriset raidat + kullattu reunus ja kaunis harja.
+		var peak := sp + Vector2(0, -66.0)
+		for i in range(6):
+			var x0: float = -54.0 + i * 18.0
+			var stripe := PackedVector2Array([
+				sp + Vector2(x0, -30.0), sp + Vector2(x0 + 18.0, -30.0), peak])
+			draw_colored_polygon(stripe,
+				Palette.with_alpha(col if i % 2 == 0 else Color("d5aa49"), 0.92))
+		for i in range(7):
+			draw_circle(sp + Vector2(-54.0 + i * 18.0, -30.0), 6.0,
+				Palette.with_alpha(GOLD, 0.85))
+		draw_circle(peak, 7.0, Palette.glow(GOLD, 1.3))
+		# Riippulyhty (lämmin valo) ja kolikkokyltti tolpassa.
+		var lantern := sp + Vector2(44.0, -40.0)
+		draw_circle(lantern, 16.0, Color(1.0, 0.85, 0.5, 0.16))
+		draw_rect(Rect2(lantern + Vector2(-5.0, -7.0), Vector2(10.0, 14.0)), Color("caa04c"))
+		draw_circle(lantern, 4.0, Color("ffe9a8"))
+		var sign := sp + Vector2(-56.0, -34.0)
+		draw_line(sign + Vector2(0, 28.0), sign, Color("53381c"), 5.0)
+		draw_circle(sign, 13.0, Palette.with_alpha(GOLD, 0.25))
+		draw_circle(sign, 10.0, Color("d5aa49"))
+		draw_arc(sign, 10.0, 0, TAU, 20, Color("8a6a2a"), 2.0)
+		UiKit.draw_text(self, sign, "G", 13, Color("6b4e18"), true)
+		UiKit.draw_text(self, sp + Vector2(0, 52.0), "KAUPPA", 17,
+			Palette.with_alpha(Palette.glow(GOLD, 1.2), 0.9), true, 2)
 
 
 func _draw_blue_base_pattern() -> void:

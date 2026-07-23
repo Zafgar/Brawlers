@@ -89,6 +89,14 @@ func update(hero, delta: float) -> void:
 		# (ei juutu leirialkovin seinän kulmaan matkalla kotiin).
 		var hdir: Vector2 = to_home.normalized()
 		_mv = _avoid_walls(hero, (hdir + hdir.orthogonal() * 0.3 * _strafe).normalized())
+	else:
+		# Laiduntelu: kotipesässä olento kiertelee hitaasti pienellä kehällä sen
+		# sijaan että seisoisi naulittuna — leirit näyttävät eläviltä kaukaakin.
+		# Vaihe johdetaan kodista (deterministinen), joten leirit eivät tanssi tahdissa.
+		var graze: float = _strafe_t * 0.9 + home.x * 0.013 + home.y * 0.007
+		var spot: Vector2 = home + Vector2(cos(graze), sin(graze)) * 34.0
+		if pos.distance_to(spot) > 14.0:
+			_mv = (spot - pos).normalized() * 0.3
 
 
 ## Kohdevalinta: 1) tuorein vahingoittaja (kosto), 2) lähin pelaaja aggro-
