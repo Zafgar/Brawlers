@@ -102,9 +102,14 @@ func _ability2(dir: Vector2) -> void:
 		"dps": 20.0 if essence != "green" else 15.0, "tick": 0.42,
 		"color": essence_color_for(essence),
 	})
+	# Rituaalipiiri: kaksoisrengas + keskusvälähdys essenssin värissä ja
+	# arkaaninen sointi — ei enää samaa kupuääntä kuin Torqilla.
 	Fx.ring(arena, target, Palette.glow(essence_color_for(essence), 1.5),
 		FIELD_RADIUS, 0.45, 5.0)
-	AudioMgr.play("dome_up", 0.06, -9.0, target)
+	Fx.ring(arena, target, Palette.glow(essence_color_for(essence), 1.3),
+		FIELD_RADIUS * 0.55, 0.55, 3.0)
+	Fx.flash(arena, target, Palette.glow(essence_color_for(essence), 1.5), 46.0, 0.3)
+	AudioMgr.play("blessing", 0.06, -9.0, target)
 
 
 func _dodge_action(_dir: Vector2) -> void:
@@ -114,7 +119,8 @@ func _dodge_action(_dir: Vector2) -> void:
 	add_shield(24.0, 1.8, self)
 	ability_signature("myria", 130.0, aim)
 	Fx.ring(arena, global_position, Palette.glow(essence_color(), 1.6), 95.0, 0.4, 5.0)
-	arena.popup(global_position + Vector2(0, -74), selected_essence.to_upper(), essence_color(), 16)
+	arena.popup(global_position + Vector2(0, -74), essence_name_fi(selected_essence),
+		essence_color(), 16)
 	AudioMgr.play("pickup", 0.07, -5.0, global_position)
 
 
@@ -135,8 +141,8 @@ func on_jungle_camp_defeated(camp: Critter) -> void:
 	_essence_flash = 1.0
 	add_ult(5.0 if camp.is_major_objective() else 2.0)   # skaalattu uuteen ultitalouteen
 	if arena != null:
-		arena.popup(global_position + Vector2(0, -80), "+%s ESSENSSI" % gained.to_upper(),
-			essence_color_for(gained), 16)
+		arena.popup(global_position + Vector2(0, -80),
+			"+ESSENSSI: %s" % essence_name_fi(gained), essence_color_for(gained), 16)
 
 
 func _consume_selected() -> void:
@@ -159,6 +165,16 @@ func _cycle_essence() -> void:
 
 func essence_color() -> Color:
 	return essence_color_for(selected_essence)
+
+
+## Essenssin suomenkielinen nimi popup-teksteihin.
+func essence_name_fi(kind: String) -> String:
+	match kind:
+		"red": return "PUNAINEN"
+		"blue": return "SININEN"
+		"green": return "VIHREÄ"
+		"void": return "TYHJYYS"
+	return kind.to_upper()
 
 
 func essence_color_for(kind: String) -> Color:
@@ -202,9 +218,16 @@ func _ultimate(dir: Vector2) -> void:
 		"dps": 31.0 if essence != "green" else 24.0, "tick": 0.38,
 		"color": ec,
 	})
+	# Neljä kaikua -tunnus: neljä pientä rengasta essenssien väreissä rituaalin
+	# ympärillä kertoo heti, että kyseessä on Myrian ulti.
+	for i in range(ESSENCES.size()):
+		var echo: String = ESSENCES[i]
+		var p := target + Vector2.RIGHT.rotated(TAU * i / 4.0) * ULT_RADIUS * 0.55
+		Fx.ring(arena, p, Palette.glow(essence_color_for(echo), 1.5), 58.0, 0.55, 4.0)
 	arena.popup(target + Vector2(0, -ULT_RADIUS - 24),
-		"NELJÄ KAIKUA — %s" % essence.to_upper(), ec, 23)
+		"NELJÄ KAIKUA — %s" % essence_name_fi(essence), ec, 23)
 	AudioMgr.play("ult", 0.12, -3.0, target)
+	AudioMgr.play("blessing", 0.07, -7.0, target)
 	controller_rumble(0.55, 0.85, 0.32)
 
 

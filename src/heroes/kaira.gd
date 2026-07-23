@@ -34,7 +34,12 @@ func _basic(dir: Vector2) -> void:
 	ability_signature("kaira", 120.0, d)
 	Fx.slash(arena, global_position, d, BASIC_REACH, 0.72,
 		Palette.glow(Color("ffd45a") if breaker else hero_color(), 1.5))
-	AudioMgr.play("swing", 0.08, -2.0 if breaker else -7.0, global_position)
+	if breaker:
+		# Ydinmurskaus: poranterä kipinöi — sulametallisuihku iskusuuntaan.
+		Fx.burst(arena, global_position + d * BASIC_REACH * 0.6,
+			Palette.glow(Color("ffcf4a"), 1.6), 12, 260.0, 0.32, 4.0)
+	AudioMgr.play("rock" if breaker else "swing", 0.08, -4.0 if breaker else -7.0,
+		global_position)
 	controller_rumble(0.22, 0.52 if breaker else 0.26, 0.1)
 	for enemy in arena.alive_enemies(team):
 		var off: Vector2 = enemy.global_position - global_position
@@ -72,16 +77,26 @@ func _harpoon_hit(target: Hero, _projectile: Projectile) -> void:
 		gain_res(18.0)
 	else:
 		target.apply_slow(0.58, 1.1)
+	# Ketju kiristyy: raskas vetosäde ja kipinäpurske tartuntapisteessä.
 	Fx.beam(arena, global_position, target.global_position,
 		Palette.glow(hero_color(), 1.5), 7.0)
+	Fx.burst(arena, target.global_position, Palette.glow(Color("ffcf4a"), 1.5),
+		9, 210.0, 0.3, 3.5)
+	AudioMgr.play("titan_grab", 0.08, -7.0, target.global_position)
 
 
 func _ability2(dir: Vector2) -> void:
 	var d := dir.normalized() if dir.length() > 0.1 else aim
 	ability_signature("kaira", 175.0, d)
-	Fx.vortex(arena, global_position + d * 62.0, Palette.glow(hero_color(), 1.5), 155.0, 0.55)
-	Fx.burst(arena, global_position + d * 65.0, Color("ffcf59"), 20, 330.0, 0.5, 6.0)
-	AudioMgr.play("slam", 0.1, -3.0, global_position)
+	# Painepurkaus luetaan kartiona: kaksi jauhavaa sivallusta ja kuumuusvälähdys,
+	# ei pyörre (pyörteet ovat Torqin magneettikieltä).
+	Fx.slash(arena, global_position, d, A2_RADIUS * 0.92, 1.05,
+		Palette.glow(Color("ff8f2a"), 1.5))
+	Fx.slash(arena, global_position, d, A2_RADIUS * 0.6, 1.2,
+		Palette.glow(Color("ffd45a"), 1.4))
+	Fx.flash(arena, global_position + d * 88.0, Palette.glow(hero_color(), 1.5), 70.0, 0.3)
+	Fx.burst(arena, global_position + d * 95.0, Color("ffcf59"), 22, 360.0, 0.5, 6.0)
+	AudioMgr.play("quake", 0.1, -6.0, global_position)
 	controller_rumble(0.45, 0.75, 0.18)
 	for enemy in arena.alive_enemies(team):
 		var off: Vector2 = enemy.global_position - global_position
@@ -113,8 +128,11 @@ func _dodge_action(_dir: Vector2) -> void:
 			enemy.apply_slow(0.65, 0.85)
 	add_shield(34.0 + hits * 18.0, 3.2, self)
 	cc_immune_timer = maxf(cc_immune_timer, 0.7)
+	# Maapiikki: raskas maavälähdys + kipinärengas — eri kieli kuin Torqin kilpikupla.
+	Fx.flash(arena, global_position, Palette.glow(hero_color(), 1.4), 60.0, 0.28)
 	Fx.ring(arena, global_position, Palette.glow(Color("ffd45a"), 1.6), 178.0, 0.45, 7.0)
-	AudioMgr.play("shield", 0.1, -2.0, global_position)
+	Fx.burst(arena, global_position, Palette.glow(Color("ffcf4a"), 1.5), 14, 200.0, 0.4, 5.0)
+	AudioMgr.play("slam", 0.1, -4.0, global_position)
 	controller_rumble(0.5, 0.7, 0.2)
 
 
@@ -150,6 +168,7 @@ func _ultimate(dir: Vector2) -> void:
 	})
 	arena.popup(target + Vector2(0, -ULT_RADIUS - 25), "SYVÄPORA!", Color("ffd45a"), 24)
 	AudioMgr.play("ult", 0.12, -2.0, target)
+	AudioMgr.play("quake", 0.08, -8.0, target)
 	controller_rumble(0.75, 1.0, 0.35)
 
 

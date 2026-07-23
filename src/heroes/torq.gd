@@ -46,6 +46,10 @@ func _basic(dir: Vector2) -> void:
 	ability_signature("torq", 125.0, d)
 	Fx.slash(arena, global_position, d, BASIC_REACH, 0.82,
 		Palette.glow(hero_color(), 1.45))
+	# Magneettivasaran isku: kylmä välähdys vasaran päässä erottaa Torqin
+	# raskaan lyönnin Kairan kipinöivästä porasta.
+	Fx.flash(arena, global_position + d * BASIC_REACH * 0.75,
+		Palette.glow(Color("9cc4ff"), 1.5), 34.0, 0.18)
 	AudioMgr.play("titan_punch", 0.08, -8.0, global_position)
 	for enemy in arena.alive_enemies(team):
 		var off: Vector2 = enemy.global_position - global_position
@@ -66,8 +70,12 @@ func _ability1(dir: Vector2) -> void:
 		"radius": 150.0, "dur": 5.8, "dps": 15.0, "tick": 0.46,
 		"color": hero_color(),
 	})
+	# Majakka käynnistyy: kaksoisrengas + pystysäde, matala suojahurina.
 	Fx.ring(arena, target, Palette.glow(hero_color(), 1.5), 150.0, 0.45, 6.0)
-	AudioMgr.play("dome_up", 0.08, -7.0, target)
+	Fx.ring(arena, target, Palette.glow(Color("9cc4ff"), 1.4), 62.0, 0.35, 4.0)
+	Fx.beam(arena, target + Vector2(0, 26), target + Vector2(0, -74),
+		Palette.glow(Color("9cc4ff"), 1.5), 5.0)
+	AudioMgr.play("guard_up", 0.08, -6.0, target)
 
 
 func _ability2(_dir: Vector2) -> void:
@@ -88,8 +96,10 @@ func _ability2(_dir: Vector2) -> void:
 			enemy.apply_stun(0.35)
 	for ally in arena.heroes_in_circle(global_position, PULSE_RADIUS, team, true, true):
 		ally.add_shield(32.0 + enemy_hits * 7.0, 3.2, self)
-	Fx.ring(arena, global_position, Color("b7d5ff"), PULSE_RADIUS, 0.5, 7.0)
-	AudioMgr.play("shield", 0.1, -4.0, global_position)
+	Fx.ring(arena, global_position, Color("9cc4ff"), PULSE_RADIUS, 0.5, 7.0)
+	# Magneettinen napsahdus: sähköinen ääni erottaa kaksipulssin kilpiäänistä.
+	AudioMgr.play("zap", 0.1, -5.0, global_position)
+	AudioMgr.play("shield", 0.08, -8.0, global_position)
 	controller_rumble(0.5, 0.75, 0.2)
 
 
@@ -127,8 +137,9 @@ func _passive_update(delta: float) -> void:
 
 
 func _anchor_release() -> void:
-	Fx.ring(arena, global_position, Palette.glow(Color("b7d5ff"), 1.5), 155.0, 0.42, 7.0)
+	Fx.ring(arena, global_position, Palette.glow(Color("9cc4ff"), 1.5), 155.0, 0.42, 7.0)
 	Fx.burst(arena, global_position, hero_color(), 16, 280.0, 0.45, 5.0)
+	AudioMgr.play("zap", 0.08, -7.0, global_position)
 	for enemy in arena.alive_enemies(team):
 		var off: Vector2 = enemy.global_position - global_position
 		if off.length() > 155.0 + enemy.radius:
@@ -170,7 +181,7 @@ func _ultimate(dir: Vector2) -> void:
 		"radius": ULT_RADIUS, "dur": 8.0, "dps": 0.0, "tick": 0.4,
 		"color": hero_color(),
 	})
-	arena.popup(target + Vector2(0, -ULT_RADIUS - 25), "NOLLAVYÖHYKE!", Color("b7d5ff"), 24)
+	arena.popup(target + Vector2(0, -ULT_RADIUS - 25), "NOLLAVYÖHYKE!", Color("9cc4ff"), 24)
 	AudioMgr.play("dome_up", 0.13, -1.0, target)
 	controller_rumble(0.7, 0.95, 0.35)
 

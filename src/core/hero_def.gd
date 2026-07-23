@@ -384,8 +384,8 @@ const HEROES := {
 		"ratings": {"kesto": 4, "liike": 2, "vahinko": 4, "tuki": 2},
 		"weapon": "Seismipora ja ketjuharppuuna",
 		"desc": "Mekaaninen lähijungleri. Kolmas poraisku murtaa panssarin, harppuuna kokoaa leirin ja Painepurkaus muuttaa kerätyn raivon aluevahingoksi.",
-		"color": Color("f5b942"),
-		"color_b": Color("6f3715"),
+		"color": Color("ffb324"),
+		"color_b": Color("7a3a10"),
 		"abilities": {
 			"basic": {"name": "Porahammas", "desc": "Leveä poraisu. Joka kolmas osuma on Ydinmurskaus: lisävahinko, lyhyt hidastus ja viidakko-osumasta parannus.", "cd": 0.52},
 			"a1": {"name": "Seismiharppuuna", "desc": "Pidä R1 tähdätäksesi ketjuharppuunan. Vetää ensimmäistä osumaa kohti Kairaa; monsterit vedetään ja tainnutetaan voimakkaammin.", "cd": 7.0},
@@ -404,8 +404,8 @@ const HEROES := {
 		"ratings": {"kesto": 2, "liike": 3, "vahinko": 4, "tuki": 4},
 		"weapon": "Ratakiskojousi ja metsästysdroni",
 		"desc": "Ranged tracker. Merkitsee tärkeän saaliin, rakentaa hidastavia sahalanka-ansoja ja valmistaa gankin tiedusteludroonilla.",
-		"color": Color("7fe7d1"),
-		"color_b": Color("174f5f"),
+		"color": Color("a6f23e"),
+		"color_b": Color("234f17"),
 		"abilities": {
 			"basic": {"name": "Ratakiskopultti", "desc": "Nopea mekaaninen pultti. Merkittyyn kohteeseen osuma synnyttää bonuspurkauksen ja palauttaa hieman energiaa.", "cd": 0.46},
 			"a1": {"name": "Jäljitinpiikki", "desc": "Pidä R1 tähdätäksesi pitkän kantaman piikin. Merkitsee saaliin ottamaan lisävahinkoa ja paljastaa sen liikkeen.", "cd": 7.5},
@@ -424,8 +424,8 @@ const HEROES := {
 		"ratings": {"kesto": 3, "liike": 2, "vahinko": 4, "tuki": 4},
 		"weapon": "Essenssikehä",
 		"desc": "Jungle-mage, joka tallettaa leirien voiman. Punainen, sininen, vihreä ja major-essenssi muuttavat kenttien sekä ultin tarkoituksen.",
-		"color": Color("c89cff"),
-		"color_b": Color("3b246b"),
+		"color": Color("cf6bff"),
+		"color_b": Color("471668"),
 		"abilities": {
 			"basic": {"name": "Henkikipinä", "desc": "Essenssin värinen hakeutuva kipinä. Valittu essenssi lisää pienen polton, hidastuksen tai elinvoiman imun.", "cd": 0.56},
 			"a1": {"name": "Sielusäie", "desc": "Pitkä säie vahingoittaa kohdetta. Monsteriosuma palauttaa manaa ja alle puolessa elämässä oleva monsteri antaa Myrialle parannusta.", "cd": 6.0},
@@ -444,8 +444,8 @@ const HEROES := {
 		"ratings": {"kesto": 5, "liike": 1, "vahinko": 2, "tuki": 4},
 		"weapon": "Magneettivasara ja vartijareaktori",
 		"desc": "Tankki-jungleri. Kokoaa leirin itseensä, katkaisee monsterien iskut ja muuttaa objective-kuopan omaksi linnoituksekseen.",
-		"color": Color("7bb6ff"),
-		"color_b": Color("203b68"),
+		"color": Color("4a86ff"),
+		"color_b": Color("142a55"),
 		"abilities": {
 			"basic": {"name": "Magneettivasara", "desc": "Leveä vasaranisku. Monsteriosumat lataavat reaktoria ja lyhentävät Vartijamajakan jäähdytystä.", "cd": 0.64},
 			"a1": {"name": "Vartijamajakka", "desc": "Pidä R1 ja sijoita majakka. Se pakottaa leirin lähelle, katkoo monsterien hyökkäysrytmiä ja hidastaa gankkaavia sankareita.", "cd": 8.5},

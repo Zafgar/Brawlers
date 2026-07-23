@@ -112,7 +112,7 @@ static func ability_impact(parent: Node, pos: Vector2, visual_id: String, color:
 		"vesper_bolt":
 			burst(parent, pos, Palette.glow(color, 1.45), 6, 170.0, 0.22, 2.5)
 		"vesper_tracker":
-			flash(parent, pos, Palette.glow(Color("a9fff1"), 1.65), 34.0, 0.2)
+			flash(parent, pos, Palette.glow(Color("d9ff8f"), 1.65), 34.0, 0.2)
 			ring(parent, pos, team_color, 50.0, 0.34, 3.0)
 			burst(parent, pos, color, 10, 220.0, 0.3, 3.0)
 		"myria_wisp":

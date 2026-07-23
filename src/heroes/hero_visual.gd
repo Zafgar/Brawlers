@@ -387,7 +387,7 @@ func _draw_ultimate_state(bob: float) -> void:
 				for i in range(3):
 					var a := _time * 2.5 + TAU * i / 3.0
 					var p := center + Vector2(cos(a), sin(a) * 0.45) * 43.0
-					draw_circle(p, 5.0, Palette.glow(Color("9ffff0"), 1.5))
+					draw_circle(p, 5.0, Palette.glow(Color("d9ff8f"), 1.5))
 					draw_line(center, p, Palette.with_alpha(hero.hero_color(), 0.28), 1.5)
 		"myria":
 			var ec: Color = hero.call("essence_color") if hero.has_method("essence_color") else hero.hero_color()
@@ -1542,8 +1542,8 @@ func _paint_kaira(c1: Color, c2: Color) -> void:
 			shoulder + p * side * 8.0 - d * 2.0,
 			shoulder + p * side * 5.0 + d * 9.0,
 			shoulder - p * side * 6.0 + d * 7.0]), Palette.darker(c2, 0.6))
-	# Keltainen kypärä ja leveä tumma visiiri.
-	draw_arc(Vector2(0, -9), 16.0, PI + 0.2, TAU - 0.2, 18, Color("f5b942"), 8.0)
+	# Hehkuvan meripihkainen kypärä ja leveä tumma visiiri.
+	draw_arc(Vector2(0, -9), 16.0, PI + 0.2, TAU - 0.2, 18, c1, 8.0)
 	draw_line(Vector2(0, -7) - p * 10.0 + d * 3.0,
 		Vector2(0, -7) + p * 10.0 + d * 3.0, Color("191d26"), 6.0)
 	draw_circle(Vector2(0, -7) + d * 5.0, 2.8, Color("fff0a8"))
@@ -1570,7 +1570,7 @@ func _paint_vesper(c1: Color, c2: Color) -> void:
 	# Kolmisiipinen metsästysdroni selän yllä.
 	var drone := -d * 19.0 + Vector2(0, -24.0 + sin(_time * 3.5) * 3.0)
 	draw_circle(drone, 8.0, Palette.darker(c2, 0.7))
-	draw_circle(drone, 4.5, Palette.glow(Color("9ffff0"), 1.5))
+	draw_circle(drone, 4.5, Palette.glow(Color("d9ff8f"), 1.5))
 	for i in range(3):
 		var ray := Vector2.RIGHT.rotated(_time * 0.45 + TAU * i / 3.0)
 		draw_colored_polygon(PackedVector2Array([
@@ -1581,10 +1581,10 @@ func _paint_vesper(c1: Color, c2: Color) -> void:
 	# Tracker-huppu, yksi kirkas tähtäyslinssi ja antennit.
 	draw_arc(Vector2(0, -7), 16.0, PI + 0.25, TAU - 0.25, 18, Palette.darker(c2, 0.6), 8.0)
 	var visor := Vector2(0, -6) + d * 5.0
-	draw_line(visor - p * 9.0, visor + p * 9.0, Color("15323d"), 6.0)
-	draw_circle(visor + p * 5.0, 4.0, Palette.glow(Color("9ffff0"), 1.5))
+	draw_line(visor - p * 9.0, visor + p * 9.0, Color("1c3a10"), 6.0)
+	draw_circle(visor + p * 5.0, 4.0, Palette.glow(Color("d9ff8f"), 1.5))
 	draw_line(Vector2(0, -18) - p * 4.0, Vector2(0, -31) - p * 10.0, c1, 2.0)
-	draw_circle(Vector2(0, -32) - p * 10.0, 2.5, Color("9ffff0"))
+	draw_circle(Vector2(0, -32) - p * 10.0, 2.5, Color("d9ff8f"))
 
 	# Ratakiskojousi: kaksi rinnakkaista kiskoa ja energiajänne.
 	var grip := d * 13.0 + p * 5.0
@@ -1594,8 +1594,8 @@ func _paint_vesper(c1: Color, c2: Color) -> void:
 		draw_line(grip + p * side * 5.0, muzzle + p * side * 7.0,
 			Palette.darker(c2, 0.72), 6.0)
 		draw_line(grip + p * side * 5.0, muzzle + p * side * 7.0,
-			Color("5dbbad"), 2.5)
-	draw_line(muzzle - p * 13.0, muzzle + p * 13.0, Color("c7fff5"), 3.0)
+			Color("76b23c"), 2.5)
+	draw_line(muzzle - p * 13.0, muzzle + p * 13.0, Color("eeffc9"), 3.0)
 	draw_circle(muzzle, 4.0 + _attack_anim * 4.0, Palette.glow(c1, 1.6))
 
 
@@ -1662,11 +1662,11 @@ func _paint_torq(c1: Color, c2: Color) -> void:
 	for i in range(6):
 		inner.append(Vector2.RIGHT.rotated(PI / 6.0 + TAU * i / 6.0) * 18.0)
 	draw_colored_polygon(inner, c1)
-	draw_circle(Vector2.ZERO, 10.0, Color("18345d"))
-	draw_circle(Vector2.ZERO, 6.0 + sin(_time * 5.0) * 1.2, Palette.glow(Color("c5dcff"), 1.55))
+	draw_circle(Vector2.ZERO, 10.0, Color("10254a"))
+	draw_circle(Vector2.ZERO, 6.0 + sin(_time * 5.0) * 1.2, Palette.glow(Color("b8d2ff"), 1.55))
 	# Pään visiiri ja sivupanssarit.
 	draw_rect(Rect2(Vector2(-13, -19), Vector2(26, 11)), Palette.darker(c2, 0.55))
-	draw_line(Vector2(-9, -13), Vector2(9, -13), Color("b7d5ff"), 4.0)
+	draw_line(Vector2(-9, -13), Vector2(9, -13), Color("9cc4ff"), 4.0)
 	for side in [-1.0, 1.0]:
 		var shoulder: Vector2 = p * side * 22.0 - d * 2.0
 		draw_circle(shoulder, 10.0, Palette.darker(c2, 0.72))
@@ -1682,4 +1682,4 @@ func _paint_torq(c1: Color, c2: Color) -> void:
 		head + d * 9.0 + p * 12.0, head - d * 7.0 + p * 14.0])
 	draw_colored_polygon(hammer, Palette.darker(c2, 0.62))
 	draw_line(head - p * 10.0, head + p * 10.0, Palette.glow(c1, 1.45), 5.0)
-	draw_circle(head, 4.0 + _cast_anim * 3.0, Color("d9e8ff"))
+	draw_circle(head, 4.0 + _cast_anim * 3.0, Color("d4e4ff"))

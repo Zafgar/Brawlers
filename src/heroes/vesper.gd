@@ -59,7 +59,7 @@ func _bolt_hit(target: Hero, _projectile: Projectile) -> void:
 	gain_res(7.0)
 	Fx.bolt(arena, target.global_position - aim.orthogonal() * 16.0,
 		target.global_position + aim.orthogonal() * 16.0,
-		Palette.glow(Color("9ffff0"), 1.6))
+		Palette.glow(Color("dcff8f"), 1.6))
 
 
 func _ability1(dir: Vector2) -> void:
@@ -67,7 +67,7 @@ func _ability1(dir: Vector2) -> void:
 	ability_signature("vesper", 145.0, d)
 	Projectile.launch(self, global_position + d * (radius + 10.0), d, {
 		"speed": 1280.0, "dmg": 20.0, "radius": 9.0, "life": 0.68,
-		"kb": 80.0, "pierce": 1, "color": Color("b8fff2"),
+		"kb": 80.0, "pierce": 1, "color": Color("d9ff8f"),
 		"visual": "vesper_tracker", "on_hit": Callable(self, "_tracker_hit"),
 	})
 	AudioMgr.play("bow_charged", 0.08, -5.0, global_position)
@@ -79,7 +79,14 @@ func _tracker_hit(target: Hero, _projectile: Projectile) -> void:
 	if target is Critter:
 		target.apply_slow(0.72, 1.0)
 		gain_res(10.0)
-	Fx.ring(arena, target.global_position, Palette.glow(hero_color(), 1.5), 52.0, 0.35, 4.0)
+	# Lukitus näkyy tähtäinristinä saaliin päällä + mark-ping kuuluu.
+	var gp := target.global_position
+	Fx.ring(arena, gp, Palette.glow(hero_color(), 1.5), 52.0, 0.35, 4.0)
+	Fx.beam(arena, gp + Vector2(-30, 0), gp + Vector2(30, 0),
+		Palette.glow(Color("dcff8f"), 1.5), 3.0)
+	Fx.beam(arena, gp + Vector2(0, -30), gp + Vector2(0, 30),
+		Palette.glow(Color("dcff8f"), 1.5), 3.0)
+	AudioMgr.play("mark", 0.07, -6.0, gp)
 
 
 func _ability2(dir: Vector2) -> void:
@@ -89,8 +96,14 @@ func _ability2(dir: Vector2) -> void:
 		"radius": TRAP_RADIUS, "dur": 6.0, "dps": 29.0, "tick": 0.42,
 		"color": hero_color(),
 	})
+	# Sahalanka näkyy X-ristinä alueen yli ja kuulostaa piikkilangalta.
 	Fx.ring(arena, target, Palette.glow(hero_color(), 1.45), TRAP_RADIUS, 0.38, 4.0)
-	AudioMgr.play("drop", 0.08, -5.0, target)
+	var arm := TRAP_RADIUS * 0.7
+	Fx.beam(arena, target + Vector2(-arm, -arm), target + Vector2(arm, arm),
+		Palette.glow(Color("d9ff8f"), 1.4), 3.5)
+	Fx.beam(arena, target + Vector2(-arm, arm), target + Vector2(arm, -arm),
+		Palette.glow(Color("d9ff8f"), 1.4), 3.5)
+	AudioMgr.play("thorns", 0.08, -6.0, target)
 
 
 func _dodge_action(_dir: Vector2) -> void:
@@ -102,8 +115,8 @@ func _dodge_action(_dir: Vector2) -> void:
 	})
 	apply_haste(1.18, 2.0)
 	iframes = maxf(iframes, 0.22)
-	Fx.ring(arena, global_position, Color("a9fff1"), 270.0, 0.55, 3.0)
-	AudioMgr.play("pickup", 0.08, -6.0, global_position)
+	Fx.ring(arena, global_position, Color("d9ff8f"), 270.0, 0.55, 3.0)
+	AudioMgr.play("blink", 0.08, -8.0, global_position)
 	controller_rumble(0.18, 0.26, 0.14)
 
 
@@ -137,8 +150,9 @@ func _ultimate(dir: Vector2) -> void:
 		"radius": ULT_RADIUS, "dur": 8.0, "dps": 18.0, "tick": 0.58,
 		"color": hero_color(),
 	})
-	arena.popup(target + Vector2(0, -ULT_RADIUS - 25), "SAARTORISTIKKO!", Color("a9fff1"), 24)
-	AudioMgr.play("dome_up", 0.1, -4.0, target)
+	arena.popup(target + Vector2(0, -ULT_RADIUS - 25), "SAARTORISTIKKO!", Color("d9ff8f"), 24)
+	AudioMgr.play("ult", 0.1, -4.0, target)
+	AudioMgr.play("mark", 0.08, -5.0, target)
 	controller_rumble(0.38, 0.7, 0.28)
 
 
