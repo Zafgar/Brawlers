@@ -17,8 +17,9 @@ const MAX_RANK := 31               # TIER_NAMES.size() * DIVISIONS - 1
 const ROMAN := ["IV", "III", "II", "I"]
 
 # Vanhat 6 vaikeustasoa (0-5) vastaavina rankeina — vanhat valikot/simit
-# jatkavat toimintaansa tällä kartalla.
-const LEGACY_LEVEL_RANKS := [1, 7, 13, 19, 25, 31]
+# jatkavat toimintaansa tällä kartalla. Taso 5 ("Mestari") = Diamond I (23):
+# reilu, EI huijauksia — vain taso 6 ("Epäreilu") osuu huijausramppiin.
+const LEGACY_LEVEL_RANKS := [1, 7, 13, 19, 23, 31]
 
 
 ## Rankin taso (0..7).

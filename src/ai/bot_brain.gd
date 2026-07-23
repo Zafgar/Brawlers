@@ -12,8 +12,10 @@ extends RefCounted
 ##   Mage     — keskietäisyys, alueenhallinta
 ##   Ranger   — pitää etäisyyttä ja kitettää
 ##
-## Vaikeustaso EI muuta vahinkoa tai kestoa — vain reaktioaikaa,
-## tähtäysvirhettä, ennakointia, väistämistä ja kykyjen käyttötodennäköisyyttä.
+## Vaikeus tulee ranking-asteikolta (BotRank: Wood IV .. Challenger I) ja
+## säätää ensisijaisesti taitoa: reaktioaikaa, tähtäysvirhettä, ennakointia,
+## väistämistä ja kykyjen käyttöä. Vain huippupää (Champion IV -> Challenger I)
+## huijaa avoimesti myös tilastoilla (vahinko/kesto/jäähdytykset/vauhti).
 
 enum Mode { GET_RELIC, ATTACK_CARRIER, ESCORT, CARRY, RETREAT, FIGHT, SUPPORT, GET_BUFF }
 
@@ -42,8 +44,8 @@ var combo_skill := 0.0          # muistaako avaajan kohteen ja käyttääkö oik
 var cooldown_discipline := 0.0  # säästääkö liikkuvuutta/pakoa ja välttääkö tuplakastit
 var tower_judgement := 0.0      # kuinka tarkasti botti arvioi aallon, aggron ja poistumistien
 
-# Taso 6 (epäreilu) huijaa: nämä poikkeavat 1.0:sta vain kyseisellä tasolla.
-# Hero lukee kertoimet setup()issa ja soveltaa niitä.
+# Huippupään huijaukset: poikkeavat 1.0:sta vasta rankista 24 (Champion IV)
+# ylöspäin, portaattomasti Challenger I:een. Hero lukee kertoimet setup()issa.
 var damage_mult := 1.0          # aiheutettu vahinko
 var damage_taken_mult := 1.0    # otettu vahinko
 var cooldown_mult := 1.0        # jäähdytysten kerroin
@@ -121,7 +123,7 @@ func _init(p_level: int, p_rank := -1) -> void:
 	dodge_chance = lerpf(0.0, 0.95, pow(t, 1.35))
 	ability_chance = lerpf(0.15, 1.0, pow(t, 0.85))
 	prediction = pow(t, 1.5)
-	# Aggressio saavuttaa katon (jatkuva tuli) vasta Platinum-tasolla.
+	# Aggressio saavuttaa katon (jatkuva tuli) Champion III:sta ylöspäin.
 	aggression = minf(lerpf(0.35, 1.15, t), 1.0)
 	# Buffien haku, deny ja keskitetty tuli: matalat tasot eivät osaa lainkaan.
 	buff_focus = pow(t, 1.1)

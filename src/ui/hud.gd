@@ -1067,12 +1067,15 @@ class Scoreboard:
 		var cols := _columns(px, pw)
 		var head := ["", "POS", "LVL", "K / D / A", "CS", "KULTA", "VAHINKO", "TAVARAT"]
 		for i in range(1, head.size()):
-			UiKit.draw_text(self, Vector2(float(cols[i]), y + 17.0), str(head[i]), 15,
+			# cols[7] on tavaralohkon VASEN reuna -> keskitä otsikko lohkon ylle.
+			var hx: float = float(cols[i]) if i < 7 else float(cols[7]) + ITEM_SLOTS * 46.0 / 2.0
+			UiKit.draw_text(self, Vector2(hx, y + 17.0), str(head[i]), 15,
 				Palette.TEXT_DIM, true)
 		y += 44.0
 		var members: Array = []
 		for h in arena.heroes:
-			if is_instance_valid(h) and not h.is_unit and h.team == team:
+			if is_instance_valid(h) and not h.is_unit and h.team == team \
+					and h.profile != null:
 				members.append(h)
 		members.sort_custom(func(a, b): return a.profile.index < b.profile.index)
 		for h in members:

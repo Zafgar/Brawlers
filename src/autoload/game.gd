@@ -15,8 +15,9 @@ const OPTIONS_PATH := "user://arena_options.cfg"
 # Otteluasetukset
 var team_size := 4
 var rounds_to_win := 1          # MOBA on yksi 20 minuutin ottelu
-var bot_level := 2              # 0–5 (vanha asteikko; pidetään synkassa tierin kanssa)
+var bot_level := 1              # 0–5 (vanha asteikko; pidetään synkassa tierin kanssa)
 var bot_tier := 2               # ranking-taso 0–7 (Wood..Challenger); oletus Silver
+                                # (Silver III = rank 9 -> vanha taso 1; synkka ylläpidetään valikossa)
 var map_id := "moba"
 var mode_id := "moba"
 var practice := false

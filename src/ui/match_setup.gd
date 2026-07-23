@@ -6,7 +6,7 @@ extends Control
 var _desc_label: Label = null
 
 const DESCRIPTIONS := {
-	"bots": "AI-taso vaikuttaa reaktioon, tähtäykseen, farmaukseen, objective-päätöksiin ja turvatornien kunnioittamiseen. Taso 6 on tarkoituksella epäreilu.",
+	"bots": "Ranking-taso (Wood–Challenger) säätää bottien reaktiota, tähtäystä, farmausta, objective-päätöksiä ja tornikuria. Champion ja Challenger huijaavat tarkoituksella myös tilastoilla.",
 	"split": "Jokaisella paikallisella pelaajalla on oma sankaria seuraava näkymä. Myös yhden pelaajan peli käyttää tätä kameraa.",
 	"format": "Vakioformaatti: 4v4, yksi top, yksi jungle ja kaksi bottom. Vapaat pelaajapaikat täytetään AI-sankareilla.",
 	"map": "Eternal Divide: kaksi kaartuvaa linjaa, niiden välinen jungle, Red/Blue-buffit, Dragon, Baron, kolme tornia per linja ja Nexus.",
