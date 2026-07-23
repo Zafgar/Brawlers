@@ -511,6 +511,8 @@ func on_leash_reset() -> void:
 func _knockout(source: Hero) -> void:
 	alive = false
 	velocity = Vector2.ZERO
+	kb_velocity = Vector2.ZERO
+	_control_velocity = Vector2.ZERO
 	visible = false
 	set_collision_layer_value(2, false)
 	set_collision_mask_value(2, false)
@@ -551,6 +553,8 @@ func _respawn() -> void:
 	hp = max_hp
 	global_position = home
 	velocity = Vector2.ZERO
+	kb_velocity = Vector2.ZERO
+	_control_velocity = Vector2.ZERO
 	visible = true
 	iframes = 0.5
 	set_collision_layer_value(2, true)
@@ -588,6 +592,8 @@ func reset_for_round(_keep_ult_fraction := 0.5) -> void:
 	hp = max_hp
 	global_position = home
 	velocity = Vector2.ZERO
+	kb_velocity = Vector2.ZERO
+	_control_velocity = Vector2.ZERO
 	respawn_timer = 0.0
 	stun_timer = 0.0
 	slow_timer = 0.0

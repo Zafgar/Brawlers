@@ -65,7 +65,8 @@ func _ability1(dir: Vector2) -> void:
 func _harpoon_hit(target: Hero, _projectile: Projectile) -> void:
 	var pull := global_position - target.global_position
 	if pull.length() > 1.0:
-		target.velocity += pull.normalized() * (760.0 if target is Critter else 470.0)
+		# Vetovoima on jo viritetty kohdetyypin mukaan -> ohita kb_resist.
+		target.apply_knockback(pull, 760.0 if target is Critter else 470.0, false)
 	if target is Critter:
 		target.apply_stun(0.62)
 		gain_res(18.0)
@@ -104,7 +105,8 @@ func _dodge_action(_dir: Vector2) -> void:
 			continue
 		hits += 1
 		if off.length() > 1.0:
-			enemy.velocity += off.normalized() * (430.0 if enemy is Critter else 210.0)
+			# Sisäänveto kohti Kairaa; voima viritetty kohdetyypin mukaan.
+			enemy.apply_knockback(off, 430.0 if enemy is Critter else 210.0, false)
 		if enemy is Critter:
 			enemy.apply_stun(0.55)
 		else:

@@ -146,6 +146,7 @@ func _aim_begin(_slot: String) -> bool:
 	t.set_grabbed(self)
 	t.global_position = global_position + aim * GRAB_HOLD_DIST
 	t.velocity = Vector2.ZERO
+	t.kb_velocity = Vector2.ZERO
 	t.apply_stun(0.3)
 	AudioMgr.play("titan_grab", 0.06, -2.0, global_position)
 	visual.cast_ability("a1")
@@ -172,6 +173,7 @@ func _aim_hold(_slot: String, delta: float) -> void:
 	_held_target.set_grabbed(self)
 	_held_target.global_position = global_position + aim * GRAB_HOLD_DIST
 	_held_target.velocity = Vector2.ZERO
+	_held_target.kb_velocity = Vector2.ZERO
 	_held_target.apply_stun(0.2)
 	if _hold_time >= GRAB_MAX_HOLD:
 		cd.a1 = cd_max.a1

@@ -11,6 +11,7 @@ extends CharacterBody2D
 signal knocked_out(hero, source)
 
 const ACCEL := 2600.0
+const KB_FRICTION := 1400.0          # työntöimpulssin hiipumiskitka (px/s²)
 const REGEN_DELAY := 5.0
 const REGEN_PER_SEC := 14.0
 const RESPAWN_TIME := 4.5
@@ -104,6 +105,12 @@ var _grab_hold_timer := 0.0
 var dash_timer := 0.0
 var dash_velocity := Vector2.ZERO
 var _phase_walls := false          # syöksy sisäseinien läpi (Tide) — reunat rajataan
+
+# Työntö/veto-impulssikanava. Töytäisyt kulkevat OMASSA kanavassaan erillään
+# ohjausliikkeestä: aiemmin ne lisättiin suoraan velocityyn, jonka move_toward
+# (ACCEL) söi ~0.2 sekunnissa — kaikki liikuttamiskyvyt tuntuivat rikkinäisiltä.
+var kb_velocity := Vector2.ZERO
+var _control_velocity := Vector2.ZERO
 
 var visual: HeroVisual = null
 var _recent_damagers: Array = []    # [{hero, time}]
@@ -366,8 +373,16 @@ func _physics_process(delta: float) -> void:
 	if dash_timer > 0.0:
 		dash_timer -= delta
 		velocity = dash_velocity
+		_control_velocity = dash_velocity
+		# Syöksy ohittaa impulssit; impulssi hiipuu silti taustalla eikä jää odottamaan.
+		kb_velocity = kb_velocity.move_toward(Vector2.ZERO, KB_FRICTION * delta)
 	else:
-		velocity = velocity.move_toward(mv * speed, ACCEL * delta)
+		# Ohjausliike ja työntöimpulssi eri kanavissa: move_toward ei enää syö
+		# töytäisyä, vaan impulssi hiipuu omalla kitkallaan (KB_FRICTION).
+		# Tainnutettu/juurtunut liikkuu silti töytäisystä (mv on niillä nolla).
+		_control_velocity = _control_velocity.move_toward(mv * speed, ACCEL * delta)
+		kb_velocity = kb_velocity.move_toward(Vector2.ZERO, KB_FRICTION * delta)
+		velocity = _control_velocity + kb_velocity
 		if _phase_walls:
 			_end_phase()   # syöksy loppui -> palauta seinätörmäys
 
@@ -392,6 +407,8 @@ func _physics_process(delta: float) -> void:
 		if absf(global_position.x) > fh.x or absf(global_position.y) > fh.y:
 			global_position = arena.map.clamp_to_field(global_position, radius + 6.0)
 			velocity = Vector2.ZERO
+			kb_velocity = Vector2.ZERO
+			_control_velocity = Vector2.ZERO
 
 	# Syötepuskurit: painallukset jäävät hetkeksi muistiin, joten kyky laukeaa
 	# heti kun jäähdytys sallii vaikka nappi painettiin hiukan etuajassa tai
@@ -1343,7 +1360,7 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 	if res_type == "rage":
 		gain_res(amount * 0.6)
 	if kb > 0.0 and kb_dir != Vector2.ZERO:
-		velocity += kb_dir.normalized() * kb * (1.0 - kb_resist)
+		apply_knockback(kb_dir, kb)
 
 	visual.flash()
 	arena.popup(global_position + Vector2(0, -46), str(int(amount)), Color.WHITE, 20)
@@ -1418,6 +1435,22 @@ func add_ult(points: float) -> void:
 		controller_rumble(0.3, 0.12, 0.2)   # tuntopalaute: ulti valmis
 		if arena != null:
 			arena.popup(global_position + Vector2(0, -70), "ULTI VALMIS!", Palette.GOLD, 20)
+
+
+## Työntö/veto-impulssi omaan kanavaansa (kb_velocity), jota ohjausliikkeen
+## move_toward EI syö — impulssi hiipuu KB_FRICTION-kitkalla. Tartutettua ei
+## töytäistä (ote hallitsee sijaintia; heitto vapauttaa otteen ensin).
+## respect_resist=false kun voima on jo viritetty kohdetyypin mukaan
+## (esim. junglereiden olentokohtaiset veto-arvot).
+func apply_knockback(dir: Vector2, strength: float, respect_resist := true) -> void:
+	if not alive or strength <= 0.0 or dir.length() < 0.01:
+		return
+	if grabbed_by != null:
+		return
+	var mult := (1.0 - kb_resist) if respect_resist else 1.0
+	if mult <= 0.0:
+		return
+	kb_velocity += dir.normalized() * strength * mult
 
 
 func apply_slow(factor: float, duration: float) -> void:
@@ -1565,6 +1598,8 @@ func _knockout(source: Hero) -> void:
 		elif source is Critter:
 			profile.stats.deaths_neutral += 1
 	velocity = Vector2.ZERO
+	kb_velocity = Vector2.ZERO
+	_control_velocity = Vector2.ZERO
 	shield_hp = 0.0
 	guard_timer = 0.0
 	guard_radius = 0.0
@@ -1627,6 +1662,9 @@ func _respawn() -> void:
 	visible = true
 	grabbed_by = null
 	guard_radius = 0.0
+	velocity = Vector2.ZERO
+	kb_velocity = Vector2.ZERO
+	_control_velocity = Vector2.ZERO
 	set_collision_layer_value(2, true)
 	set_collision_mask_value(2, true)
 	set_collision_mask_value(1, true)   # varmista seinätörmäys (jos kuoli syöksyn aikana)
@@ -1670,6 +1708,8 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	iframes = 0.0
 	respawn_timer = 0.0
 	velocity = Vector2.ZERO
+	kb_velocity = Vector2.ZERO
+	_control_velocity = Vector2.ZERO
 	dash_timer = 0.0
 	slow_factor = 1.0
 	slow_timer = 0.0

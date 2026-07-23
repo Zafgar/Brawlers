@@ -135,6 +135,8 @@ func _basic(dir: Vector2) -> void:
 func _knockout(source: Hero) -> void:
 	alive = false
 	velocity = Vector2.ZERO
+	kb_velocity = Vector2.ZERO
+	_control_velocity = Vector2.ZERO
 	visible = false
 	set_collision_layer_value(2, false)
 	set_collision_mask_value(2, false)

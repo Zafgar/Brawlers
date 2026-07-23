@@ -169,10 +169,16 @@ func _apply_essence(actor: Hero, ally: bool, neutral: bool, do_tick: bool,
 				source.deal_damage_to(actor, dps * tick_interval * (1.45 if neutral else 1.0))
 
 
+## Jatkuva veto kohti kentän keskustaa. Siirretään sijaintia suoraan: jatkuva
+## per-frame-veto häviäisi kb-kanavan kitkalle, ja velocity-lisäyksen söi
+## aiemmin ohjausliikkeen move_toward -> veto ei tuntunut miltään.
+## strength on jo delta-skaalattu siirtymä (px tälle framelle).
 func _pull(actor: Hero, strength: float) -> void:
+	if actor.grabbed_by != null or actor.dash_timer > 0.0:
+		return
 	var toward: Vector2 = global_position - actor.global_position
 	if toward.length() > 8.0:
-		actor.velocity += toward.normalized() * strength
+		actor.global_position += toward.normalized() * minf(strength, toward.length())
 
 
 func _draw() -> void:

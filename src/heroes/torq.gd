@@ -81,7 +81,7 @@ func _ability2(_dir: Vector2) -> void:
 		enemy_hits += 1
 		var away := off.normalized() if off.length() > 1.0 else Vector2.UP
 		# Kaksipulssi luetaan liikkeessä: ensin pieni imu, sitten magneettinen repäisy.
-		enemy.velocity -= away * 170.0
+		enemy.apply_knockback(-away, 170.0, false)
 		deal_damage_to(enemy, 28.0 if enemy is Critter else 21.0, 360.0, away)
 		enemy.apply_slow(0.67, 0.9)
 		if enemy is Critter:

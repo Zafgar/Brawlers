@@ -65,7 +65,8 @@ func _wisp_hit(target: Hero, _projectile: Projectile) -> void:
 		"void":
 			var pull := global_position - target.global_position
 			if pull.length() > 1.0:
-				target.velocity += pull.normalized() * 90.0
+				# Voima on viritetty valmiiksi (mikroveto per osuma) -> ohita kb_resist.
+				target.apply_knockback(pull, 90.0, false)
 
 
 func _ability1(dir: Vector2) -> void:

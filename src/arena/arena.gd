@@ -1113,6 +1113,7 @@ func _update_moba_base_rules(delta: float) -> void:
 		if corrected != h.global_position:
 			h.global_position = corrected
 			h.velocity = Vector2.ZERO
+			h.kb_velocity = Vector2.ZERO
 		if h.is_unit or not mm.is_in_own_sanctuary(h.global_position, h.team):
 			continue
 		# Fountain on oikea respawn-turva: haavoittumaton ja nopea HP/resurssipalautus.
