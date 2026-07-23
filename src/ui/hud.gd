@@ -542,6 +542,35 @@ class PaneHud:
 			UiKit.draw_text(self, Vector2(wx + 11.0, mini_y + 4.0),
 				str(hero.profile.wallet()), 12 if compact else 15,
 				Palette.glow(Palette.GOLD, 1.1), false, 2)
+			# Itemiaktiivin jäähdytys (D-pad vasen / G) lompakon vieressä:
+			# ikoni + täyttyvä kaari; valmis aktiivi hehkuu.
+			var act_id := str(hero.first_active_item())
+			if act_id != "":
+				var act_c := Vector2(wx + (58.0 if compact else 72.0), mini_y)
+				var act_r := 8.0 if compact else 10.0
+				ItemIcon.draw(self, act_id, act_c, act_r)
+				var act_left: float = float(hero.item_active_cd.get(act_id, 0.0))
+				var act_max: float = float(Hero.ITEM_ACTIVE_CD.get(act_id, 45.0))
+				var act_frac: float = 1.0 - clampf(act_left / maxf(act_max, 0.01), 0.0, 1.0)
+				if act_frac < 1.0:
+					draw_circle(act_c, act_r, Color(0, 0, 0, 0.55))
+					draw_arc(act_c, act_r + 2.5, -PI / 2.0, -PI / 2.0 + TAU * act_frac,
+						22, Palette.glow(Palette.GOLD, 1.2), 2.0)
+					UiKit.draw_text(self, act_c + Vector2(0, 1),
+						str(int(ceil(act_left))), 8 if compact else 10,
+						Palette.TEXT_MAIN, true, 2)
+				else:
+					draw_arc(act_c, act_r + 2.5, 0.0, TAU, 22,
+						Palette.glow(Palette.GOLD, 1.2 + 0.2 * sin(_time * 5.0)), 2.0)
+				# Näppäinvihje: D-pad vasen (piirretty nuoli) tai G-kirjain.
+				var key_c := act_c + Vector2(0, act_r + (8.0 if compact else 10.0))
+				if hero.profile.device >= 0:
+					draw_colored_polygon(PackedVector2Array([
+						key_c + Vector2(-4, 0), key_c + Vector2(2, -4),
+						key_c + Vector2(2, 4)]), Palette.TEXT_DIM)
+				else:
+					UiKit.draw_text(self, key_c, "G", 7 if compact else 8,
+						Palette.TEXT_DIM, true, 1)
 			var items_arr: Array = hero.items
 			var ir := 7.0 if narrow else 10.0
 			var avail := right - (sx + total) - 8.0
@@ -1234,6 +1263,16 @@ class PaneHud:
 			else:
 				draw_rect(Rect2(sp - Vector2(3.0, 3.0), Vector2(6.0, 6.0)), scol)
 
+		# Vartijat: OMAN joukkueen lyhdyt pieninä pisteinä (vihollisen
+		# vartijat eivät paljastu kartalla).
+		for w in arena.wards:
+			if not is_instance_valid(w) or w.team != bound_hero.team:
+				continue
+			var wpos := _map_point(w.global_position, map_origin, world_size, scale_map)
+			draw_circle(wpos, 2.0 if compact else 2.6, Palette.glow(Palette.GOLD, 1.2))
+			draw_arc(wpos, 3.6 if compact else 4.4, 0.0, TAU, 12,
+				Palette.with_alpha(Palette.team(w.team), 0.8), 1.0)
+
 		# Maassa lojuvat Baron-artefaktit: sykkivä kultatimantti MOLEMMILLE
 		# joukkueille (iso strateginen palkinto näkyy kaikille).
 		for artifact in arena.artifacts:
@@ -1273,8 +1312,19 @@ class PaneHud:
 				draw_circle(hp, 3.5 if compact else 4.5, Palette.team(hero.team))
 				draw_arc(hp, 5.0 if compact else 6.0, 0.0, TAU, 16,
 					Palette.with_alpha(Color.WHITE, 0.72), 1.0)
+			elif hero.stealth_timer > 0.0:
+				# Häivetetty vihollinen katoaa kartalta (oma joukkue näkyy yllä).
+				continue
 			else:
 				_draw_diamond(hp, 4.0 if compact else 5.5, Palette.team(hero.team))
+				# Oman joukkueen vartijan tähystämä vihollinen korostuu hehkulla.
+				for w in arena.wards:
+					if is_instance_valid(w) and w.team == bound_hero.team \
+							and bool(w.detected.has(hero)):
+						draw_arc(hp, 7.5 if compact else 9.0, 0.0, TAU, 16,
+							Palette.glow(Palette.team(hero.team),
+								1.4 + 0.2 * sin(_time * 6.0)), 1.5)
+						break
 
 		if arena.relic != null and is_instance_valid(arena.relic):
 			var rp := _map_point(arena.relic.global_position, map_origin, world_size, scale_map)

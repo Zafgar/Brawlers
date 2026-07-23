@@ -46,6 +46,9 @@ func _process(delta: float) -> void:
 		_trail.push_front(hero.global_position)
 		if _trail.size() > 10:
 			_trail.pop_back()
+	# Häive (varjoviitta): koko visuaali haalenee ~0.3 alphaan; palautuu heti
+	# häiveen päättyessä. Sama haaleus riittää v1:ssä myös vihollisruuduille.
+	modulate.a = 0.3 if (hero != null and hero.stealth_timer > 0.0) else 1.0
 	queue_redraw()
 
 
@@ -273,6 +276,12 @@ func _draw_status(bob: float) -> void:
 		else:
 			draw_arc(Vector2(0, -14), hero.radius + 13.0, a - half, a + half, 24,
 				Palette.glow(Palette.SHIELD, 1.4), 5.0)
+
+	# Häive: pehmeä väreilevä rengas kertoo kantajalle häiveen keston.
+	if hero.stealth_timer > 0.0:
+		var st_a: float = 0.3 + 0.2 * sin(_time * 6.0)
+		draw_arc(Vector2(0, -8), hero.radius + 12.0 + 2.0 * sin(_time * 3.5),
+			0.0, TAU, 32, Palette.with_alpha(Color("b48aff"), st_a), 2.5)
 
 	# Baron-artefaktin kantaja: pieni kultatimantti sankarin yllä — myös
 	# viholliset näkevät kuka kantaa legendaarista palkintoa.

@@ -238,6 +238,10 @@ var piloting := false              # ohjaa ohjattavaa ammusta (Salvon raketti): 
 # _tick_statusissa. legendary_artifact tulee Baron-poiminnasta (Phase B) ja
 # kuluu legendaitemin ostoon.
 const MAX_ITEMS := 6
+# Itemiaktiivit (D-pad vasen / G): sisäiset jäähdytykset per item ja häiveen
+# kesto. Ensimmäinen omistettu aktiivi jonka jäähdytys on valmis laukeaa.
+const ITEM_ACTIVE_CD := {"vartiolyhty": 45.0, "varjoviitta": 60.0}
+const STEALTH_DURATION := 3.0
 var items: Array = []               # omistetut item-id:t (enintään 6 paikkaa)
 var _item_stats := {}               # statiavain -> summa (välimuisti)
 var legendary_artifact := false     # Baron-artefakti hallussa
@@ -253,6 +257,10 @@ var _item_proc_active := false      # estää itemiproccien ketjuuntumisen
 var _shop_tick := 0.0               # bottiostojen kuristus (enintään 1 krt/s)
 var shop = null                     # ShopMenu (per-pelaaja kauppavalikko, laiskasti)
 var shop_open := false              # kauppa auki (vain ihmiset; botit ostavat suoraan)
+var item_active_cd := {}            # item-id -> aktiivin jäähdytystä jäljellä (s)
+var stealth_timer := 0.0            # varjo: häivettä jäljellä (s)
+var stealth_strike := false         # häive katkesi hyökkäykseen -> seuraava perus varma krit
+var _stealth_strike_t := 0.0        # varman kritin ikkuna (2 s)
 
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
@@ -858,6 +866,13 @@ func _physics_process(delta: float) -> void:
 			_dodge_action(dodge_dir.normalized())
 			_apply_dodge_evolution()
 			_act_end()
+		# Itemiaktiivi (D-pad vasen / G): ensimmäinen omistettu aktiivi jonka
+		# sisäinen jäähdytys on valmis. Ei paluukanavoinnin aikana; kauppa- ja
+		# kehitystila eivät pääse tänne (omat haarat nielevät syötteet).
+		if silence_timer <= 0.0 and _recall_t <= 0.0 and not items.is_empty() \
+				and controller.has_method("item_active_just") \
+				and controller.item_active_just():
+			_trigger_item_active()
 		if carrying and controller.drop_just():
 			arena.relic.drop_from_carrier(false)
 		elif arena.mode == "moba" and not is_unit and profile != null \
@@ -951,6 +966,13 @@ func _tick_status(delta: float) -> void:
 	_spellshield_cd = maxf(_spellshield_cd - delta, 0.0)
 	_frost_cd = maxf(_frost_cd - delta, 0.0)
 	_root_burst_cd = maxf(_root_burst_cd - delta, 0.0)
+	# Itemiaktiivit: sisäiset jäähdytykset, häive ja väijytyskritin ikkuna.
+	for active_id in item_active_cd:
+		item_active_cd[active_id] = maxf(float(item_active_cd[active_id]) - delta, 0.0)
+	stealth_timer = maxf(stealth_timer - delta, 0.0)
+	_stealth_strike_t = maxf(_stealth_strike_t - delta, 0.0)
+	if _stealth_strike_t <= 0.0:
+		stealth_strike = false
 	void_stack_timer = maxf(void_stack_timer - delta, 0.0)
 	if void_stack_timer <= 0.0 and void_stacks > 0:
 		void_stacks = 0
@@ -1067,6 +1089,7 @@ func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 
 
 func _cast_slot(slot: String) -> void:
+	stealth_timer = 0.0   # kyvyn castaaminen rikkoo häiveen (ilman väijytyskritiä)
 	if visual != null:
 		visual.cast_ability(slot)
 	_act(slot)
@@ -1417,6 +1440,7 @@ func _channel_end(_slot: String) -> void:
 
 
 func _fire_ult() -> void:
+	stealth_timer = 0.0   # ultin castaaminen rikkoo häiveen
 	ult_charge = 0.0
 	_ult_ready_announced = false
 	_ult_holding = false
@@ -1741,6 +1765,62 @@ func _handle_shop_frame(delta: float) -> void:
 		_close_shop()
 
 
+# --- Itemiaktiivit (vartija ja varjo) ---
+
+## Ensimmäinen omistettu item jolla on aktiivi ("" = ei yhtään). HUD näyttää
+## tämän jäähdytyksen telakan lompakon vieressä.
+func first_active_item() -> String:
+	for id_v in items:
+		if str(ItemDef.get_item(str(id_v)).get("active", "")) != "":
+			return str(id_v)
+	return ""
+
+
+func item_active_ready(id: String) -> bool:
+	return float(item_active_cd.get(id, 0.0)) <= 0.0
+
+
+## Laukaisee ensimmäisen omistetun aktiivin jonka jäähdytys on valmis.
+## Jos mikään ei ole valmis, ihminen saa hiljaisen deny-vihjeen.
+func _trigger_item_active() -> void:
+	for id_v in items:
+		var id := str(id_v)
+		var active := str(ItemDef.get_item(id).get("active", ""))
+		if active == "" or not item_active_ready(id):
+			continue
+		_use_item_active(id, active)
+		return
+	if not controller.is_bot() and _deny_cd <= 0.0:
+		AudioMgr.play("ui_back", 0.05, -8.0)
+		_deny_cd = 0.45
+
+
+func _use_item_active(id: String, active: String) -> void:
+	item_active_cd[id] = float(ITEM_ACTIVE_CD.get(id, 45.0))
+	match active:
+		"vartija":
+			# Vartiolyhty: aseta vartija tähän kohtaan (enintään 2, vanhin poistuu).
+			var ward := Ward.new()
+			ward.setup(arena, self)
+			arena.add_child(ward)
+			arena.popup(global_position + Vector2(0, -64), "VARTIJA ASETETTU",
+				Palette.glow(Palette.team(team), 1.25), 15)
+			Fx.ring(arena, global_position, Palette.with_alpha(Palette.GOLD, 0.8),
+				radius + 26.0, 0.45, 4.0)
+			AudioMgr.play("light", 0.05, -6.0, global_position)
+		"varjo":
+			# Varjoviitta: 3 s häive. Katkeaa hyökkäykseen (lataa varman kritin),
+			# castiin ja vahingon ottamiseen; tornit näkevät häiveen läpi.
+			stealth_timer = STEALTH_DURATION
+			arena.popup(global_position + Vector2(0, -64), "HÄIVE",
+				Color("b48aff"), 15)
+			Fx.ring(arena, global_position, Palette.with_alpha(Color("b48aff"), 0.7),
+				radius + 22.0, 0.5, 4.0)
+			Fx.burst(arena, global_position, Color(0.4, 0.35, 0.6, 0.5), 10, 160.0, 0.4, 5.0)
+			AudioMgr.play("smoke", 0.06, -4.0, global_position)
+	controller_rumble(0.2, 0.1, 0.15)
+
+
 ## Ostaa itemin: validoi sijainnin, paikat (komponenttien kulutuksen jälkeen
 ## enintään 6), lompakon ja legendan artefaktivaatimuksen. Omistetut
 ## komponentit kuluvat yhdistelmään ja yhdistelmähinta hyvittää ne.
@@ -2021,6 +2101,14 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 	if arena != null and arena._act_hero == null and _cast_context != "":
 		arena._act_hero = self
 		arena._act_slot = _cast_context
+	# Häive katkeaa omaan hyökkäykseen. Perushyökkäyksestä katkennut häive
+	# lataa varman kritin (stealth_strike, 2 s ikkuna) — myös tämä katkaiseva
+	# osuma kritittää (väijytys), koska lippu asetetaan ennen take_damagea.
+	if stealth_timer > 0.0 and not is_unit:
+		stealth_timer = 0.0
+		if _cast_context == "basic":
+			stealth_strike = true
+			_stealth_strike_t = 2.0
 	var dealt := target.take_damage(amount, self, kb, kb_dir)
 	if dealt > 0.0:
 		profile.stats.damage += dealt
@@ -2089,7 +2177,13 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 		if not source.is_unit and not source._item_stats.is_empty():
 			if source._cast_context == "basic":
 				var crit_chance: float = source.item_stat("crit")
-				if crit_chance > 0.0 and randf() < crit_chance:
+				# Varjoviitan väijytys: häiveestä katkennut perusosuma (2 s
+				# ikkunassa) on VARMA krit — lippu kuluu tähän osumaan.
+				var forced_crit: bool = source.stealth_strike
+				if forced_crit or (crit_chance > 0.0 and randf() < crit_chance):
+					if forced_crit:
+						source.stealth_strike = false
+						source._stealth_strike_t = 0.0
 					amount *= 1.7
 					arena.popup(global_position + Vector2(0, -58), "KRIT!",
 						Color("ffb54a"), 17)
@@ -2193,6 +2287,7 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 
 	hp -= amount
 	since_damage = 0.0
+	stealth_timer = 0.0   # vahingon ottaminen rikkoo häiveen
 	_recall_interrupt()   # vahinko keskeyttää paluukanavoinnin
 	profile.stats.taken += amount
 	# Otettu vahinko lähteen mukaan (telemetria: ottaako AI turhia torni-/mob-osumia).
@@ -2551,6 +2646,10 @@ func _knockout(source: Hero) -> void:
 	armor_shred_timer = 0.0
 	_alpha_slow_ready = false
 	_item_proc_active = false
+	stealth_timer = 0.0
+	stealth_strike = false
+	_stealth_strike_t = 0.0
+	# HUOM: itemiaktiivien jäähdytykset (item_active_cd) jatkuvat kuoleman yli.
 	# HUOM: ability_ranks ja skill_points säilyvät — rankit ovat ottelun mittaisia.
 
 	var now: float = arena.match_elapsed if arena != null \
@@ -2714,6 +2813,10 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	_item_proc_active = false
 	_shop_tick = 0.0
 	shop_open = false
+	item_active_cd.clear()
+	stealth_timer = 0.0
+	stealth_strike = false
+	_stealth_strike_t = 0.0
 	# HUOM: ability_ranks ja skill_points säilyvät erien yli (ottelun mittaisia).
 	_dodge_was_cooling = false
 	_heartbeat_t = 0.0

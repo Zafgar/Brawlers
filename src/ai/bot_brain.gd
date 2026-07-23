@@ -87,6 +87,7 @@ var _attack := false
 var _attack_prev := false
 var _flags := {"a1": false, "a2": false, "dodge": false, "ult": false}
 var _recall := false             # paluukanavointi käynnissä/haluttu (MOBA)
+var _use_active := false         # itemiaktiivin laukaisu (yksi per päätöstikki)
 
 var _time := 0.0
 var _decision_timer := 0.0
@@ -353,6 +354,7 @@ func update(hero: Hero, delta: float) -> void:
 	_attack_prev = _attack
 	for key in _flags:
 		_flags[key] = false
+	_use_active = false
 	if _role == "":
 		_setup_role(hero)
 	_combo_timer = maxf(_combo_timer - delta, 0.0)
@@ -391,6 +393,7 @@ func update(hero: Hero, delta: float) -> void:
 		_attack = false
 		for key in _flags:
 			_flags[key] = false
+		_use_active = false
 
 
 ## Assassiinin malttavuus: neutraalissa taistelussa väijy jos kohde ei ole
@@ -627,6 +630,7 @@ func _update_recall_decision(hero: Hero, arena, bb: TeamBlackboard,
 func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	_jungle_target = null
 	_ensure_moba_assignment(hero, arena)
+	_maybe_use_item_active(hero, arena)
 	# PUOLUSTUS: jos oma rakennus on uhattu ja OLEN nimetty (lähin) puolustaja,
 	# kääerry puolustamaan — taistele viholliset pois rakennuksen luota. Vain yksi
 	# botti kerrallaan, joten koko joukkue ei hylkää linjaa. Matala rank havahtuu
@@ -786,6 +790,27 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 		if _jungle_target == null and arena.map is MapMoba:
 			_moba_goal = (arena.map as MapMoba).role_anchor(hero.team, _moba_lane)
 	_mode = Mode.FIGHT
+
+
+## Itemiaktiivien käyttö (MOBA): jungleri häiveytyy (varjo) kun gank-latch on
+## päällä ja uhri lähellä; tuki asettaa vartijan (vartija) linjassa ollessaan.
+## Asettaa yhden laukaisulipun, jonka hero lukee item_active_just()-polusta.
+func _maybe_use_item_active(hero: Hero, arena) -> void:
+	if _use_active:
+		return
+	if hero.items.has("varjoviitta") \
+			and float(hero.item_active_cd.get("varjoviitta", 0.0)) <= 0.0 \
+			and _moba_job == "jungle" and _gank_victim != null \
+			and is_instance_valid(_gank_victim) and _gank_victim.alive \
+			and hero.global_position.distance_to(_gank_victim.global_position) <= 900.0:
+		_use_active = true
+		return
+	if hero.items.has("vartiolyhty") \
+			and float(hero.item_active_cd.get("vartiolyhty", 0.0)) <= 0.0 \
+			and _item_role() == "support":
+		var mm := arena.map as MapMoba
+		if mm != null and not mm.is_in_own_sanctuary(hero.global_position, hero.team):
+			_use_active = true
 
 
 ## Viidakko-objektiivin valinta MOBAssa: PAIKALLINEN (ei koko kartan yli), jottei
@@ -960,6 +985,9 @@ func _nearest_enemy_hero(hero: Hero, arena, max_dist: float) -> Hero:
 
 func _moba_can_see(observer: Hero, target: Hero, arena) -> bool:
 	var dist: float = observer.global_position.distance_to(target.global_position)
+	# Häive (varjoviitta): häivetetyn sankarin näkee vain aivan läheltä.
+	if target.stealth_timer > 0.0 and dist > 160.0:
+		return false
 	if dist <= 190.0:
 		return true
 	var mm := arena.map as MapMoba
@@ -2593,6 +2621,11 @@ func ult_just() -> bool:
 
 func drop_just() -> bool:
 	return false
+
+
+## Itemiaktiivi: yksi laukaisu per päätöstikki (_maybe_use_item_active asettaa).
+func item_active_just() -> bool:
+	return _use_active
 
 
 ## Paluukanavointi: botti "pitää nappia pohjassa" niin kauan kuin päätös elää.

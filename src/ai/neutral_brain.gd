@@ -230,3 +230,8 @@ func ult_just() -> bool:
 
 func drop_just() -> bool:
 	return false
+
+
+## Itemiaktiivit eivät koske yksiköitä.
+func item_active_just() -> bool:
+	return false

@@ -147,6 +147,7 @@ var heroes: Array = []
 var zones: Array = []
 var buffs: Array = []              # aktiiviset FieldBuffit (botit lukevat näitä)
 var artifacts: Array = []          # maassa lojuvat Baron-artefaktit (MOBA)
+var wards: Array = []              # aktiiviset vartijat (Ward, vartiolyhdyn aktiivi)
 var blackboards: Array = []
 
 var _sd_hold := 0.0
@@ -1796,10 +1797,11 @@ func _start_round_intro() -> void:
 	for child in get_children():
 		if child is FieldBuff:
 			child.queue_free()
-		elif child is LegendaryArtifact:
+		elif child is LegendaryArtifact or child is Ward:
 			child.queue_free()
 	buffs.clear()
 	artifacts.clear()
+	wards.clear()
 	relic.reset_to_home()
 	if mode == "koth":
 		relic.control_team = -1

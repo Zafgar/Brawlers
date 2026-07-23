@@ -65,7 +65,16 @@ func update(delta: float) -> void:
 
 	# Vihollisten painopiste — vain oikeat vihollissankarit (ei minioneja/
 	# rakennuksia/olentoja), jotta uhka-arvio ja keskitetty tuli eivät vääristy.
+	# Häivetetty (varjoviitta) vihollinen puuttuu tilannekuvasta, ellei joku
+	# liittolainen ole aivan sen vieressä (sama 160 px raja kuin botin näössä).
 	var enemies: Array = arena.enemy_heroes(team)
+	enemies = enemies.filter(func(e):
+		if e.stealth_timer <= 0.0:
+			return true
+		for ally_h in allies:
+			if ally_h.global_position.distance_to(e.global_position) <= 160.0:
+				return true
+		return false)
 	if enemies.is_empty():
 		threat_center = Vector2.ZERO
 	else:
