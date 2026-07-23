@@ -251,6 +251,8 @@ var armor_shred_timer := 0.0        # panssarinmurskain: -20 % panssari tässä 
 var _alpha_slow_ready := false      # alfa: leirin kaadon lataama hidasteosuma
 var _item_proc_active := false      # estää itemiproccien ketjuuntumisen
 var _shop_tick := 0.0               # bottiostojen kuristus (enintään 1 krt/s)
+var shop = null                     # ShopMenu (per-pelaaja kauppavalikko, laiskasti)
+var shop_open := false              # kauppa auki (vain ihmiset; botit ostavat suoraan)
 
 
 func setup(p_arena, p_profile: PlayerProfile, p_controller) -> void:
@@ -658,6 +660,18 @@ func _physics_process(delta: float) -> void:
 		respawn_timer -= delta
 		# Kuolleena voi ostaa (respawn on lähteellä) — kuten oikeassa MOBAssa.
 		_bot_shop_tick(delta)
+		# Ihminen voi käyttää kauppavalikkoa kuolleena: ohjain päivitetään
+		# tässä (normaali polku ei aja sitä kuolleena) ja interact togglaa.
+		if arena.mode == "moba" and not is_unit and profile != null \
+				and controller != null and not controller.is_bot():
+			controller.update(self, delta)
+			if controller.drop_just():
+				if shop_open:
+					_close_shop()
+				else:
+					_open_shop()
+			elif shop_open and shop != null:
+				shop.update(self, delta)
 		if respawn_timer <= 0.0:
 			_respawn()
 		return
@@ -700,16 +714,17 @@ func _physics_process(delta: float) -> void:
 		if _grab_hold_timer <= 0.0 or not is_instance_valid(grabbed_by) or not grabbed_by.alive:
 			release_grabbed()
 
-	# Tähtäys
-	var aim_input: Vector2 = controller.aim_vector()
-	if aim_input.length() > 0.2:
-		aim = aim_input.normalized()
-	elif move_dir.length() > 0.2:
-		aim = move_dir.normalized()
+	# Tähtäys (kauppa auki -> syötteet kuuluvat valikolle, tähtäys ei liiku)
+	if not shop_open:
+		var aim_input: Vector2 = controller.aim_vector()
+		if aim_input.length() > 0.2:
+			aim = aim_input.normalized()
+		elif move_dir.length() > 0.2:
+			aim = move_dir.normalized()
 
-	# Liike
+	# Liike (kauppa auki -> sankari seisoo tukikohdassa paikallaan)
 	var mv := Vector2.ZERO
-	if root_timer <= 0.0 and stun_timer <= 0.0:
+	if root_timer <= 0.0 and stun_timer <= 0.0 and not shop_open:
 		mv = controller.move_vector()
 	var speed := base_speed * slow_factor * haste_factor * _move_speed_mult() \
 		* (1.0 + item_stat("ms"))
@@ -769,7 +784,12 @@ func _physics_process(delta: float) -> void:
 	_aim_active = false   # nollataan joka framessa; kyvyt/lataus aktivoivat tarvittaessa
 
 	# Toiminnot
-	if _spend_mode_active():
+	if shop_open:
+		# Kauppa auki: valikko nielee kaikki toimintosyötteet (ei castia,
+		# recallia, kehitystilaa eikä tähtäystä ennen kuin kauppa suljetaan).
+		_handle_shop_frame(delta)
+		_aiming_slot = ""
+	elif _spend_mode_active():
 		# Kehitystila: pidä D-pad ylös (näppäimistöllä T) ja paina kyvyn nappia
 		# käyttääksesi kykypisteen. Painallukset eivät vuoda casteiksi.
 		_handle_spend_inputs()
@@ -840,6 +860,11 @@ func _physics_process(delta: float) -> void:
 			_act_end()
 		if carrying and controller.drop_just():
 			arena.relic.drop_from_carrier(false)
+		elif arena.mode == "moba" and not is_unit and profile != null \
+				and not controller.is_bot() and controller.drop_just() and _can_shop():
+			# KAUPPA (MOBA): interact (Ympyrä/F) omassa sanctuaryssa avaa oman
+			# ruudun kauppavalikon. drop-nappi on vapaana MOBAssa (ei reliikkiä).
+			_open_shop()
 	else:
 		_aiming_slot = ""   # tainnutus keskeyttää tähtäyksen
 
@@ -1553,6 +1578,10 @@ func _update_recall(delta: float) -> void:
 		return
 	if controller == null or not controller.has_method("recall_held"):
 		return
+	# Kauppa auki: D-pad alas navigoi valikkoa, ei aloita paluuta.
+	if shop_open:
+		_recall_t = 0.0
+		return
 	var wants: bool = bool(controller.recall_held())
 	if not wants or carrying or stun_timer > 0.0 or piloting:
 		_recall_interrupt()
@@ -1667,6 +1696,49 @@ func _can_shop() -> bool:
 		return true
 	var mm := arena.map as MapMoba
 	return mm != null and mm.is_in_own_sanctuary(global_position, team)
+
+
+## Avaa kauppavalikon (vain ihmiset MOBAssa; botit ostavat _bot_shop_tickillä).
+func _open_shop() -> void:
+	if shop == null:
+		shop = ShopMenu.new()
+	shop.open_for(self)
+	shop_open = true
+	AudioMgr.play("ui_open", 0.03, -8.0)
+
+
+func _close_shop() -> void:
+	shop_open = false
+	AudioMgr.play("ui_back", 0.03, -8.0)
+
+
+## Kauppa auki -frame: valikko saa syötteet eikä mikään vuoda toiminnoiksi.
+## Sama kuri kuin kehitystilassa: puskurit tyhjiksi, kanavointi poikki ja
+## pohjassa olevat napit lukkoon vapautukseen asti (ei cast-vuotoa sulussa).
+func _handle_shop_frame(delta: float) -> void:
+	_buf.a1 = 0.0
+	_buf.a2 = 0.0
+	_buf.ult = 0.0
+	_buf.dodge = 0.0
+	if _channel_slot != "":
+		var ch := _channel_slot
+		_channel_slot = ""
+		_channel_end(ch)
+	_ult_holding = false
+	_beam_active = false
+	if controller.attack_held():
+		_spend_locked["basic"] = true
+	if controller.ability1_held():
+		_spend_locked["a1"] = true
+	if controller.ability2_held():
+		_spend_locked["a2"] = true
+	if controller.ult_held():
+		_spend_locked["ult"] = true
+	if shop != null:
+		shop.update(self, delta)
+	# Sulku: interact uudelleen (Ympyrä/F) tai poistuminen omasta sanctuarysta.
+	if controller.drop_just() or (alive and not _can_shop()):
+		_close_shop()
 
 
 ## Ostaa itemin: validoi sijainnin, paikat (komponenttien kulutuksen jälkeen
@@ -2641,6 +2713,7 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	_alpha_slow_ready = false
 	_item_proc_active = false
 	_shop_tick = 0.0
+	shop_open = false
 	# HUOM: ability_ranks ja skill_points säilyvät erien yli (ottelun mittaisia).
 	_dodge_was_cooling = false
 	_heartbeat_t = 0.0

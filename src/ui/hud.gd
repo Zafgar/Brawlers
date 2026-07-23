@@ -188,6 +188,9 @@ class PaneHud:
 		if bound_hero != null and is_instance_valid(bound_hero):
 			_draw_ability_dock()
 			_draw_minimap()
+			_draw_shop_prompt()
+			if bool(bound_hero.shop_open):
+				_draw_shop()
 		_draw_banner()
 		_draw_big_number()
 
@@ -530,6 +533,29 @@ class PaneHud:
 			_draw_ability_slot(Rect2(sx + i * (slot_size + gap), sy, slot_size, slot_size),
 				slots[i], not narrow)
 
+		# MOBA: lompakko kykyrivin vasemmalla puolella ja 6 itemin minirivi
+		# oikealla puolella (kauppa täyttää; ikonit ItemIconista).
+		if arena != null and arena.mode == "moba":
+			var mini_y := sy + slot_size / 2.0
+			var wx := left + 8.0
+			_draw_diamond(Vector2(wx, mini_y), 5.0, Palette.glow(Palette.GOLD, 1.2))
+			UiKit.draw_text(self, Vector2(wx + 11.0, mini_y + 4.0),
+				str(hero.profile.wallet()), 12 if compact else 15,
+				Palette.glow(Palette.GOLD, 1.1), false, 2)
+			var items_arr: Array = hero.items
+			var ir := 7.0 if narrow else 10.0
+			var avail := right - (sx + total) - 8.0
+			var istep := minf(ir * 2.0 + 4.0, (avail - ir * 2.0) / 5.0)
+			var ix0 := sx + total + 8.0 + ir
+			for s in range(Hero.MAX_ITEMS):
+				var ic := Vector2(ix0 + float(s) * istep, mini_y)
+				if s < items_arr.size():
+					ItemIcon.draw(self, str(items_arr[s]), ic, ir)
+				else:
+					draw_circle(ic, ir * 0.85, Color(0, 0, 0, 0.35))
+					draw_arc(ic, ir * 0.85, 0.0, TAU, 14,
+						Palette.with_alpha(Palette.TEXT_DIM, 0.3), 1.0)
+
 		# Käyttämättömät kykypisteet: sykkivä kultamerkki muotokuvan kulmassa ja
 		# lyhyt kehitysohje telakan yllä (piilossa simulaatiossa).
 		if int(hero.skill_points) > 0 and hero.alive and not Game.simulating:
@@ -557,6 +583,15 @@ class PaneHud:
 				str(int(ceil(hero.respawn_timer))), 38 if compact else 52, Palette.TEXT_MAIN, true, 5)
 			UiKit.draw_text(self, rect.get_center() + Vector2(0, 24), "PALAA TAISTELUUN",
 				12 if compact else 16, Palette.BAD, true, 3)
+			# Kuolleena voi käydä kaupassa (respawn on lähteellä).
+			if arena != null and arena.mode == "moba" and not Game.simulating \
+					and hero.profile.is_human() and not bool(hero.shop_open):
+				var dead_pad: bool = hero.profile.device >= 0
+				UiKit.draw_text(self, rect.get_center() + Vector2(0, 44.0 if compact else 48.0),
+					"KAUPPA AUKI KUOLLEENA: YMPYRÄ" if dead_pad else "KAUPPA AUKI KUOLLEENA: F",
+					9 if compact else 11,
+					Palette.with_alpha(Palette.glow(Palette.GOLD, 1.15),
+						0.65 + 0.35 * sin(_time * 4.0)), true, 2)
 
 
 	func _slot_data(hero) -> Array:
@@ -784,6 +819,251 @@ class PaneHud:
 		if text.length() <= max_chars:
 			return text
 		return text.substr(0, maxi(max_chars - 1, 1)) + "…"
+
+
+	## Rivittää tekstin sanoittain enintään max_chars-merkkisiin riveihin.
+	func _wrap_text(text: String, max_chars: int) -> Array:
+		var out: Array = []
+		if text.strip_edges() == "":
+			return out
+		var line := ""
+		for word_v in text.split(" "):
+			var word := str(word_v)
+			var candidate := word if line == "" else line + " " + word
+			if candidate.length() > max_chars and line != "":
+				out.append(line)
+				line = word
+			else:
+				line = candidate
+		if line != "":
+			out.append(line)
+		return out
+
+
+	## Sykkivä kauppavihje kun kauppa on käytettävissä muttei auki: elossa
+	## omassa sanctuaryssa. (Kuolleen vihje piirretään telakan kuolinpeitteeseen.)
+	func _draw_shop_prompt() -> void:
+		var hero = bound_hero
+		if arena == null or arena.mode != "moba" or Game.simulating:
+			return
+		if hero.profile == null or hero.profile.is_bot or bool(hero.shop_open):
+			return
+		if not hero.alive:
+			return
+		if arena.map == null or not arena.map.has_method("is_in_own_sanctuary"):
+			return
+		if not bool(arena.map.is_in_own_sanctuary(hero.global_position, hero.team)):
+			return
+		var rect := _dock_rect()
+		var pad: bool = hero.profile.device >= 0
+		# Kykypistevihje käyttää saman kohdan -> nosta kauppavihje sen ylle.
+		var y := rect.position.y - (30.0 if int(hero.skill_points) > 0 else 12.0)
+		UiKit.draw_text(self, Vector2(rect.get_center().x, y),
+			"KAUPPA: YMPYRÄ" if pad else "KAUPPA: F", 10 if _compact() else 12,
+			Palette.with_alpha(Palette.glow(Palette.GOLD, 1.15),
+				0.65 + 0.35 * sin(_time * 4.0)), true, 2)
+
+
+	## Koko ruudun kauppa-overlay TÄLLE pelaajalle (per-pane, kuten spend-tila).
+	## Tila ja syötteet elävät hero.shop:ssa (ShopMenu); tämä vain piirtää.
+	func _draw_shop() -> void:
+		var hero = bound_hero
+		var menu = hero.shop
+		if menu == null:
+			return
+		var compact := _compact()
+		var pcol: Color = hero.profile.color()
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.012, 0.022, 0.055, 0.86))
+		var w: float = minf(size.x - (30.0 if compact else 60.0), 1440.0)
+		var h: float = minf(size.y - (26.0 if compact else 50.0), 850.0)
+		var px := (size.x - w) / 2.0
+		var py := (size.y - h) / 2.0
+		# Osto-/estopalaute värjää kehyksen hetkeksi (vihreä/punainen välähdys).
+		var border: Color = Palette.with_alpha(pcol, 0.75)
+		if float(menu.flash_t) > 0.0:
+			border = Palette.with_alpha(Palette.GOOD, 0.5 + float(menu.flash_t))
+		elif float(menu.flash_t) < 0.0:
+			border = Palette.with_alpha(Palette.BAD, 0.5 - float(menu.flash_t))
+		_panel(Rect2(px, py, w, h), Palette.with_alpha(Palette.UI_PANEL, 0.97),
+			border, 16.0, 2.0)
+
+		# Otsikko: KAUPPA + lompakko (kultatimantti + saldo).
+		UiKit.draw_text(self, Vector2(px + 24.0, py + (24.0 if compact else 32.0)),
+			"KAUPPA", 18 if compact else 26, Palette.glow(Palette.GOLD, 1.15), false, 3)
+		var wallet := int(hero.profile.wallet())
+		var wpos := Vector2(px + w - (150.0 if compact else 190.0),
+			py + (18.0 if compact else 24.0))
+		_draw_diamond(wpos, 6.0 if compact else 8.0, Palette.glow(Palette.GOLD, 1.3))
+		UiKit.draw_text(self, wpos + Vector2(12.0, 6.0), str(wallet),
+			16 if compact else 22, Palette.glow(Palette.GOLD, 1.15), false, 3)
+
+		# Välilehdet (L1/R1 tai Q/E).
+		var ty := py + (34.0 if compact else 48.0)
+		var tab_count: int = ShopMenu.TABS.size()
+		var tw := (w - 40.0) / float(tab_count)
+		for t in range(tab_count):
+			var tx := px + 20.0 + tw * float(t)
+			var active: bool = t == int(menu.tab)
+			if active:
+				draw_rect(Rect2(tx + 4.0, ty + (20.0 if compact else 26.0), tw - 8.0, 2.5),
+					Palette.glow(Palette.GOLD, 1.25))
+			UiKit.draw_text(self, Vector2(tx + tw / 2.0, ty + (11.0 if compact else 14.0)),
+				str(ShopMenu.TABS[t]), 9 if compact else 13,
+				Palette.TEXT_MAIN if active else Palette.TEXT_DIM, true, 2)
+
+		# Alarivin (inventaario) ja vihjerivin mitat ensin -> ruudukon korkeus.
+		var hint_y := py + h - (14.0 if compact else 20.0)
+		var inv_h := 46.0 if compact else 62.0
+		var iy := hint_y - (10.0 if compact else 14.0) - inv_h
+
+		# Ruudukko: tier-sarakkeet Common | Rare | Epic | Legendary.
+		var gx := px + 16.0
+		var gy := ty + (26.0 if compact else 36.0)
+		var gw := w * 0.63
+		var cw := gw / 4.0
+		var rh := 22.0 if compact else 30.0
+		var rows_top := gy + (18.0 if compact else 24.0)
+		var max_rows := int((iy - 8.0 - rows_top) / rh)
+		var owned: Array = hero.items
+		for ci in range(4):
+			var cx := gx + cw * float(ci)
+			var tier := str(ShopMenu.TIER_ORDER[ci])
+			UiKit.draw_text(self, Vector2(cx + cw / 2.0, gy + 6.0),
+				str(ShopMenu.TIER_LABELS[tier]), 8 if compact else 11,
+				ItemIcon.tier_color(tier), true, 2)
+			var colc: Array = (menu.columns as Array)[ci]
+			for ri in range(mini(colc.size(), max_rows)):
+				var id := str(colc[ri])
+				var ry := rows_top + rh * float(ri)
+				var rrect := Rect2(cx + 2.0, ry, cw - 6.0, rh - 2.0)
+				var selected: bool = not bool(menu.in_inventory) \
+					and int(menu.col) == ci and int(menu.row) == ri
+				if selected:
+					_panel(rrect, Palette.with_alpha(pcol, 0.14),
+						Palette.glow(pcol, 1.3), 6.0, 1.5)
+				var icx := Vector2(rrect.position.x + rh * 0.55, ry + rh / 2.0 - 2.0)
+				ItemIcon.draw(self, id, icx, 7.0 if compact else 9.0)
+				var item := ItemDef.get_item(id)
+				UiKit.draw_text(self,
+					Vector2(icx.x + (11.0 if compact else 15.0), ry + rh / 2.0 + 2.0),
+					_short_name(str(item.get("name", id)), 9 if compact else 13),
+					9 if compact else 12,
+					Palette.GOOD if owned.has(id) else Palette.TEXT_MAIN, false, 1)
+				var price := ItemDef.combine_cost(id, owned)
+				UiKit.draw_text(self,
+					Vector2(rrect.end.x - (16.0 if compact else 22.0), ry + rh / 2.0 + 2.0),
+					str(price), 9 if compact else 11,
+					Palette.glow(Palette.GOLD, 1.05) if price <= wallet else Palette.BAD,
+					true, 1)
+
+		# Detaljipaneeli: valitun itemin hinta, statit, kuvaus ja buildipuu.
+		var dx0 := gx + gw + 12.0
+		var dw := px + w - 16.0 - dx0
+		var drect := Rect2(dx0, gy, dw, iy - 8.0 - gy)
+		_panel(drect, Palette.with_alpha(Palette.UI_PANEL_LIGHT, 0.6),
+			Palette.with_alpha(Palette.UI_STROKE, 0.5), 10.0, 1.0)
+		var sel := str(menu.selected_id(hero))
+		var ly := gy + (18.0 if compact else 26.0)
+		var step := 14.0 if compact else 19.0
+		if sel != "":
+			var sitem := ItemDef.get_item(sel)
+			var stier := str(sitem.get("tier", "common"))
+			ItemIcon.draw(self, sel, Vector2(dx0 + (20.0 if compact else 28.0), ly - 2.0),
+				11.0 if compact else 16.0)
+			UiKit.draw_text(self, Vector2(dx0 + (38.0 if compact else 52.0), ly + 4.0),
+				str(sitem.get("name", sel)), 13 if compact else 18,
+				ItemIcon.tier_color(stier), false, 2)
+			UiKit.draw_text(self, Vector2(dx0 + (38.0 if compact else 52.0), ly + step + 2.0),
+				str(ShopMenu.TIER_LABELS.get(stier, "")), 8 if compact else 10,
+				Palette.TEXT_DIM, false, 1)
+			ly += step * 2.2
+			var total_cost := int(sitem.get("cost", 0))
+			var combine := ItemDef.combine_cost(sel, owned)
+			UiKit.draw_text(self, Vector2(dx0 + 14.0, ly + 2.0), "HINTA %d" % total_cost,
+				10 if compact else 13, Palette.glow(Palette.GOLD, 1.1), false, 2)
+			if combine != total_cost:
+				ly += step
+				UiKit.draw_text(self, Vector2(dx0 + 14.0, ly + 2.0),
+					"SINULLE %d (osat hyvitetty)" % combine, 10 if compact else 13,
+					Palette.GOOD if combine <= wallet else Palette.BAD, false, 2)
+			ly += step * 1.3
+			for line_v in ShopMenu.stat_lines(sitem):
+				UiKit.draw_text(self, Vector2(dx0 + 14.0, ly + 2.0), str(line_v),
+					9 if compact else 12, Palette.TEXT_MAIN, false, 1)
+				ly += step * 0.9
+			var desc := str(sitem.get("desc", ""))
+			if str(sitem.get("passive", "")) != "" or str(sitem.get("active", "")) != "":
+				ly += step * 0.4
+				UiKit.draw_text(self, Vector2(dx0 + 14.0, ly + 2.0),
+					"AKTIIVI" if str(sitem.get("active", "")) != "" else "PASSIIVI",
+					8 if compact else 10, Palette.glow(Palette.GOLD, 1.05), false, 1)
+				ly += step * 0.8
+				for dl in _wrap_text(desc, 34 if compact else 38):
+					UiKit.draw_text(self, Vector2(dx0 + 14.0, ly + 2.0), str(dl),
+						8 if compact else 11, Palette.TEXT_DIM, false, 1)
+					ly += step * 0.8
+			var comps: Array = sitem.get("builds_from", [])
+			if not comps.is_empty():
+				ly += step * 0.5
+				UiKit.draw_text(self, Vector2(dx0 + 14.0, ly + 2.0), "RAKENTUU:",
+					8 if compact else 10, Palette.TEXT_DIM, false, 1)
+				ly += step * 0.85
+				for comp_v in comps:
+					var comp := str(comp_v)
+					var comp_owned: bool = owned.has(comp)
+					if comp_owned:
+						# Piirretty väkänen (glyffi ei ole varmasti fontissa).
+						var chk := Vector2(dx0 + 20.0, ly - 1.0)
+						draw_line(chk + Vector2(-4, 0), chk + Vector2(-1, 3),
+							Palette.GOOD, 2.0)
+						draw_line(chk + Vector2(-1, 3), chk + Vector2(5, -4),
+							Palette.GOOD, 2.0)
+					UiKit.draw_text(self, Vector2(dx0 + 30.0, ly + 2.0),
+						str(ItemDef.get_item(comp).get("name", comp)),
+						9 if compact else 12,
+						Palette.GOOD if comp_owned else Palette.TEXT_MAIN, false, 1)
+					ly += step * 0.85
+			if bool(sitem.get("require_artifact", false)):
+				ly += step * 0.5
+				UiKit.draw_text(self, Vector2(dx0 + 14.0, ly + 2.0),
+					"VAATII: LEGENDAARINEN ARTEFAKTI", 9 if compact else 12,
+					Palette.GOOD if bool(hero.legendary_artifact) else Palette.BAD,
+					false, 2)
+				ly += step * 0.85
+			if bool(menu.in_inventory):
+				ly += step * 0.5
+				UiKit.draw_text(self, Vector2(dx0 + 14.0, ly + 2.0),
+					"MYYNTI: +%dG" % ShopMenu.sell_value(sel), 9 if compact else 12,
+					Palette.glow(Palette.GOLD, 1.1), false, 2)
+		if str(menu.flash_msg) != "" and float(menu.flash_t) < 0.0:
+			UiKit.draw_text(self, Vector2(drect.get_center().x, drect.end.y - 14.0),
+				str(menu.flash_msg), 10 if compact else 13, Palette.BAD, true, 2)
+
+		# Oma inventaario (6 paikkaa): valinta alas ruudukosta, Kolmio/T myy.
+		UiKit.draw_text(self, Vector2(px + 24.0, iy + inv_h / 2.0 + 4.0), "TAVARAT",
+			10 if compact else 13, Palette.TEXT_DIM, false, 2)
+		var cell := 36.0 if compact else 48.0
+		var inv_x := px + (86.0 if compact else 110.0)
+		for i in range(Hero.MAX_ITEMS):
+			var crect := Rect2(inv_x + float(i) * (cell + 8.0),
+				iy + (inv_h - cell) / 2.0, cell, cell)
+			draw_rect(crect, Color(0, 0, 0, 0.4))
+			var sel_inv: bool = bool(menu.in_inventory) and int(menu.inv_index) == i
+			draw_rect(crect, Palette.glow(pcol, 1.3) if sel_inv \
+				else Palette.with_alpha(Palette.TEXT_DIM, 0.3), false,
+				2.0 if sel_inv else 1.0)
+			if i < owned.size():
+				ItemIcon.draw(self, str(owned[i]), crect.get_center(), cell * 0.3)
+		UiKit.draw_text(self, Vector2(inv_x + 6.0 * (cell + 8.0) + (54.0 if compact else 80.0),
+			iy + inv_h / 2.0 + 3.0), "MYYNTI 70 %", 9 if compact else 12,
+			Palette.TEXT_DIM, true, 1)
+
+		# Ohjevihjeet laitteen mukaan.
+		var pad: bool = hero.profile.device >= 0
+		var hint := "L1/R1 VÄLILEHTI    RISTI OSTA    KOLMIO MYY    YMPYRÄ SULJE" if pad \
+			else "Q/E VÄLILEHTI    ENTER OSTA    T MYY    F SULJE"
+		UiKit.draw_text(self, Vector2(px + w / 2.0, hint_y), hint,
+			9 if compact else 13, Palette.TEXT_DIM, true, 2)
 
 
 	func _minimap_rect() -> Rect2:
@@ -1059,7 +1339,7 @@ class PaneHud:
 
 ## Pelinaikainen tulostaulu (pidä Tab / touchpad): molemmat joukkueet, per
 ## sankari taso, K/D/A, CS (last hitit), kulta, vahinko ja 6 tavaralokeroa
-## (varattu tulevalle item-järjestelmälle). Piirretään koko ruudun keskelle.
+## (sankarin ostetut itemit kuvakkeina). Piirretään koko ruudun keskelle.
 class Scoreboard:
 	extends Control
 
@@ -1195,12 +1475,16 @@ class Scoreboard:
 		UiKit.draw_text(self, Vector2(float(cols[6]), cy), str(int(p.stats.damage)), 17,
 			Palette.TEXT_MAIN, true, 2)
 
-		# 6 tavaralokeroa (varattu tulevalle item-järjestelmälle).
+		# 6 tavaralokeroa: sankarin ostetut itemit ItemIcon-kuvakkeina.
 		var ix := float(cols[7])
+		var hero_items: Array = h.items
 		for s in range(ITEM_SLOTS):
 			var srect := Rect2(ix + s * 46.0, cy - 19.0, 38.0, 38.0)
 			draw_rect(srect, Color(0, 0, 0, 0.4))
 			draw_rect(srect, Palette.with_alpha(Palette.TEXT_DIM, 0.3), false, 1.5)
+			if s < hero_items.size():
+				ItemIcon.draw(self, str(hero_items[s]),
+					srect.get_center() + Vector2(0, -1.5), 12.0)
 
 	## Position lyhenne: lobbyn valinta ensin, botilla työnjako, muuten tyhjä.
 	func _pos_label(h) -> String:
