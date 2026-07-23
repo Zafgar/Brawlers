@@ -138,7 +138,7 @@ func update(delta: float) -> void:
 					break
 			if not hit:
 				continue
-			var pri: float = s.max_hp   # nexus 1600 > torni 900 -> nexus etusijalla
+			var pri: float = s.max_hp   # nexus 2200 > tornit 1100–1450 -> nexus etusijalla
 			if pri > worst_pri:
 				worst_pri = pri
 				threatened_structure = s

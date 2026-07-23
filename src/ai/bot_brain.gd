@@ -20,6 +20,9 @@ extends RefCounted
 enum Mode { GET_RELIC, ATTACK_CARRIER, ESCORT, CARRY, RETREAT, FIGHT, SUPPORT, GET_BUFF }
 
 const BACKLINE_ROLES := ["Tuki", "Ranger", "Mage"]
+# Loppupelin raja sekunteina — sama kuin Arena.LATE_WAVE_TIME (pidä synkassa):
+# aallot kasvavat ja jungler liittyy piiritykseen gank-partioinnin sijaan.
+const LATE_PUSH_TIME := 840.0
 
 var level := 1                  # vanha 6-portainen taso (telemetria: ai_level)
 var rank := 13                  # ranking-porras 0..31 (BotRank: Wood IV .. Challenger I)
@@ -638,6 +641,16 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 				var ambush := _gank_opportunity(hero, arena, mm)
 				if is_finite(ambush.x):
 					_moba_goal = ambush
+				elif arena.match_elapsed >= LATE_PUSH_TIME:
+					# LOPPUPELIN RYHMITYS: gank-kierto ei kaada base-torneja.
+					# 14 min jälkeen jungler liittyy joukkueen piiritykseen —
+					# lähin murrettavissa oleva rakennus millä tahansa linjalla —
+					# sen sijaan että partioisi tyhjää viidakkoa ottelun loppuun
+					# (botit eivät muuten koskaan ryhmittyneet lopputyöntöön).
+					_jungle_target = _pick_push_target(hero, arena)
+					if _jungle_target == null:
+						var patrol_step := int(arena.match_elapsed / 6.0) + hero.profile.index
+						_moba_goal = mm.jungle_patrol(hero.team, patrol_step)
 				else:
 					var cycle := fposmod(arena.match_elapsed + hero.profile.index * 3.7, 24.0)
 					var phase := int(arena.match_elapsed / 24.0) + hero.profile.index
