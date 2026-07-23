@@ -29,6 +29,19 @@ var help_pos := Vector2.ZERO       # piste jonne apu suunnataan
 var helpers: Array = []            # apuun kutsutut sankarit (Hero)
 var _help_timer := 0.0             # kriisiarvion tahdistus (ei joka framea)
 
+# MOBA-makro: joukkueen yhteinen iso siirto. Kun jokin vihollislinja on täysin
+# murrettu TAI loppupeli (>10 min) on käynnissä, vapaat terveet botit kutsutaan
+# joko Baronille (iso tiimibuffi) tai ryhmätyöntöön murrettavimman vihollis-
+# rakenteen linjalle aallon mukana. Puolustus ja apukutsut menevät aina edelle;
+# ihmisiä ei komenneta. Hystereesi estää kutsun välkkymisen.
+const MACRO_LATE_TIME := 600.0     # loppupeliraja makrokutsuille (sekunteina)
+var macro_call := ""               # "" / "baron" / "push"
+var macro_pos := Vector2.ZERO      # kutsun kohdepiste
+var macro_target = null            # Baron (Critter) tai rakennus (Structure)
+var macro_participants: Array = [] # kutsutut botit (Hero)
+var _macro_timer := 0.0            # makroarvion tahdistus
+var _macro_hold := 0.0             # hystereesi: tuore kutsu ei vaihdu heti
+
 
 func setup(p_arena, p_team: int) -> void:
 	arena = p_arena
@@ -166,6 +179,13 @@ func update(delta: float) -> void:
 			_help_timer = 0.6
 			_update_moba_crisis(allies, enemies)
 
+		# Makrokutsut (Baron / ryhmätyöntö) omalla, hitaammalla tahdillaan.
+		_macro_timer -= delta
+		_macro_hold = maxf(_macro_hold - delta, 0.0)
+		if _macro_timer <= 0.0:
+			_macro_timer = 0.9
+			_update_moba_macro(allies, enemies)
+
 
 ## Arvioi linjojen tilanteen ja kutsuu apuun sopivimmat botit. Kriisi = linjalla
 ## on selvä vihollisylivoima (erotus >= 2) TAI oma torni siellä on uhattuna
@@ -274,6 +294,155 @@ func _update_moba_crisis(allies: Array, enemies: Array) -> void:
 		helpers.append(scored[i]["hero"])
 	if helpers.is_empty():
 		help_lane = ""
+
+
+## Makropäätös: Baron-kutsu kun jokin vihollislinja on kokonaan auki TAI
+## loppupeli käynnissä, vähintään kolme tervettä vapaata bottia, Baron elossa
+## eikä vihollisia sen lähellä (tai viholliset kuolleet). Baronin kaaduttua
+## (tai kun se ei ole saatavilla) ryhmätyöntö: osallistujat kerääntyvät
+## murrettavimman vihollisrakenteen linjalle aallon kanssa.
+func _update_moba_macro(allies: Array, enemies: Array) -> void:
+	var prev_call := macro_call
+	var prev_target = macro_target
+	var prev_participants: Array = macro_participants.filter(
+		func(h): return is_instance_valid(h) and h.alive)
+	macro_call = ""
+	macro_pos = Vector2.ZERO
+	macro_target = null
+	macro_participants = []
+
+	# Vapaat botit: ei puolustaja, ei apukutsussa, ei ihminen. Ihmisiä ei
+	# koskaan komenneta; puolustus ja apurotaatio menevät makron edelle.
+	var free_bots: Array = []
+	var healthy := 0
+	for a in allies:
+		if not (a.controller is BotBrain):
+			continue
+		if a == defender or a in helpers:
+			continue
+		free_bots.append(a)
+		if a.hp > a.max_hp * 0.55:
+			healthy += 1
+
+	var trigger: bool = float(arena.match_elapsed) > MACRO_LATE_TIME \
+		or _any_enemy_lane_broken()
+	if not trigger or free_bots.size() < 2:
+		_macro_hold = 0.0
+		return
+
+	var want := ""
+	var target = null
+	var baron := _alive_baron()
+	if baron != null and not _enemy_nexus_open() and healthy >= 3 \
+			and _enemies_clear_of(enemies, baron.global_position, 700.0):
+		want = "baron"
+		target = baron
+	if want == "":
+		var push_target := _group_push_structure()
+		if push_target != null and healthy >= 2:
+			want = "push"
+			target = push_target
+
+	# Hystereesi: tuore kutsu ei vaihdu heti toiseksi niin kauan kuin sen
+	# kohde on yhä olemassa (esim. Baron-taistelu ei keskeydy välkkyen).
+	if want != prev_call and prev_call != "" and _macro_hold > 0.0 \
+			and prev_target != null and is_instance_valid(prev_target) \
+			and bool(prev_target.alive):
+		want = prev_call
+		target = prev_target
+	if want == "" or target == null:
+		_macro_hold = 0.0
+		return
+	if want != prev_call:
+		_macro_hold = 6.0
+		arena._sim_event("Makrokutsu (%s): %s" % [Game.team_name(team),
+			"Baron" if want == "baron" else "ryhmätyöntö"])
+	macro_call = want
+	macro_target = target
+	macro_pos = target.global_position
+	# Osallistujat: vapaat terveehköt botit. Jo kutsussa oleva jatkaa matalammalla
+	# kynnyksellä (ei sinkoilua edestakaisin parannusten/osumien rajalla).
+	for a in free_bots:
+		var join_frac := 0.4 if a in prev_participants else 0.5
+		if a.hp > a.max_hp * join_frac:
+			macro_participants.append(a)
+	if macro_participants.size() < 2:
+		macro_call = ""
+		macro_target = null
+		macro_pos = Vector2.ZERO
+		macro_participants = []
+
+
+## Baron-olento (arena boss critter) jos se on elossa, muuten null.
+func _alive_baron() -> Critter:
+	for c in arena.critters:
+		var cr := c as Critter
+		if cr != null and cr.alive and cr.kind == Critter.Kind.BOSS:
+			return cr
+	return null
+
+
+## Onko jokin VIHOLLISEN linja kokonaan murrettu (kaikki tornit nurin)?
+func _any_enemy_lane_broken() -> bool:
+	for lane in [MapMoba.TOP, MapMoba.BOTTOM]:
+		if _enemy_lane_towers_alive(str(lane)) == 0:
+			return true
+	return false
+
+
+func _enemy_lane_towers_alive(lane: String) -> int:
+	var n := 0
+	for st in arena.structures:
+		var s := st as Structure
+		if s != null and s.alive and s.team != team \
+				and s.kind == Structure.Kind.TOWER and s.lane_id == lane:
+			n += 1
+	return n
+
+
+## Onko vihollisen nexus jo haavoittuvainen? Silloin Baronille ei kierretä —
+## ryhmätyöntö suoraan nexukselle on aina arvokkaampi.
+func _enemy_nexus_open() -> bool:
+	for st in arena.structures:
+		var s := st as Structure
+		if s != null and s.alive and s.team != team \
+				and s.kind == Structure.Kind.NEXUS:
+			return not s.is_protected()
+	return false
+
+
+## Ei vihollissankareita pisteen lähellä — tai lähes koko vihollistiimi kuollut.
+func _enemies_clear_of(enemies: Array, pos: Vector2, r: float) -> bool:
+	if enemies.size() <= 1:
+		return true
+	for e in enemies:
+		if e.global_position.distance_to(pos) < r:
+			return false
+	return true
+
+
+## Ryhmätyönnön kohde: murrettavin haavoittuva vihollisrakennus. Avoin nexus on
+## aina paras; muuten linja jolla on vähiten torneja pystyssä (kristalli = linja
+## käytännössä murrettu, vain suoja jäljellä).
+func _group_push_structure() -> Structure:
+	var best: Structure = null
+	var best_rank := 1 << 30
+	for st in arena.structures:
+		var s := st as Structure
+		if s == null or not s.alive or s.team == team or s.is_protected():
+			continue
+		var rank := 0
+		match s.kind:
+			Structure.Kind.NEXUS:
+				rank = -1
+			Structure.Kind.TOWER:
+				rank = _enemy_lane_towers_alive(s.lane_id)
+			_:
+				rank = 0
+		if rank < best_rank:
+			best_rank = rank
+			best = s
+	return best
 
 
 ## Minkä linjan rakennus on (lähin linja); "" jos ei rakennusta.

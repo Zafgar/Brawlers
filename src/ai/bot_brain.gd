@@ -639,6 +639,17 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 		_jungle_target = enemy_nexus
 		_mode = Mode.FIGHT
 		return
+	# MAKRO: joukkueen yhteiskutsu — Baron kimppuun tai ryhmätyöntö murrettavan
+	# linjan rakenteelle. Puolustus ja apukutsu (yllä) menevät edelle, eikä
+	# ihmisiä komenneta (taulu valitsee vain botteja). Kohteen ympärillä pätevät
+	# normaalit taistelu- ja turvasäännöt (_moba_push_target, torniturva).
+	if bb.macro_call != "" and hero in bb.macro_participants \
+			and bb.macro_target != null and is_instance_valid(bb.macro_target) \
+			and bool(bb.macro_target.alive):
+		_jungle_target = bb.macro_target
+		_moba_goal = bb.macro_pos
+		_mode = Mode.FIGHT
+		return
 	# LINJANVAIHTO: oman linjan vihollistornit on kaikki kaadettu, mutta nexus on
 	# yhä suojattu, koska TOISEN linjan base-torni seisoo (nexus vaatii molemmat).
 	# Ilman vaihtoa laneri jäi seisomaan tyhjälle linjalleen koko loppupelin ->
@@ -1060,6 +1071,10 @@ func _moba_push_target(hero: Hero, arena) -> Hero:
 	if enemy_hero != null:
 		return enemy_hero
 	var minion_scan := 420.0 if _moba_job == "jungle" else 950.0
+	# Matkalla Baronille/objectivelle ei pysähdytä farmaamaan aaltoa — vain
+	# aivan viereen osuva minioni siivotaan (muuten makrokutsu pysähtyisi).
+	if _jungle_target is Critter:
+		minion_scan = 320.0
 	var minion := _nearest_enemy_minion(hero, arena, minion_scan)
 	if minion != null:
 		return minion
