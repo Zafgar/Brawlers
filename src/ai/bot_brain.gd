@@ -84,6 +84,7 @@ var _aim := Vector2.RIGHT
 var _attack := false
 var _attack_prev := false
 var _flags := {"a1": false, "a2": false, "dodge": false, "ult": false}
+var _recall := false             # paluukanavointi käynnissä/haluttu (MOBA)
 
 var _time := 0.0
 var _decision_timer := 0.0
@@ -367,6 +368,13 @@ func update(hero: Hero, delta: float) -> void:
 	_update_attack(hero, delta)
 	_update_abilities(hero, arena, bb, decided)
 	_update_dodge(hero, arena, delta)
+	# Paluukanavointi: seiso paikallaan äläkä tee mitään muuta — mikä tahansa
+	# liike-/kykysyöte keskeyttäisi kanavoinnin (Hero._update_recall).
+	if _recall:
+		_move = Vector2.ZERO
+		_attack = false
+		for key in _flags:
+			_flags[key] = false
 
 
 ## Assassiinin malttavuus: neutraalissa taistelussa väijy jos kohde ei ole
@@ -400,12 +408,22 @@ func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	_defend_pos = Vector2.INF
 	_moba_goal = Vector2.INF
 	_lane_returning = false
+	var was_recalling := _recall
+	_recall = false
 	# Tornin lukitus ohittaa kaikki objektiivit ja jahdit. Päätöstahdin lisäksi
 	# liike tarkistetaan joka framella, joten myös hitaat vaikeustasot poistuvat.
 	if arena.mode == "moba" and (_tower_emergency(hero, arena) != null \
 			or _protected_nexus_danger(hero, arena) != null):
 		_mode = Mode.RETREAT
 		return
+	# PALUU BASEEN (recall): matala HP ilman lähipainetta -> kanavoi kotiin
+	# lähteelle sen sijaan että norkoiltaisiin matalilla HP:illa linjan laidalla.
+	# Lähdeparannuksen jälkeen normaali lane-logiikka palauttaa reittiä pitkin.
+	if arena.mode == "moba":
+		_update_recall_decision(hero, arena, bb, was_recalling)
+		if _recall:
+			_mode = Mode.RETREAT
+			return
 	if hero.carrying:
 		_mode = Mode.CARRY
 		return
@@ -554,6 +572,38 @@ func _jungle_value(hero: Hero, cr: Critter) -> float:
 				return 260.0
 			return 0.0
 	return 0.0
+
+
+## Botin paluupäätös: kanavoi kotiin kun HP on matala, mikään ei uhkaa lähellä
+## eikä botilla ole puolustus-/aputehtävää. Hystereesi (was_recalling) pitää
+## kanavoinnin käynnissä kunnes HP palautuu tai uhka ilmestyy — päätös ei värise.
+func _update_recall_decision(hero: Hero, arena, bb: TeamBlackboard,
+		was_recalling: bool) -> void:
+	if hero.carrying:
+		return
+	var mm := arena.map as MapMoba
+	if mm == null:
+		return
+	# Basessa/lähteellä ei tarvita paluuta; lähderegen hoitaa loput.
+	if mm.is_in_own_sanctuary(hero.global_position, hero.team):
+		return
+	# Puolustus- ja apukutsutehtävät menevät paluun edelle.
+	if bb.defender == hero or (bb.help_lane != "" and hero in bb.helpers):
+		return
+	var threshold := 0.5 if was_recalling else 0.35
+	if hero.hp >= hero.max_hp * threshold:
+		return
+	# Kotimatka kävellen on lyhyt -> 3.5 s kanavointi ei kannata.
+	if hero.global_position.distance_to(mm.fountain_spot(hero.team)) < 1000.0:
+		return
+	# Vihollissankari lähellä (700) tai mikä tahansa vihollinen aivan vieressä ->
+	# kanavointi keskeytyisi kuitenkin vahinkoon, joten älä edes aloita.
+	if not arena.heroes_in_circle(hero.global_position, 700.0,
+			1 - hero.team, true, true).is_empty():
+		return
+	if _enemy_within(hero, arena, 460.0):
+		return
+	_recall = true
 
 
 ## MOBA-päätöksenteko: lähellä oleva vihollinen -> taistele; muuten työnnä
@@ -2465,6 +2515,11 @@ func ult_just() -> bool:
 
 func drop_just() -> bool:
 	return false
+
+
+## Paluukanavointi: botti "pitää nappia pohjassa" niin kauan kuin päätös elää.
+func recall_held() -> bool:
+	return _recall
 
 
 func is_bot() -> bool:

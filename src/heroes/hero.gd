@@ -20,6 +20,15 @@ const ASSIST_WINDOW := 5.0
 const INPUT_BUFFER := 0.15           # syötepuskuri: kyky laukeaa vaikka nappi painettiin hieman etuajassa
 const GROUND_AIM_CURSOR_SPEED := 720.0
 
+# Lähderegen (MOBA): oman lähteen äärellä sanctuaryssa HP ja resurssi palautuvat
+# erittäin nopeasti — tukikohtakäynti on lyhyt mutta kannattava.
+const FOUNTAIN_RADIUS := 300.0       # lähteen vaikutusalue lähdepisteestä
+const FOUNTAIN_HEAL_FRAC := 0.14     # parannus osuutena max HP:sta sekunnissa
+const FOUNTAIN_RES_FRAC := 0.30      # resurssipalautus osuutena res_maxista sekunnissa
+
+# Paluukanavointi (recall): pidä nappi pohjassa paikallaan — teleportti kotiin.
+const RECALL_TIME := 3.5
+
 # Kumulatiivinen MOBA-XP-käyrä. Level 12 vaatii 12 000 XP:tä: nykyisellä
 # 18 sekunnin wave-rytmillä normaali farmaus osuu ottelun viimeiseen vaiheeseen.
 const MAX_LEVEL := 12
@@ -176,6 +185,15 @@ var _beam_heal := false
 var void_stacks := 0
 var void_stack_timer := 0.0
 var void_stacker: Hero = null
+
+# Lähderegen: visuaalitikin ja popupin kuristus + parannuksen kertymä popupiin.
+var _fountain_fx_t := 0.0
+var _fountain_popup_t := 0.0
+var _fountain_heal_accum := 0.0
+
+# Paluukanavointi: 0 = ei kanavoida, muuten kulunut aika 0..RECALL_TIME.
+var _recall_t := 0.0
+var _recall_fx_t := 0.0
 # Kaksintaistelumerkit (Lance): kasautuvat kohteeseen; 3 merkkiä -> viimeistely.
 var duel_marks := 0
 var duel_mark_timer := 0.0
@@ -339,6 +357,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		_aim_active = false
 		_aiming_slot = ""
+		_recall_t = 0.0   # ohjaustila keskeyttää paluukanavoinnin
 		_passive_update(delta)
 		# Ohjaustila palaa ennen fysiikkaprosessin normaalia ajastinpäivitystä.
 		# Vähennä siirtymä-iframe tässä, ettei bunkkerista tule vahingossa täysin
@@ -481,6 +500,11 @@ func _physics_process(delta: float) -> void:
 			arena.relic.drop_from_carrier(false)
 	else:
 		_aiming_slot = ""   # tainnutus keskeyttää tähtäyksen
+
+	# Paluukanavointi ja lähderegen (vain MOBA). Ajetaan ennen normaalia
+	# palautumista, jotta teleportti ja lähdeparannus näkyvät samassa framessa.
+	_update_recall(delta)
+	_fountain_regen(delta)
 
 	# Palautuminen
 	since_damage += delta
@@ -1114,6 +1138,121 @@ func _dodge_action(dir: Vector2) -> void:
 	Fx.dust(arena, global_position)
 
 
+# --- Lähderegen ja paluu baseen (MOBA) ---
+
+## Lähderegen: oman lähteen äärellä (sanctuaryssa) HP ja resurssi palautuvat
+## erittäin nopeasti. Parannus tehdään suoraan (EI heal_hp:n kautta) — se ei
+## lataa ultia eikä kirjaudu kenenkään kyvyn ansioksi. Visuaali: pehmeä vihreä
+## sparkle-tikki + joukkuevärinen rengas, popup kuristettuna.
+func _fountain_regen(delta: float) -> void:
+	if arena == null or arena.mode != "moba" or is_unit or piloting:
+		return
+	var mm := arena.map as MapMoba
+	if mm == null:
+		return
+	if not mm.is_in_own_sanctuary(global_position, team):
+		return
+	if global_position.distance_to(mm.fountain_spot(team)) > FOUNTAIN_RADIUS:
+		return
+	var healed := 0.0
+	if hp < max_hp:
+		var before := hp
+		hp = minf(max_hp, hp + max_hp * FOUNTAIN_HEAL_FRAC * delta)
+		healed = hp - before
+	# Rage rakentuu vain taistelusta — lähde täyttää manan ja energian.
+	if res_type != "" and res_type != "rage":
+		res = minf(res_max, res + res_max * FOUNTAIN_RES_FRAC * delta)
+	if healed <= 0.0:
+		return
+	_fountain_heal_accum += healed
+	_fountain_fx_t -= delta
+	_fountain_popup_t -= delta
+	if _fountain_fx_t <= 0.0:
+		_fountain_fx_t = 0.45
+		Fx.heal_sparkle(arena, global_position
+			+ Vector2(randf_range(-radius, radius), randf_range(-8.0, 8.0)))
+		Fx.ring(arena, global_position,
+			Palette.with_alpha(Palette.team(team).lerp(Palette.HEAL, 0.5), 0.55),
+			radius + 14.0, 0.4, 2.5)
+	if _fountain_popup_t <= 0.0 and _fountain_heal_accum >= 1.0:
+		_fountain_popup_t = 1.0
+		arena.popup(global_position + Vector2(0, -radius - 26.0),
+			"+%d" % int(_fountain_heal_accum), Palette.HEAL, 14)
+		_fountain_heal_accum = 0.0
+
+
+## Pito-kanavoitava paluu omaan tukikohtaan (tuleva kauppa nojaa tähän).
+## Vahinko, liikesyöte, mikä tahansa kykysyöte, tainnutus ja napin vapautus
+## keskeyttävät. Valmistuessaan teleporttaa omalle lähteelle (Fx molempiin
+## päihin). Ei toimi kuolleena/tainnutettuna/ohjaustilassa/reliikkiä kantaen.
+func _update_recall(delta: float) -> void:
+	if arena == null or arena.mode != "moba" or is_unit:
+		_recall_t = 0.0
+		return
+	if controller == null or not controller.has_method("recall_held"):
+		return
+	var wants: bool = bool(controller.recall_held())
+	if not wants or carrying or stun_timer > 0.0 or piloting:
+		_recall_interrupt()
+		return
+	# Liike tai mikä tahansa puskuroitu kykysyöte keskeyttää kanavoinnin.
+	if controller.move_vector().length() > 0.15 or controller.attack_held() \
+			or float(_buf.a1) > 0.0 or float(_buf.a2) > 0.0 \
+			or float(_buf.ult) > 0.0 or float(_buf.dodge) > 0.0:
+		_recall_interrupt()
+		return
+	var mm := arena.map as MapMoba
+	if mm == null:
+		return
+	# Basessa ollessa ei ole mitään minne palata.
+	if mm.is_in_own_sanctuary(global_position, team):
+		_recall_t = 0.0
+		return
+	if _recall_t <= 0.0:
+		arena.popup(global_position + Vector2(0, -radius - 34.0), "PALUU...",
+			Palette.glow(Palette.team(team), 1.3), 16)
+		if not Game.simulating:
+			AudioMgr.play("blessing", 0.04, -8.0, global_position)
+	_recall_t += delta
+	_recall_fx_t -= delta
+	if _recall_fx_t <= 0.0:
+		_recall_fx_t = 0.7
+		Fx.ring(arena, global_position, Palette.with_alpha(Palette.team(team), 0.6),
+			radius + 30.0 + 26.0 * (_recall_t / RECALL_TIME), 0.6, 3.0)
+	if _recall_t >= RECALL_TIME:
+		_finish_recall(mm)
+
+
+## Keskeyttää käynnissä olevan paluukanavoinnin (pieni palaute jos oli kesken).
+func _recall_interrupt() -> void:
+	if _recall_t <= 0.0:
+		return
+	_recall_t = 0.0
+	if arena != null:
+		arena.popup(global_position + Vector2(0, -radius - 34.0), "PALUU KESKEYTYI",
+			Palette.BAD, 14)
+
+
+## Paluu valmis: teleportti omalle lähteelle, välähdys molemmissa päissä.
+func _finish_recall(mm: MapMoba) -> void:
+	_recall_t = 0.0
+	var team_col: Color = Palette.team(team)
+	var from := global_position
+	var dest: Vector2 = mm.fountain_spot(team)
+	Fx.flash(arena, from, Palette.glow(team_col, 1.5), radius + 46.0, 0.4)
+	Fx.ring(arena, from, Palette.with_alpha(team_col, 0.8), radius + 60.0, 0.5, 5.0)
+	global_position = dest
+	velocity = Vector2.ZERO
+	kb_velocity = Vector2.ZERO
+	_control_velocity = Vector2.ZERO
+	iframes = maxf(iframes, 0.4)
+	Fx.flash(arena, dest, Palette.glow(team_col, 1.5), radius + 46.0, 0.5)
+	Fx.ring(arena, dest, Palette.with_alpha(Palette.HEAL, 0.7), radius + 40.0, 0.6, 4.0)
+	arena.popup(dest + Vector2(0, -radius - 34.0), "KOTONA",
+		Palette.glow(team_col, 1.3), 16)
+	AudioMgr.play("respawn", 0.05, -4.0, dest)
+
+
 # --- Taisteluapurit ---
 
 ## phase_walls: syöksy menee sisäseinien läpi (mutta EI kartan ulkopuolelle;
@@ -1346,6 +1485,7 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 
 	hp -= amount
 	since_damage = 0.0
+	_recall_interrupt()   # vahinko keskeyttää paluukanavoinnin
 	profile.stats.taken += amount
 	# Otettu vahinko lähteen mukaan (telemetria: ottaako AI turhia torni-/mob-osumia).
 	if source != null and is_instance_valid(source):
@@ -1588,6 +1728,7 @@ func _knockout(source: Hero) -> void:
 	cc_immune_timer = 0.0
 	frozen = 0.0
 	piloting = false
+	_recall_t = 0.0
 	respawn_timer = _respawn_delay()
 	profile.stats.deaths += 1
 	profile.stats.time_dead += respawn_timer   # kuolleena vietetty aika (snowball-mittari)
@@ -1702,6 +1843,10 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	cc_immune_timer = 0.0
 	frozen = 0.0
 	piloting = false
+	_recall_t = 0.0
+	_fountain_heal_accum = 0.0
+	_fountain_fx_t = 0.0
+	_fountain_popup_t = 0.0
 	hp = max_hp
 	shield_hp = 0.0
 	carrying = false
@@ -1766,6 +1911,25 @@ class AimGuide:
 	func _draw() -> void:
 		if hero == null or not is_instance_valid(hero) or not hero.alive:
 			return
+
+		# Paluukanavointi: kasvava joukkuevärinen rengas + täyttyvä kaari ja
+		# kiertävät riimut kertovat kanavoinnin etenemisen yhdellä silmäyksellä.
+		var recall_t: float = hero._recall_t
+		if recall_t > 0.0:
+			var rfrac: float = clampf(recall_t / Hero.RECALL_TIME, 0.0, 1.0)
+			var rcol: Color = Palette.glow(Palette.team(hero.team), 1.3)
+			var rr: float = float(hero.radius) + 18.0 + 30.0 * rfrac
+			draw_circle(Vector2.ZERO, rr, Palette.with_alpha(rcol, 0.06 + 0.06 * rfrac))
+			draw_arc(Vector2.ZERO, rr, -PI / 2.0, -PI / 2.0 + TAU * rfrac, 40, rcol, 3.0)
+			draw_arc(Vector2.ZERO, rr + 6.0, 0.0, TAU, 40,
+				Palette.with_alpha(rcol, 0.30), 1.5)
+			for i in range(4):
+				var ra: float = _t * 1.8 + TAU * float(i) / 4.0
+				var rp: Vector2 = Vector2(cos(ra), sin(ra)) * (rr - 8.0)
+				var rune := PackedVector2Array([
+					rp + Vector2(0, -7), rp + Vector2(5, 0),
+					rp + Vector2(0, 7), rp + Vector2(-5, 0)])
+				draw_colored_polygon(rune, Palette.with_alpha(rcol, 0.5 + 0.4 * rfrac))
 
 		# Ultin alue-esikatselu (pidä-ja-vapauta, esim. Prisma)
 		if hero._ult_holding and not hero._ult_ground_targeted():

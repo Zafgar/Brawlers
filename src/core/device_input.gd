@@ -7,7 +7,8 @@ extends RefCounted
 ## ei tiedä ohjaako sitä ihminen vai botti.
 ##
 ## PS5-ohjain:  vasen tatti = liike, oikea tatti = tähtäys, R2 = perushyökkäys,
-## R1 = kyky 1, L1 = kyky 2, Risti = väistö, L2 = ultimate, Ympyrä = pudota.
+## R1 = kyky 1, L1 = kyky 2, Risti = väistö, L2 = ultimate, Ympyrä = pudota,
+## D-pad alas = paluu baseen (pidä pohjassa; näppäimistöllä B).
 ## Ulti on L2-liipaisimessa: helpompi pitää pohjassa ja tähdätä oikealla tatilla
 ## kuin kolmiolla. Kolmio toimii yhä vaihtoehtoisena ultinappina.
 
@@ -27,6 +28,7 @@ const PAD_BUTTONS := {
 	"a2": JOY_BUTTON_LEFT_SHOULDER,
 	"dodge": JOY_BUTTON_A,
 	"drop": JOY_BUTTON_B,
+	"recall": JOY_BUTTON_DPAD_DOWN,
 }
 
 var device := -1
@@ -79,6 +81,7 @@ func _update_keyboard_mouse(hero) -> void:
 		"dodge": Input.is_physical_key_pressed(KEY_SPACE),
 		"ult": Input.is_physical_key_pressed(KEY_E),
 		"drop": Input.is_physical_key_pressed(KEY_F),
+		"recall": Input.is_physical_key_pressed(KEY_B),
 	}
 
 
@@ -198,6 +201,11 @@ func ult_just() -> bool:
 
 func drop_just() -> bool:
 	return _just("drop")
+
+
+## Paluukanavointi (B / D-pad alas): pidetään pohjassa koko kanavoinnin ajan.
+func recall_held() -> bool:
+	return bool(_pressed.get("recall", false))
 
 
 func is_bot() -> bool:

@@ -1106,7 +1106,7 @@ func on_minion_ko(minion: Minion, source: Hero) -> void:
 				Palette.GOLD, 14)
 
 
-func _update_moba_base_rules(delta: float) -> void:
+func _update_moba_base_rules(_delta: float) -> void:
 	var mm := map as MapMoba
 	if mm == null:
 		return
@@ -1121,11 +1121,10 @@ func _update_moba_base_rules(delta: float) -> void:
 			h.kb_velocity = Vector2.ZERO
 		if h.is_unit or not mm.is_in_own_sanctuary(h.global_position, h.team):
 			continue
-		# Fountain on oikea respawn-turva: haavoittumaton ja nopea HP/resurssipalautus.
+		# Fountain on oikea respawn-turva: haavoittumaton alue. Nopea HP- ja
+		# resurssipalautus tapahtuu Hero._fountain_regenissä (lähderegen), jossa
+		# on myös visuaalinen tikki — täällä pidetään vain suojaruudut yllä.
 		h.iframes = maxf(h.iframes, 0.16)
-		h.hp = minf(h.max_hp, h.hp + h.max_hp * 0.24 * delta)
-		if h.res_type != "":
-			h.res = minf(h.res_max, h.res + h.res_max * 0.32 * delta)
 
 
 ## Poistaa kaatuneet minionit heroes-listasta ja vapauttaa ne (turvallisesti,
