@@ -52,6 +52,7 @@ var tower_judgement := 0.0      # kuinka tarkasti botti arvioi aallon, aggron ja
 var macro_obedience := 1.0      # todennäköisyys totella joukkuekutsuja (apu/baron/ryhmätyöntö)
 var defense_delay := 0.0        # sekunteja ennen kuin nimetty puolustaja reagoi kriisiin
 var siege_focus := 1.0          # pysyykö botti rakennuskohteessa vai lähteekö puolustajan perään
+var cover_skill := 0.0          # ottaako melee suojaa minioniaallon takaa kaukopokea vastaan
 
 # Huippupään huijaukset: poikkeavat 1.0:sta vasta rankista 24 (Champion IV)
 # ylöspäin, portaattomasti Challenger I:een. Hero lukee kertoimet setup()issa.
@@ -84,6 +85,7 @@ var _target: Hero = null
 var _buff_target = null          # tavoiteltu FieldBuff (GET_BUFF-tilassa)
 var _jungle_target: Hero = null  # tavoiteltu viidakko-olento (leiri/pomo)
 var _defend_pos := Vector2.INF   # MOBA: uhatun oman rakennuksen sijainti (jos nimetty puolustaja)
+var _cover_pos := Vector2.INF    # suojapiste oman aallon takana (INF = ei suojaustarvetta)
 var _move := Vector2.ZERO
 var _aim := Vector2.RIGHT
 
@@ -196,6 +198,10 @@ func _init(p_level: int, p_rank := -1) -> void:
 	# VÄHENSIVÄT tornivahinkoa rankin noustessa ja keskitasot menivät ristiin
 	# ladder-testissä (Silver kaatoi 4.3 rakennetta, Gold vain 1.9).
 	siege_focus = pow(t, 0.9)
+	# Suojautuminen: korkea rank käyttää omaa minioniaaltoa kilpenä kun kohde ei
+	# ole vielä lyöntietäisyydellä (ei jää imemään ilmaista kaukopokea tornin
+	# viereen); matala rank seisoo avoimena ja soakkaa — juuri se on taitoeroa.
+	cover_skill = pow(t, 1.0)
 	# Joukkuepeli: matala rank ei kuule kutsuja eikä ehdi puolustamaan ajoissa.
 	# Tämä erottaa rankit pelin SULKEMISESSA (ryhmätyöntö/Baron/puolustusreaktio)
 	# eikä vain mekaniikassa — tasaväkiset aikakattopelit olivat kolikonheittoa.
@@ -424,6 +430,7 @@ func update(hero: Hero, delta: float) -> void:
 	_update_target(hero, arena, bb)
 	if decided:
 		_update_lurk(hero, arena)
+		_update_cover(hero, arena)
 	_update_movement(hero, arena, bb, delta)
 	_update_aim(hero)
 	_update_attack(hero, delta)
@@ -434,7 +441,7 @@ func update(hero: Hero, delta: float) -> void:
 	# tarkoitusta. Pakota asemointitavoite (aallon mukana / aallon varjostus)
 	# tilapäisenä kiertopisteenä — normaali päätöslogiikka jatkaa siitä.
 	if arena.mode == "moba" and not _recall and _via_t <= 0.0 and not _lurk \
-			and not is_finite(_defend_pos.x):
+			and not is_finite(_defend_pos.x) and not is_finite(_cover_pos.x):
 		var idle_now: bool = _move.length() < 0.05 and not _attack \
 			and float(_aim_hold.a1) <= 0.0 and float(_aim_hold.a2) <= 0.0 \
 			and hero.stun_timer <= 0.0 and not hero.shop_open and not hero.piloting
@@ -1683,7 +1690,17 @@ func _repath_via(hero: Hero, arena, pos: Vector2, goal: Vector2) -> Vector2:
 ## (silloin pidetään turvallinen rintamapiste ja edetään seuraavan aallon
 ## mukana, koska tämä lasketaan uudelleen joka päätöksellä).
 func _lane_wave_goal(hero: Hero, arena) -> Vector2:
-	if _moba_lane == "":
+	var front := _lane_front_minion(hero, arena, _moba_lane)
+	if not is_finite(front.x):
+		return Vector2.INF
+	# Kärkiminionin taakse: aalto tankkaa tornin/vihollisen, botti seuraa mukana.
+	var push_sign: float = 1.0 if hero.team == 0 else -1.0
+	return front - Vector2(push_sign * 130.0, 0.0)
+
+
+## Etumaisin oma minioni annetulla linjalla, Vector2.INF jos aaltoa ei ole.
+func _lane_front_minion(hero: Hero, arena, lane: String) -> Vector2:
+	if lane == "":
 		return Vector2.INF
 	var push_sign: float = 1.0 if hero.team == 0 else -1.0
 	var front := Vector2.INF
@@ -1691,16 +1708,125 @@ func _lane_wave_goal(hero: Hero, arena) -> Vector2:
 	for m in arena.minions:
 		if not is_instance_valid(m) or not m.alive or m.team != hero.team:
 			continue
-		if (m as Minion).lane_id != _moba_lane:
+		if (m as Minion).lane_id != lane:
 			continue
 		var depth: float = m.global_position.x * push_sign
 		if depth > front_depth:
 			front_depth = depth
 			front = m.global_position
-	if not is_finite(front.x):
-		return Vector2.INF
-	# Kärkiminionin taakse: aalto tankkaa tornin/vihollisen, botti seuraa mukana.
-	return front - Vector2(push_sign * 130.0, 0.0)
+	return front
+
+
+## SUOJAUTUMINEN AALLON TAAKSE (rank-portitettu, arvonta per päätöstikki):
+## melee-botti joka odottaa kohdettaan oman kantamansa ulkopuolella (esim.
+## piiritys ei ole vielä edennyt lyöntietäisyydelle) ei jää seisomaan avoimena
+## imemään kaukopokea. Ehto: tuore sankarivahinko TAI näkyvä vihollisen
+## kaukosankari ~620 px sisällä. Vastaus: pidä kärkiminioni itsensä ja ampujan
+## välissä (_cover_goal_pos), tai pakita ampujan kantaman ulkopuolelle jos
+## aaltoa ei ole. Kohteen ollessa iskuetäisyydellä tämä ei koske — aktiivinen
+## hyökkäys ja piirityskuri (siege_focus) jatkuvat. Jungleri viidakossa on
+## vapautettu (leirifarmi ei ole poke-tilanne).
+func _update_cover(hero: Hero, arena) -> void:
+	_cover_pos = Vector2.INF
+	if arena.mode != "moba" or _pref_range >= 160.0 or _mode != Mode.FIGHT:
+		return
+	if _recall or _lurk or _lane_returning or is_finite(_defend_pos.x):
+		return
+	var mm := arena.map as MapMoba
+	if mm == null:
+		return
+	if _moba_job == "jungle" and mm.is_dark_jungle(hero.global_position):
+		return
+	if _target == null or not is_instance_valid(_target) or not _target.alive:
+		return
+	if hero.global_position.distance_to(_target.global_position) <= _cover_reach() + 14.0:
+		return
+	if randf() >= cover_skill:
+		return
+	var threat := _cover_threat(hero, arena)
+	if threat == null:
+		return
+	_cover_pos = _cover_goal_pos(hero, arena, mm, threat)
+
+
+## Kohteen todellinen iskuetäisyys tälle botille (rakennuksilla runko mukaan).
+func _cover_reach() -> float:
+	var reach: float = _basic_range
+	var st := _target as Structure
+	if st != null:
+		reach += st.radius
+	return reach
+
+
+## Poke-uhka suojautumista varten: lähin näkyvä vihollisen kaukosankari ~620 px
+## sisällä, tai (jos sellaista ei näy) tuoreen sankarivahingon tekijä — ampuja
+## voi olla puskassa/savussa, mutta osumat kertovat uhka-akselin silti.
+func _cover_threat(hero: Hero, arena) -> Hero:
+	var best: Hero = null
+	var best_d := 620.0
+	for e in arena.enemy_heroes(hero.team):
+		if not _hero_is_ranged(e):
+			continue
+		var d: float = e.global_position.distance_to(hero.global_position)
+		if d < best_d and _moba_can_see(hero, e, arena):
+			best_d = d
+			best = e
+	if best != null:
+		return best
+	if hero.since_damage < 2.5:
+		var now: float = float(arena.match_elapsed)
+		var fallback: Hero = null
+		for entry in hero._recent_damagers:
+			var attacker := entry.hero as Hero
+			if attacker == null or not is_instance_valid(attacker) or not attacker.alive:
+				continue
+			if attacker.is_unit or attacker.team == hero.team:
+				continue
+			if now - float(entry.time) > 2.5:
+				continue
+			# Kaukohyökkääjä on ensisijainen uhka-akseli; melee kelpaa varalle
+			# (pääasia on ettei odottelija seiso paikallaan osumia imemässä).
+			if _hero_is_ranged(attacker):
+				return attacker
+			if fallback == null:
+				fallback = attacker
+		return fallback
+	return null
+
+
+## Halpa kaukotaistelija-arvio roolista/arkkityypistä (poke-uhkien tunnistus).
+## Shade on etäassassiini erikoistapauksena (rooli ei kerro kantamaa).
+func _hero_is_ranged(h: Hero) -> bool:
+	if h.hero_id == "shade":
+		return true
+	var hero_def := HeroDef.get_def(h.hero_id)
+	var role := str(hero_def.get("role", ""))
+	var archetype := str(hero_def.get("archetype", ""))
+	return role in ["Mage", "Ranger", "Tuki"] or archetype in ["Mage", "Ranger"]
+
+
+## Suojapiste: kärkiminioni botin ja ampujan väliin (~46 px minionin taakse
+## uhka-akselilla) — aalto tankkaa poket. Ilman omaa aaltoa pakitetaan ampujasta
+## poispäin ~700 px etäisyydelle (kaukopoken kantaman ulkopuolelle).
+func _cover_goal_pos(hero: Hero, arena, mm: MapMoba, threat: Hero) -> Vector2:
+	var lane: String = _moba_lane
+	if lane == "":
+		lane = mm.nearest_lane(hero.global_position)
+	var front := _lane_front_minion(hero, arena, lane)
+	if is_finite(front.x) and front.distance_to(hero.global_position) < 900.0:
+		var axis: Vector2 = front - threat.global_position
+		if axis.length() < 1.0:
+			axis = hero.global_position - threat.global_position
+		if axis.length() < 1.0:
+			axis = Vector2.LEFT if hero.team == 0 else Vector2.RIGHT
+		return arena.map.clamp_to_field(front + axis.normalized() * 46.0, 70.0)
+	var away: Vector2 = hero.global_position - threat.global_position
+	if away.length() < 1.0:
+		away = arena.map.spawn_point(hero.team, 0) - threat.global_position
+	if away.length() < 1.0:
+		return hero.global_position
+	return arena.map.clamp_to_field(
+		threat.global_position + away.normalized() * 700.0, 70.0)
 
 
 ## Junglerin tyhjäkäynnin oletus: kun omat leirit ovat kuolleet eikä gankkia
@@ -2150,6 +2276,13 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 		return arena.relic.global_position
 
 	var dist: float = pos.distance_to(_target.global_position)
+	# SUOJAUTUMINEN: kohde ei ole lyöntietäisyydellä ja kaukopoke satelee ->
+	# pidä kärkiminioni itsensä ja ampujan välissä (tai pakita kantaman ulko-
+	# puolelle). Heti kun kohde on iskuetäisyydellä, ehto raukeaa ja normaali
+	# taistelu/piiritys jatkuu — suoja ei koskaan keskeytä aktiivista lyömistä.
+	if arena.mode == "moba" and is_finite(_cover_pos.x) and not _lurk \
+			and dist > _cover_reach() + 14.0:
+		return _moba_tower_safe(hero, arena, pos, _cover_pos)
 	if arena.mode == "moba" and _moba_job != "jungle" and _moba_lane != "":
 		var lane_objective := false
 		var behind := false
