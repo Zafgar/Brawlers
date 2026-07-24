@@ -117,6 +117,15 @@ var _atk_phase := 0.0            # hyökkäyksen jaksotus (aggression-vaihtelu)
 var _atk_firing := true
 var _lurk := false              # assassin väijyy (odottaa avausta) sen sijaan että syöksyy
 
+# Jumiutumisen tunnistus ja tyhjäkäyntivahti. Tarkoituksella RANK-NEUTRAALIT:
+# "en ole jumissa seinässä" ei ole taitoerottelua, joten nämä eivät skaalaudu.
+var _stuck_anchor := Vector2.INF # viimeisin todellisen etenemisen piste
+var _stuck_goal := Vector2.INF   # maali jota kohti etenemistä mitataan
+var _stuck_t := 0.0              # aika ilman etenemistä kohti kaukaista maalia
+var _via_point := Vector2.INF    # tilapäinen kiertopiste jumin/tyhjäkäynnin purkuun
+var _via_t := 0.0                # kiertopisteen jäljellä oleva voimassaolo
+var _idle_t := 0.0               # aika ilman mitään tekemistä (tyhjäkäyntivahti)
+
 # Lyhyt hero-kohtainen kombomuisti. Se estää kohteen vaihtamisen kesken avauksen
 # ja antaa seuraavalle päätökselle etusijan oikeaan jatkokykyyn.
 var _combo_target: Hero = null
@@ -420,6 +429,30 @@ func update(hero: Hero, delta: float) -> void:
 	_update_attack(hero, delta)
 	_update_abilities(hero, arena, bb, decided)
 	_update_dodge(hero, arena, delta)
+	# TYHJÄKÄYNTIVAHTI (rank-neutraali): elossa oleva botti ei saa seisoa
+	# pyhäkön ulkopuolella yli 3 s ilman liikettä, hyökkäystä tai muuta
+	# tarkoitusta. Pakota asemointitavoite (aallon mukana / aallon varjostus)
+	# tilapäisenä kiertopisteenä — normaali päätöslogiikka jatkaa siitä.
+	if arena.mode == "moba" and not _recall and _via_t <= 0.0 and not _lurk \
+			and not is_finite(_defend_pos.x):
+		var idle_now: bool = _move.length() < 0.05 and not _attack \
+			and float(_aim_hold.a1) <= 0.0 and float(_aim_hold.a2) <= 0.0 \
+			and hero.stun_timer <= 0.0 and not hero.shop_open and not hero.piloting
+		if idle_now:
+			var mm_idle := arena.map as MapMoba
+			if mm_idle != null and mm_idle.is_in_own_sanctuary(hero.global_position, hero.team):
+				_idle_t = 0.0
+			else:
+				_idle_t += delta
+				if _idle_t >= 3.0:
+					_idle_t = 0.0
+					var activity := _activity_goal(hero, arena)
+					if is_finite(activity.x) \
+							and activity.distance_to(hero.global_position) > 90.0:
+						_via_point = activity
+						_via_t = 2.5
+		else:
+			_idle_t = 0.0
 	# Paluukanavointi: seiso paikallaan äläkä tee mitään muuta — mikä tahansa
 	# liike-/kykysyöte keskeyttäisi kanavoinnin (Hero._update_recall).
 	if _recall:
@@ -866,8 +899,16 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 						var gank_lane := MapMoba.TOP if phase % 2 == 0 else MapMoba.BOTTOM
 						_moba_goal = mm.gank_point(hero.team, gank_lane, phase % 4 >= 2)
 					else:
-						var patrol_step := int(arena.match_elapsed / 6.0) + hero.profile.index
-						_moba_goal = mm.jungle_patrol(hero.team, patrol_step)
+						# Leirit kuolleet/respawnissa eikä gankkia tai makroa ->
+						# varjosta lähintä omaa aaltoa viidakosta rintaman tasalta
+						# sen sijaan että norkoilisi tyhjillä leireillä. Tyhjää
+						# partiointia vain jos aaltoja ei ole (alkupeli).
+						var shadow := _jungler_shadow_goal(hero, arena, mm)
+						if is_finite(shadow.x):
+							_moba_goal = shadow
+						else:
+							var patrol_step := int(arena.match_elapsed / 6.0) + hero.profile.index
+							_moba_goal = mm.jungle_patrol(hero.team, patrol_step)
 	else:
 		if _jungle_target == null:
 			_jungle_target = _pick_push_target(hero, arena)
@@ -1334,8 +1375,11 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 				return false
 			if _moba_job == "jungle":
 				# Jungleri ottaa taistelun lähellä reittiään/gankkia, ei lukitu
-				# lähimpään sankariin toisella puolella koko karttaa.
-				return e.global_position.distance_to(pos) <= 620.0
+				# lähimpään sankariin toisella puolella koko karttaa. Lukittu
+				# gank-uhri kelpaa kauempaakin — muuten jungleri jäi seisomaan
+				# gank-portille tuijottamaan uhria ~700 px:n päähän.
+				var jungler_reach: float = 900.0 if e == _gank_victim else 620.0
+				return e.global_position.distance_to(pos) <= jungler_reach
 			if _moba_lane == "":
 				return e.global_position.distance_to(pos) <= 520.0
 			var mm := arena.map as MapMoba
@@ -1498,6 +1542,10 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, delta: float) -> vo
 		Mode.FIGHT, Mode.ATTACK_CARRIER:
 			goal = _combat_goal(hero, arena, bb, pos)
 
+	# Jumiutumisen tunnistus + tilapäinen kiertopiste. Ajetaan ENNEN tornihätää,
+	# jotta hätäpoistuminen voittaa aina vanhentuneen kiertopisteen.
+	goal = _apply_stuck_repath(hero, arena, goal, delta)
+
 	# Framikohtainen turvaverkko: tornin aggro voi vaihtua heti sankariosuman
 	# jälkeen, paljon ennen seuraavaa vaikeustason mukaista päätöshetkeä.
 	var emergency_goal := _moba_emergency_goal(hero, arena)
@@ -1544,6 +1592,172 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, delta: float) -> vo
 		desired = _steer_around(hero, pos, desired, delta)
 
 	_move = desired.limit_length(1.0)
+
+
+## JUMIUTUMISEN TUNNISTUS (rank-neutraali): jos liikemaali on kaukana
+## (>= 140 px) mutta sankari ei ole edennyt 30 px:ää 2.2 sekuntiin (seinä,
+## kite-pakitus nurkkaan, umpikuja), reititä ~2 s ajan lähimmän järkevän
+## kiertopisteen (lane-aukko / junglen ylityskohta) kautta ja käännä väistö-
+## ja sivuttaissuunta. Ikkuna nollautuu aidosta etenemisestä ja maalin
+## vaihtumisesta. Ajetaan kaikissa tiloissa, myös FIGHTissa — kite-pakitus
+## seinää vasten laukeaa tästä.
+func _apply_stuck_repath(hero: Hero, arena, goal: Vector2, delta: float) -> Vector2:
+	var pos: Vector2 = hero.global_position
+	# Voimassa oleva kiertopiste ohjaa kunnes se saavutetaan tai vanhenee.
+	# Kaukainen piste hylätään (respawn/teleportti siirsi sankarin muualle).
+	if _via_t > 0.0:
+		_via_t -= delta
+		if _via_t <= 0.0 or pos.distance_to(_via_point) < 70.0 \
+				or pos.distance_to(_via_point) > 900.0:
+			_via_t = 0.0
+			_via_point = Vector2.INF
+		else:
+			return _via_point
+	# Paikallaan pysyminen on tarkoituksellista näissä tiloissa.
+	if _recall or hero.stun_timer > 0.0 or hero.root_timer > 0.0 \
+			or hero.shop_open or hero.piloting:
+		_stuck_anchor = pos
+		_stuck_t = 0.0
+		return goal
+	if not is_finite(goal.x) or pos.distance_to(goal) < 140.0:
+		_stuck_anchor = pos
+		_stuck_t = 0.0
+		_stuck_goal = goal
+		return goal
+	# Maalin vaihtuminen = uusi aikomus, ei jumi.
+	if not is_finite(_stuck_goal.x) or _stuck_goal.distance_to(goal) > 220.0:
+		_stuck_goal = goal
+		_stuck_anchor = pos
+		_stuck_t = 0.0
+		return goal
+	_stuck_goal = goal
+	if not is_finite(_stuck_anchor.x) or pos.distance_to(_stuck_anchor) >= 30.0:
+		_stuck_anchor = pos
+		_stuck_t = 0.0
+		return goal
+	_stuck_t += delta
+	if _stuck_t < 2.2:
+		return goal
+	# Jumi todettu: kiertopiste ja väistö-/sivuttaissuunnan vaihto.
+	_stuck_t = 0.0
+	_stuck_anchor = pos
+	_strafe_dir = -_strafe_dir
+	_avoid_turn = 0.0
+	_avoid_time = 0.0
+	_via_point = _repath_via(hero, arena, pos, goal)
+	_via_t = 2.0
+	return _via_point
+
+
+## Kiertopiste jumin purkuun: lähin lane-aukko tai junglen ylityskohta joka
+## vie kohti maalia (kokonaismatka painotettuna), muuten sivuaskel maalin
+## suunnasta katsottuna (käännetty strafe hajauttaa suunnat).
+func _repath_via(hero: Hero, arena, pos: Vector2, goal: Vector2) -> Vector2:
+	var mm := arena.map as MapMoba
+	if mm != null:
+		var candidates: Array = []
+		for lane_id in mm.lane_ids():
+			candidates.append_array(mm.lane_entries(lane_id))
+		candidates.append_array(mm.jungle_choke_points())
+		var best := Vector2.INF
+		var best_cost := INF
+		for cand_v in candidates:
+			var cand: Vector2 = cand_v
+			var d_pos: float = pos.distance_to(cand)
+			if d_pos < 120.0:
+				continue   # piste jossa jo seistään ei pura jumia
+			var cost: float = d_pos + cand.distance_to(goal) * 1.15
+			if cost < best_cost:
+				best_cost = cost
+				best = cand
+		if is_finite(best.x):
+			return best
+	# Ei karttatietoa (areena/viidakko): kierrä sivukautta kohti maalia.
+	var dir: Vector2 = (goal - pos).normalized()
+	return arena.map.clamp_to_field(
+		pos + dir.orthogonal() * _strafe_dir * 260.0 + dir * 120.0, 90.0)
+
+
+## Asemointi oman aallon mukana: piste hieman etumaisimman oman minionin
+## takana omalla linjalla. Vector2.INF jos linjalla ei ole omia minioneja
+## (silloin pidetään turvallinen rintamapiste ja edetään seuraavan aallon
+## mukana, koska tämä lasketaan uudelleen joka päätöksellä).
+func _lane_wave_goal(hero: Hero, arena) -> Vector2:
+	if _moba_lane == "":
+		return Vector2.INF
+	var push_sign: float = 1.0 if hero.team == 0 else -1.0
+	var front := Vector2.INF
+	var front_depth := -INF
+	for m in arena.minions:
+		if not is_instance_valid(m) or not m.alive or m.team != hero.team:
+			continue
+		if (m as Minion).lane_id != _moba_lane:
+			continue
+		var depth: float = m.global_position.x * push_sign
+		if depth > front_depth:
+			front_depth = depth
+			front = m.global_position
+	if not is_finite(front.x):
+		return Vector2.INF
+	# Kärkiminionin taakse: aalto tankkaa tornin/vihollisen, botti seuraa mukana.
+	return front - Vector2(push_sign * 130.0, 0.0)
+
+
+## Junglerin tyhjäkäynnin oletus: kun omat leirit ovat kuolleet eikä gankkia
+## tai makroa ole, varjosta lähimmän linjan omaa aaltoa viidakon puolelta
+## rintaman tasalla — valmiina gankkiin, objectiveen tai puolustukseen.
+## Ei koskaan vihollistornien rintaman ohi.
+func _jungler_shadow_goal(hero: Hero, arena, mm: MapMoba) -> Vector2:
+	var pos: Vector2 = hero.global_position
+	var push_sign: float = 1.0 if hero.team == 0 else -1.0
+	var best := Vector2.INF
+	var best_d := INF
+	for lane_id in mm.lane_ids():
+		var lane: String = lane_id
+		var front := Vector2.INF
+		var front_depth := -INF
+		for m in arena.minions:
+			if not is_instance_valid(m) or not m.alive or m.team != hero.team:
+				continue
+			if (m as Minion).lane_id != lane:
+				continue
+			var depth: float = m.global_position.x * push_sign
+			if depth > front_depth:
+				front_depth = depth
+				front = m.global_position
+		if not is_finite(front.x):
+			continue
+		# Rintaman tasalle mutta viidakon puolelle harjannetta (y kohti keskustaa).
+		var frontier: float = _enemy_tower_frontier(hero, arena, lane)
+		var depth_x: float = minf(front.x * push_sign - 160.0, frontier)
+		var shadow := Vector2(depth_x * push_sign, front.y * 0.62)
+		var d: float = pos.distance_to(shadow)
+		if d < best_d:
+			best_d = d
+			best = shadow
+	return best
+
+
+## Tyhjäkäyntivahdin pakotettu asemointitavoite: laneri aallon mukana,
+## jungleri varjostamaan aaltoa. Torniturva leikkaa tavoitteen aina.
+func _activity_goal(hero: Hero, arena) -> Vector2:
+	var mm := arena.map as MapMoba
+	if mm == null:
+		return Vector2.INF
+	var pos: Vector2 = hero.global_position
+	if _moba_job == "jungle":
+		var shadow := _jungler_shadow_goal(hero, arena, mm)
+		if is_finite(shadow.x):
+			return _moba_tower_safe(hero, arena, pos, shadow)
+		var step: int = int(arena.match_elapsed / 6.0) + hero.profile.index + 1
+		return mm.jungle_patrol(hero.team, step)
+	if _moba_lane != "":
+		var wave := _lane_wave_goal(hero, arena)
+		if is_finite(wave.x):
+			return _moba_tower_safe(hero, arena, pos, wave)
+		return _moba_tower_safe(hero, arena, pos,
+			_moba_lane_route_goal(hero, arena, pos))
+	return Vector2.INF
 
 
 ## Seinänseuranta: jos eteenpäin on este, valitse kiertosuunta (avoimempi puoli,
@@ -1947,6 +2161,21 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 			var structure := _target as Structure
 			lane_objective = structure.kind == Structure.Kind.NEXUS \
 				or structure.lane_id == _moba_lane
+			# TYHJÄKÄYNNIN POISTO: tornikohde jota ei vielä ylety lyömään ->
+			# asemoidu OMAN AALLON mukana sen sijaan että seisoisi tyhjällä
+			# rintamalla odottamassa ("botti norkoilee linjan alkupäässä").
+			# Aalto edellä -> seuraa sen taakse; aalto takana -> peräänny sen
+			# tasalle. Kun aalto on jo tornilla (crash), normaali piiritys
+			# jatkaa — muuten melee ei koskaan etenisi lyömään tornia.
+			if structure.kind == Structure.Kind.TOWER and lane_objective \
+					and dist > _basic_range + structure.radius:
+				var wave_goal := _lane_wave_goal(hero, arena)
+				if is_finite(wave_goal.x) \
+						and wave_goal.distance_to(structure.global_position) \
+							> Structure.SHOT_RANGE + 60.0:
+					if pos.distance_to(wave_goal) > 620.0:
+						return _moba_lane_route_goal(hero, arena, pos)
+					return _moba_tower_safe(hero, arena, pos, wave_goal)
 		# Kaukaiseen waveen/torniin ei juosta suoraa viivaa junglen läpi.
 		if lane_objective and not behind and dist > 620.0:
 			return _moba_lane_route_goal(hero, arena, pos)
@@ -1964,8 +2193,9 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 	elif dist > _pref_range + 40.0:
 		goal = _target.global_position - to_target * _pref_range
 	elif dist < _pref_range - 60.0:
-		# Liian lähellä (etenkin kaukotaistelijat): peräänny.
-		goal = pos - to_target * 120.0
+		# Liian lähellä (etenkin kaukotaistelijat): peräänny. Askel on >= 140,
+		# jotta seinään pinnautunut pakitus näkyy jumintunnistimelle.
+		goal = pos - to_target * 160.0
 	# Keep ranged jungle movement inside the camp leash. Otherwise a ranged bot
 	# can repeatedly reset the same camp to full health while kiting it.
 	if _target is Critter:
