@@ -126,6 +126,16 @@ func _setup_barriers() -> void:
 	rect_walls.append(Rect2(-210, 1950, 50, 230))
 	rect_walls.append(Rect2(160, 1950, 50, 230))
 
+	# BASEN KEHÄN SULKU (auditointi 2026-07): basen pohjois-/eteläreunassa oli
+	# kulmamassiivin ja linjan ulkoreunan välissä ~490 px avoin rako (y ~1250,
+	# |x| 2956..3450), josta vihollinen käveli baseen base-tornin kantaman (440)
+	# ULKOPUOLELTA. Reunavalli sulkee raon; jäljelle jäävä sisäänkäynti on
+	# linjan suuaukko, joka kulkee aina base-tornin ohi (etäisyys < 360 px).
+	# Vallin ja linjapinnan väli pysyy >= 215 px (collision-vapaa lane-kaista).
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			rect_walls.append(_mirror_quadrant_rect(Rect2(3010, 1216, 590, 68), sx, sy))
+
 	# Kulmien kalliomassiivit: porrastettu diagonaali sulkee neljän kulman
 	# kuolleet kiilat linjan kaarta myötäillen. Portaiden ja linjan väliin jää
 	# pieni tasku, johon _setup_brushes lisää juke-puskan. Portaat ovat myös
@@ -216,6 +226,10 @@ func _setup_decor() -> void:
 		if absf(p.x) > 2450.0:
 			continue
 		if absf(absf(p.y) - 1650.0) < 330.0:
+			continue
+		# Ei koristepuita objective-pittien sisään: avoimessa taistelumontussa
+		# lehtiläikkä näyttäisi esteeltä jota ei ole (auditointi 2026-07).
+		if p.distance_to(_baron) < 370 or p.distance_to(_dragon) < 370:
 			continue
 		_trees.append({"pos": p, "r": rng.randf_range(9, 22)})
 
@@ -821,12 +835,32 @@ func _draw_inner_walls() -> void:
 				draw_circle(p + Vector2(3, 4), r + 3.0, Color("07160dcc"))
 				draw_circle(p, r, Color("31553a"))
 				draw_circle(p + Vector2(-4, -4), r * 0.46, Color("60916699"))
+	# LIIKKUMISEN ESTÄVÄT PUUT (auditointi 2026-07): esteet piirrettiin ennen
+	# lähes lattian värisinä kumpuina ("maastoutuvat puut") — pelaaja törmäsi
+	# niihin yllättäen. Nyt jokainen este on luettava puu: maavarjo, tumma
+	# ääriviivarengas, lattiasta selvästi erottuva latvus, näkyvä runko JA
+	# hento jalustarengas täsmälleen törmäyssäteellä. Sääntö pelaajalle:
+	# rengas + runko = este; pelkkä pehmeä lehtiläikkä = koriste.
 	for pillar in pillars:
 		var p: Vector2 = pillar.pos
 		var r: float = pillar.radius
-		draw_circle(p + Vector2(5, 8), r + 6, Color("050b0888"))
-		draw_circle(p, r, Color("24362a"))
-		draw_circle(p + Vector2(-r * 0.22, -r * 0.25), r * 0.55, Color("3c5740"))
+		# Maavarjo (litistetty ellipsi kaakkoon) irrottaa puun maasta.
+		draw_set_transform(p + Vector2(7.0, 11.0), 0.0, Vector2(1.25, 0.7))
+		draw_circle(Vector2.ZERO, r + 8.0, Color("04100999"))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		# Jalustarengas merkitsee törmäysjalanjäljen (hillitty kulta).
+		draw_arc(p, r + 3.0, 0.0, TAU, 36, Color("d7bd6255"), 3.0)
+		# Runko näkyy latvuksen alta etelään: este on selvästi PUU, ei pensas.
+		draw_rect(Rect2(p + Vector2(-r * 0.2, r * 0.3), Vector2(r * 0.4, r * 0.62)),
+			Color("2e1d0d"))
+		draw_rect(Rect2(p + Vector2(-r * 0.14, r * 0.34), Vector2(r * 0.28, r * 0.5)),
+			Color("53381c"))
+		# Latvus: tumma ääriviiva + lattiaa selvästi vaaleampi lehtimassa.
+		draw_circle(p, r * 0.98, Color("07130d"))
+		draw_circle(p, r * 0.86, Color("2e7c40"))
+		draw_circle(p + Vector2(-r * 0.22, -r * 0.25), r * 0.5, Color("4ba454"))
+		draw_circle(p + Vector2(-r * 0.32, -r * 0.36), r * 0.26, Color("79cd7f"))
+		draw_circle(p + Vector2(r * 0.3, r * 0.16), r * 0.3, Color("1d5a2c"))
 
 
 func _draw_jungle_doors() -> void:
@@ -880,12 +914,15 @@ func _draw_brushes() -> void:
 
 
 func _draw_forest() -> void:
+	# Koristepuusto on tarkoituksella LITTEÄÄ lehvistöä ilman varjoa, runkoa ja
+	# ääriviivaa: se ei saa muistuttaa liikkumisen estäviä puita (joilla on
+	# jalustarengas + runko). Näin "mikä blokkaa" on luettavissa yhdellä
+	# silmäyksellä eikä koriste yllätä pelaajaa.
 	for tree in _trees:
 		var p: Vector2 = tree.pos
 		var r: float = tree.r
-		draw_circle(p + Vector2(3, 5), r + 3, Color("04100988"))
-		draw_circle(p, r, Color("245a32aa"))
-		draw_circle(p + Vector2(-r * 0.25, -r * 0.3), r * 0.45, Color("4b9558aa"))
+		draw_circle(p, r, Color("24583266"))
+		draw_circle(p + Vector2(-r * 0.25, -r * 0.3), r * 0.45, Color("4b955866"))
 
 
 ## Kulmamassiivien metsä: portaikon kivet saavat päälleen tiheän latvuston,
