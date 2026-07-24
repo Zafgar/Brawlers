@@ -1389,20 +1389,22 @@ func _team_has_active_buff(team: int, kind: String) -> bool:
 	return false
 
 
-## Nexuksen suojaehto: molempien linjojen base-tornit murrettu EIKÄ yhtään
-## elossa olevaa kristallia kummallakaan linjalla (kristalli toimii linjan
-## base-tornina suojaketjussa).
+## Nexuksen suojaehto: YKSI täysin murrettu linja riittää — base-torni nurin
+## EIKÄ elävää kristallia sillä linjalla. (Aiempi "molemmat linjat" -vaatimus
+## oli ~8 rakennetta / 20 min: tasaiset pelit eivät koskaan päättyneet
+## nexukseen vaan aikakattoon — ladder-testin päädiagnoosi.)
 func _base_turrets_destroyed(team: int) -> bool:
 	for lane_id in [MapMoba.TOP, MapMoba.BOTTOM]:
 		var lane_list: Array = _lane_towers[team].get(lane_id, [])
 		if lane_list.size() < 3:
-			return false
+			continue
 		var base_tower := lane_list[2] as Structure
 		if base_tower != null and is_instance_valid(base_tower) and base_tower.alive:
-			return false
+			continue
 		if _lane_crystal(team, lane_id) != null:
-			return false
-	return true
+			continue
+		return true
+	return false
 
 
 ## Kristallisyklien eteneminen: kun linjan kristalli on murrettu (tai sitä ei
