@@ -70,6 +70,9 @@ static func build(snapshots: Array, intro: Array) -> String:
 	_survivability_table(lines, agg)
 	_tanking_table(lines, agg)
 	_ability_table(lines, agg)
+	_item_balance_table(lines, snapshots)
+	_level_xp_table(lines, snapshots)
+	_skill_rank_table(lines, snapshots)
 	return "\n".join(PackedStringArray(lines))
 
 
@@ -863,6 +866,257 @@ static func _ability_table(lines: Array, agg: Dictionary) -> void:
 	else:
 		lines.append("  * = käytetty >=3 kertaa mutta EI mitattavaa arvoa (vahinko/CC/paran/kilpi/buff).")
 		lines.append("      Tarkista rikki VAI tarkoituksella liikkumis-/asemointikyky: " + ", ".join(PackedStringArray(suspects)))
+
+
+## Itembalanssi: epicit ja legendat jotka valmistuivat vähintään kerran.
+## Haltijan voitto%, KDA sekä vahinko/GPM suhteessa samojen ottelujen kaikkien
+## sankarien keskiarvoon paljastavat yli- ja alivoimaiset itemit. Ostot luetaan
+## ostolokista (item_log); vanhat snapshotit ilman lokia ohitetaan kaatumatta.
+static func _item_balance_table(lines: Array, snapshots: Array) -> void:
+	lines.append("")
+	lines.append("=== ITEMIT (balanssi) ===")
+	lines.append("  Haltijan voitto% = ostajan joukkue voitti (tasapelit ohitettu). vah/GPM = kerroin")
+	lines.append("  suhteessa samojen ottelujen kaikkien sankarien keskiarvoon (esim. vah ×1.31).")
+	var table: Dictionary = {}   # id -> koonti (epic/legendary)
+	var minor: Dictionary = {}   # common+rare-ostojen suosio: id -> lkm
+	var legendary_buys := 0
+	for snap_v in snapshots:
+		var snap: Dictionary = snap_v
+		var winner: int = int(snap.get("winner", -1))
+		var elapsed_min: float = maxf(float(snap.get("elapsed", 0.0)) / 60.0, 0.1)
+		var heroes: Array = snap.get("heroes", [])
+		# Ottelun kaikkien sankarien keskivahinko ja -GPM vertailupohjaksi.
+		var avg_dmg := 0.0
+		var avg_gpm := 0.0
+		for hv in heroes:
+			var hh: Dictionary = hv
+			avg_dmg += float(hh.get("damage", 0.0))
+			avg_gpm += float(hh.get("gold", 0.0)) / elapsed_min
+		var n_heroes: float = maxf(float(heroes.size()), 1.0)
+		avg_dmg /= n_heroes
+		avg_gpm /= n_heroes
+		for hv in heroes:
+			var h: Dictionary = hv
+			var team: int = int(h.get("team", -1))
+			var kda: float = (float(h.get("kos", 0)) + float(h.get("assists", 0))) \
+				/ maxf(float(h.get("deaths", 0)), 1.0)
+			var gpm: float = float(h.get("gold", 0.0)) / elapsed_min
+			var purchase_log: Array = h.get("item_log", [])
+			for ev_v in purchase_log:
+				var ev: Dictionary = ev_v
+				if bool(ev.get("sold", false)):
+					continue
+				var tier := str(ev.get("tier", ""))
+				var id := str(ev.get("id", "?"))
+				if tier == "common" or tier == "rare":
+					minor[id] = int(minor.get(id, 0)) + 1
+					continue
+				if tier != "epic" and tier != "legendary":
+					continue
+				if tier == "legendary":
+					legendary_buys += 1
+				if not table.has(id):
+					table[id] = {"id": id, "tier": tier, "n": 0, "t_sum": 0.0,
+						"wins": 0, "decided": 0, "kda_sum": 0.0,
+						"dmg_sum": 0.0, "dmg_base": 0.0,
+						"gpm_sum": 0.0, "gpm_base": 0.0}
+				var a: Dictionary = table[id]
+				a["n"] = int(a["n"]) + 1
+				a["t_sum"] = float(a["t_sum"]) + float(ev.get("t", 0.0))
+				if winner == 0 or winner == 1:
+					a["decided"] = int(a["decided"]) + 1
+					if team == winner:
+						a["wins"] = int(a["wins"]) + 1
+				a["kda_sum"] = float(a["kda_sum"]) + kda
+				a["dmg_sum"] = float(a["dmg_sum"]) + float(h.get("damage", 0.0))
+				a["dmg_base"] = float(a["dmg_base"]) + avg_dmg
+				a["gpm_sum"] = float(a["gpm_sum"]) + gpm
+				a["gpm_base"] = float(a["gpm_base"]) + avg_gpm
+	var rows: Array = table.values()
+	for a in rows:
+		a["wr"] = float(a["wins"]) / maxf(float(a["decided"]), 1.0)
+	rows.sort_custom(func(x, y): return float(x["wr"]) > float(y["wr"]))
+	lines.append("  itemi                | tieri     |  n | valm. ka | voitto% | KDA ka | vah    | GPM    | tuomio")
+	for a in rows:
+		var n: int = int(a["n"])
+		var wr: float = float(a["wr"]) * 100.0
+		var verdict := ""
+		if n < 8:
+			verdict = "otanta pieni"
+		elif wr >= 62.0:
+			verdict = "TARKISTA: vahva?"
+		elif wr <= 38.0:
+			verdict = "TARKISTA: heikko?"
+		var name := str(ItemDef.get_item(str(a["id"])).get("name", str(a["id"])))
+		lines.append("  %-20s | %-9s | %2d | %8s | %5.1f %% | %6.2f | ×%5.2f | ×%5.2f | %s" % [
+			name, str(a["tier"]), n, _fmt(float(a["t_sum"]) / maxf(float(n), 1.0)),
+			wr, float(a["kda_sum"]) / maxf(float(n), 1.0),
+			float(a["dmg_sum"]) / maxf(float(a["dmg_base"]), 1.0),
+			float(a["gpm_sum"]) / maxf(float(a["gpm_base"]), 1.0), verdict])
+	if rows.is_empty():
+		lines.append("  Yhtään epic/legendary-itemiä ei valmistunut otannassa.")
+	# Perusitemien suosio: mihin common/rare-kulta oikeasti valuu.
+	var minor_rows: Array = []
+	for id in minor:
+		minor_rows.append({"id": id, "n": int(minor[id])})
+	minor_rows.sort_custom(func(x, y): return int(x["n"]) > int(y["n"]))
+	var parts: Array = []
+	for i in range(mini(minor_rows.size(), 5)):
+		var m: Dictionary = minor_rows[i]
+		parts.append("%s x%d" % [
+			str(ItemDef.get_item(str(m["id"])).get("name", str(m["id"]))), int(m["n"])])
+	if parts.is_empty():
+		lines.append("  Suosituimmat perusitemit (common+rare): ei ostoja.")
+	else:
+		lines.append("  Suosituimmat perusitemit (common+rare, top 5): "
+			+ ", ".join(PackedStringArray(parts)))
+	lines.append("  Artefaktitalous: legendoja valmistui keskimäärin %.2f per ottelu." % [
+		float(legendary_buys) / maxf(float(snapshots.size()), 1.0)])
+
+
+## Tasot ja XP: muuntuuko talous- ja tasojohto voitoiksi. Voittaja- vs häviäjä-
+## joukkueen päätöstasot, ulttiaikataulu (L4) ja XP-/kultajohdon konversio.
+static func _level_xp_table(lines: Array, snapshots: Array) -> void:
+	lines.append("")
+	lines.append("=== TASOT JA XP ===")
+	lines.append("  Muuntuuko talousjohto voitoiksi: tasoerot, ulttiaikataulu ja johdon konversio.")
+	var win_level_sum := 0.0
+	var lose_level_sum := 0.0
+	var decided := 0
+	var xp_lead_games := 0
+	var xp_lead_wins := 0
+	var gold_lead_games := 0
+	var gold_lead_wins := 0
+	var l4_times: Array = []
+	var l12_times: Array = []
+	for snap_v in snapshots:
+		var snap: Dictionary = snap_v
+		var winner: int = int(snap.get("winner", -1))
+		var level_sum := [0.0, 0.0]
+		var team_n := [0.0, 0.0]
+		var xp_sum := [0.0, 0.0]
+		var gold_sum := [0.0, 0.0]
+		for hv in snap.get("heroes", []):
+			var h: Dictionary = hv
+			var team: int = int(h.get("team", -1))
+			if team == 0 or team == 1:
+				level_sum[team] += float(h.get("level", 1))
+				team_n[team] += 1.0
+				xp_sum[team] += float(h.get("xp", 0.0))
+				gold_sum[team] += float(h.get("gold", 0.0))
+			var lt: Dictionary = h.get("level_times", {})
+			if lt.has("4"):
+				l4_times.append(float(lt["4"]))
+			if lt.has("12"):
+				l12_times.append(float(lt["12"]))
+		if winner != 0 and winner != 1:
+			continue   # tasapeli ei kerro johdon konversiosta
+		if float(team_n[0]) <= 0.0 or float(team_n[1]) <= 0.0:
+			continue
+		decided += 1
+		win_level_sum += float(level_sum[winner]) / float(team_n[winner])
+		lose_level_sum += float(level_sum[1 - winner]) / float(team_n[1 - winner])
+		if not is_equal_approx(float(xp_sum[0]), float(xp_sum[1])):
+			xp_lead_games += 1
+			var xp_leader: int = 0 if float(xp_sum[0]) > float(xp_sum[1]) else 1
+			if xp_leader == winner:
+				xp_lead_wins += 1
+		if not is_equal_approx(float(gold_sum[0]), float(gold_sum[1])):
+			gold_lead_games += 1
+			var gold_leader: int = 0 if float(gold_sum[0]) > float(gold_sum[1]) else 1
+			if gold_leader == winner:
+				gold_lead_wins += 1
+	if decided > 0:
+		var wl: float = win_level_sum / float(decided)
+		var ll: float = lose_level_sum / float(decided)
+		lines.append("  Päätöstaso ka: voittajat %.1f vs häviäjät %.1f (tasojohto %+.1f)" % [
+			wl, ll, wl - ll])
+	else:
+		lines.append("  Ei ratkenneita otteluita — tasovertailu ohitettu.")
+	lines.append("  Mediaani L4 (ultti auki): %s (n=%d) | mediaani L12: %s (n=%d)" % [
+		_median_fmt(l4_times), l4_times.size(), _median_fmt(l12_times), l12_times.size()])
+	lines.append("  XP-johto voitti %d/%d ottelusta (%d %%)" % [xp_lead_wins, xp_lead_games,
+		int(round(100.0 * float(xp_lead_wins) / maxf(float(xp_lead_games), 1.0)))])
+	lines.append("  Kultajohto voitti %d/%d ottelusta (%d %%)" % [gold_lead_wins, gold_lead_games,
+		int(round(100.0 * float(gold_lead_wins) / maxf(float(gold_lead_games), 1.0)))])
+
+
+## Kykyrankit: lopputilanteen rankit per slotti. Lopputila EI kerro maksaus-
+## järjestystä ("ensin maksattu" vaatisi aikaleimatun lokin), joten raportoidaan
+## rehellisesti keskirankki per slotti sekä rank 3:n saavuttaneiden voitto%
+## verrattuna muihin — iso ero vihjaa yli-/alivoimaisesta kyvystä.
+static func _skill_rank_table(lines: Array, snapshots: Array) -> void:
+	lines.append("")
+	lines.append("=== KYKYRANKIT ===")
+	lines.append("  Lopputila ei kerro maksausjärjestystä; vertailu: slotin rank 3 vs alle 3.")
+	lines.append("  TARKISTA kun ero >= 12 %-yks ja molemmissa ryhmissä n >= 16 (tasapelit ohitettu).")
+	var order := ["basic", "a1", "a2", "dodge", "ult"]
+	var slots: Dictionary = {}
+	for sname in order:
+		slots[sname] = {"rank_sum": 0.0, "n": 0,
+			"n3": 0, "wins3": 0, "nlow": 0, "winslow": 0}
+	for snap_v in snapshots:
+		var snap: Dictionary = snap_v
+		var winner: int = int(snap.get("winner", -1))
+		for hv in snap.get("heroes", []):
+			var h: Dictionary = hv
+			var build: Dictionary = h.get("skill_build", {})
+			if build.is_empty():
+				continue   # vanha snapshot tai sankari ilman rankkeja
+			var won: bool = int(h.get("team", -1)) == winner
+			var counted: bool = winner == 0 or winner == 1
+			for sname in order:
+				var rank: int = int(build.get(sname, 0))
+				var s: Dictionary = slots[sname]
+				s["rank_sum"] = float(s["rank_sum"]) + float(rank)
+				s["n"] = int(s["n"]) + 1
+				if not counted:
+					continue
+				if rank >= 3:
+					s["n3"] = int(s["n3"]) + 1
+					if won:
+						s["wins3"] = int(s["wins3"]) + 1
+				else:
+					s["nlow"] = int(s["nlow"]) + 1
+					if won:
+						s["winslow"] = int(s["winslow"]) + 1
+	var names := {"basic": "perus", "a1": "a1", "a2": "a2", "dodge": "väistö", "ult": "ult"}
+	lines.append("  slotti | rank ka | n r3 | voitto% r3 | n <3 | voitto% <3 | ero    | huomio")
+	var any_data := false
+	for sname in order:
+		var s: Dictionary = slots[sname]
+		if int(s["n"]) <= 0:
+			continue
+		any_data = true
+		var n3: int = int(s["n3"])
+		var nlow: int = int(s["nlow"])
+		var wr3: float = 100.0 * float(s["wins3"]) / maxf(float(n3), 1.0)
+		var wrlow: float = 100.0 * float(s["winslow"]) / maxf(float(nlow), 1.0)
+		var gap: float = wr3 - wrlow
+		var note := ""
+		if n3 >= 16 and nlow >= 16 and absf(gap) >= 12.0:
+			note = "TARKISTA"
+		var wr3_text: String = "-" if n3 <= 0 else "%5.1f %%" % wr3
+		var wrlow_text: String = "-" if nlow <= 0 else "%5.1f %%" % wrlow
+		var gap_text: String = "-" if (n3 <= 0 or nlow <= 0) else "%+5.1f" % gap
+		lines.append("  %-6s | %7.2f | %4d | %-10s | %4d | %-10s | %-6s | %s" % [
+			str(names.get(sname, sname)),
+			float(s["rank_sum"]) / maxf(float(s["n"]), 1.0),
+			n3, wr3_text, nlow, wrlow_text, gap_text, note])
+	if not any_data:
+		lines.append("  Ei skill build -dataa otannassa (vanhat snapshotit?).")
+
+
+## Mediaaniaika muotoiltuna (m:ss); "-" jos havaintoja ei ole.
+static func _median_fmt(times: Array) -> String:
+	if times.is_empty():
+		return "-"
+	var sorted_times: Array = times.duplicate()
+	sorted_times.sort()
+	var mid: int = sorted_times.size() / 2
+	if sorted_times.size() % 2 == 1:
+		return _fmt(float(sorted_times[mid]))
+	return _fmt((float(sorted_times[mid - 1]) + float(sorted_times[mid])) * 0.5)
 
 
 static func _mean_dpm(agg: Dictionary, avg_min: float) -> float:
