@@ -1002,7 +1002,9 @@ func _buffer_inputs(delta: float) -> void:
 
 ## Käsittelee yhden kykypaikan. Tähdättävä kyky (pito -> vapautus) näyttää
 ## tähtäysviivan ja laukeaa vasta vapautettaessa; muut laukeavat heti
-## syötepuskurin kautta. Botit käyttävät aina välitöntä laukaisua.
+## syötepuskurin kautta. Myös botit tähtäävät skillshotit näkyvästi (BotBrainin
+## pitokone rankin mukaisella tähtäysajalla), joten viivan ehtii nähdä ja
+## väistää; kanavoinnit botti laukaisee yhä heti.
 func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 	var is_bot: bool = controller.is_bot()
 	# Kehitystilassa painettu nappi ei saa aloittaa tähtäystä/castia ennen kuin
@@ -1041,8 +1043,9 @@ func _run_ability_slot(slot: String, num: int, delta: float) -> void:
 				_act_end()
 		return
 
-	# Tähdättävä kyky: pito tähtää, vapautus laukaisee.
-	if not is_bot and slot in _aimed_slots():
+	# Tähdättävä kyky: pito tähtää, vapautus laukaisee. Koskee myös botteja:
+	# BotBrainin pitokone pitää nappia aim_time-ajan -> skillshot telegrafoituu.
+	if slot in _aimed_slots():
 		if _aiming_slot == slot:
 			_aim_active = true
 			_aim_color = hero_color()
@@ -1158,7 +1161,13 @@ func _begin_ground_aim(slot: String) -> void:
 
 func _update_ground_aim(slot: String, delta: float) -> void:
 	var max_range := maxf(_aim_range(slot), 1.0)
-	if controller.has_method("uses_pointer_aim") and controller.uses_pointer_aim():
+	if controller.is_bot():
+		# Botti ei liikuta ristikkoa tatilla: maamaali seuraa suoraan botin
+		# ennakoitua kohdetta, joten kohderengas istuu uhrin päällä koko pidon
+		# ajan (näkyvä, väistettävä telegraafi).
+		_ground_aim_offset = aimed_ground_position(aim, max_range,
+			_aim_default_range(slot)) - global_position
+	elif controller.has_method("uses_pointer_aim") and controller.uses_pointer_aim():
 		_ground_aim_offset = get_global_mouse_position() - global_position
 	elif controller.has_method("aim_cursor_vector"):
 		_ground_aim_offset += controller.aim_cursor_vector() * GROUND_AIM_CURSOR_SPEED * delta

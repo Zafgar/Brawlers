@@ -31,6 +31,7 @@ var rank := 13                  # ranking-porras 0..31 (BotRank: Wood IV .. Chal
 var reaction := 0.28
 var aim_error_deg := 9.0
 var decision_interval := 0.4
+var aim_time := 0.5             # tähdättävän skillshotin pitoaika (pito -> viiva -> laukaisu)
 var dodge_chance := 0.35
 var ability_chance := 0.6
 var ult_chance := 0.9
@@ -90,6 +91,16 @@ var _flags := {"a1": false, "a2": false, "dodge": false, "ult": false}
 var _recall := false             # paluukanavointi käynnissä/haluttu (MOBA)
 var _use_active := false         # itemiaktiivin laukaisu (yksi per päätöstikki)
 
+# Tähdättävien kykyjen pitokone: ajastin > 0 = "nappi pohjassa" (Hero piirtää
+# tähtäysviivan -> näkyvä, väistettävä telegraafi), nollan alitus nostaa
+# vapautuksen tasan yhdeksi frameksi. _aim_lock lukitsee tähtäyssuunnan pidon
+# ajaksi (pakosyöksy poispäin ei saa kääntyä takaisin kohteeseen).
+var _aim_hold := {"a1": 0.0, "a2": 0.0}
+var _aim_release := {"a1": false, "a2": false}
+var _aim_lock := Vector2.ZERO
+var _aim_lock_t := 0.0
+var _hold_seen_t := -1.0        # viimeisin päivityshetki (kuolema nollaa pidot)
+
 var _time := 0.0
 var _decision_timer := 0.0
 var _reaction_left := 0.0
@@ -139,6 +150,10 @@ func _init(p_level: int, p_rank := -1) -> void:
 	reaction = lerpf(1.1, 0.05, pow(t, 0.75))
 	aim_error_deg = lerpf(38.0, 1.0, pow(t, 0.8))
 	decision_interval = lerpf(0.95, 0.14, pow(t, 0.85))
+	# Näkyvä tähtäysaika: skillshotit pidetään pohjassa ennen laukaisua kuten
+	# ihmisellä padilla. Wood telegrafoi yli sekunnin (viivan ehtii nähdä ja
+	# väistää), Challenger näpsäyttää lähes heti.
+	aim_time = lerpf(1.05, 0.14, pow(t, 0.85))
 	dodge_chance = lerpf(0.0, 0.95, pow(t, 1.35))
 	ability_chance = lerpf(0.15, 1.0, pow(t, 0.85))
 	prediction = pow(t, 1.5)
@@ -364,6 +379,7 @@ func update(hero: Hero, delta: float) -> void:
 	for key in _flags:
 		_flags[key] = false
 	_use_active = false
+	_tick_aim_holds(hero, delta)
 	if _role == "":
 		_setup_role(hero)
 	_combo_timer = maxf(_combo_timer - delta, 0.0)
@@ -1977,6 +1993,11 @@ func _escape_ready(hero: Hero) -> bool:
 
 
 func _update_aim(hero: Hero) -> void:
+	# Pakopidon lukittu suunta: tähtäystä ei käännetä takaisin kohteeseen
+	# kesken tähdättävän pakokyvyn pidon.
+	if _aim_lock_t > 0.0:
+		_aim = _aim_lock
+		return
 	if _target == null or not is_instance_valid(_target) or not _target.alive:
 		if _move.length() > 0.1:
 			_aim = _move.normalized()
@@ -2039,6 +2060,52 @@ func _combat_engaged(delta: float) -> bool:
 		_atk_phase = randf_range(0.5, 1.0)
 		_atk_firing = randf() < aggression
 	return _atk_firing
+
+
+## Tähdättävien kykyjen pitokone: tikittää pitoajastimia ja nostaa vapautuksen
+## tasan yhdeksi frameksi kun pito päättyy. Tainnutus, vaimennus, kauppa,
+## ohjaustila ja paluukanavointi keskeyttävät pidon (vapautus ei jää
+## kummittelemaan), ja kuoleman/jäädytyksen yli jäänyt pito nollataan
+## päivitysaukosta (update ei aja kuolleena, joten aukko paljastaa sen).
+func _tick_aim_holds(hero: Hero, delta: float) -> void:
+	for slot in _aim_release:
+		_aim_release[slot] = false
+	var now: float = float(hero.arena.match_elapsed)
+	var gap: bool = _hold_seen_t >= 0.0 and now - _hold_seen_t > 0.4
+	_hold_seen_t = now
+	var blocked: bool = not hero.alive or hero.stun_timer > 0.0 \
+		or hero.silence_timer > 0.0 or hero.shop_open or hero.piloting or _recall
+	if gap or blocked:
+		_aim_hold.a1 = 0.0
+		_aim_hold.a2 = 0.0
+		_aim_lock_t = 0.0
+		return
+	for slot in _aim_hold:
+		var left: float = float(_aim_hold[slot])
+		if left <= 0.0:
+			continue
+		left -= delta
+		_aim_hold[slot] = maxf(left, 0.0)
+		if left <= 0.0:
+			_aim_release[slot] = true
+	_aim_lock_t = maxf(_aim_lock_t - delta, 0.0)
+
+
+## Botin "kykypainallus": tähdättävä kyky alkaa näkyvänä pitona jonka kesto
+## skaalautuu rankilla (aim_time); muut laukeavat heti lippujen kautta.
+## lock_dir lukitsee tähtäyssuunnan pidon ajaksi (pakosyöksy poispäin) ja
+## time_scale lyhentää hätäpidon (pako ei saa telegrafoitua täyttä aikaa).
+func _request_cast(hero: Hero, slot: String, lock_dir := Vector2.ZERO,
+		time_scale := 1.0) -> void:
+	if slot in ["a1", "a2"] and slot in hero._aimed_slots():
+		if float(_aim_hold[slot]) > 0.0 or bool(_aim_release[slot]):
+			return   # pito jo käynnissä -> ei uudelleenkäynnistystä
+		_aim_hold[slot] = aim_time * time_scale * randf_range(0.85, 1.25)
+		if lock_dir != Vector2.ZERO:
+			_aim_lock = lock_dir
+			_aim_lock_t = float(_aim_hold[slot]) + 0.2
+		return
+	_flags[slot] = true
 
 
 ## Kyvyt harkitaan vain päätöstahdissa, portitettuna vaikeustasolla.
@@ -2116,7 +2183,7 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 			var follow_wanted: bool = _want_a1(hero, arena, bb, dist, pos) \
 				if _combo_followup == "a1" else _want_a2(hero, arena, bb, dist, pos)
 			if follow_wanted:
-				_flags[_combo_followup] = true
+				_request_cast(hero, _combo_followup)
 				_combo_followup = ""
 				return
 
@@ -2134,7 +2201,7 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 
 	var chosen := _select_ability_slot(hero, want_a1, want_a2, dist)
 	if chosen != "":
-		_flags[chosen] = true
+		_request_cast(hero, chosen)
 		_begin_combo(hero, chosen)
 
 
@@ -2247,19 +2314,21 @@ func _try_escape(hero: Hero, bb: TeamBlackboard) -> bool:
 		"blink", "shade", "obsidian", "lance":
 			if hero.cd.a1 <= 0.0 and hero._can_afford("a1"):
 				_aim = away
-				_flags.a1 = true
+				# Tähdättävä pakokyky pitää suunnan lukittuna poispäin ja käyttää
+				# lyhennettyä pitoa (hätätilanteessa ei telegrafoida täyttä aikaa).
+				_request_cast(hero, "a1", away, 0.6)
 				return true
 		"quill":
 			# Quillin väistöhyppy liikkuu taaksepäin tähtäyksestä, joten tähtää
 			# uhkaa kohti päästäksesi siitä poispäin.
 			if hero.cd.a1 <= 0.0 and hero._can_afford("a1"):
 				_aim = -away
-				_flags.a1 = true
+				_request_cast(hero, "a1", -away, 0.6)
 				return true
 		"tide":
 			if hero.cd.a1 <= 0.0 and hero.ammo > 0:
 				_aim = away
-				_flags.a1 = true
+				_request_cast(hero, "a1", away, 0.6)
 				return true
 	if hero.cd.dodge <= 0.0:
 		_move = away.limit_length(1.0)
@@ -2585,6 +2654,12 @@ func aim_vector() -> Vector2:
 	return _aim
 
 
+## Maatähtäyksen kursoriliike: botti ei liikuta ristikkoa tatilla — Hero
+## asettaa maamaalin suoraan ennakoituun kohteeseen (_update_ground_aim).
+func aim_cursor_vector() -> Vector2:
+	return Vector2.ZERO
+
+
 func attack_held() -> bool:
 	return _attack
 
@@ -2605,21 +2680,23 @@ func ability2_just() -> bool:
 	return _flags.a2
 
 
-# Botit käyttävät välitöntä laukaisua, joten pito/vapautus eivät ole käytössä.
+# Tähdättävät kyvyt: botti "pitää nappia pohjassa" pitoajastimen ajan, jolloin
+# Hero piirtää tähtäysviivan (näkyvä telegraafi), ja vapautus laukaisee castin.
+# Ultit botti laukaisee yhä välittömästi (ult_held/released jäävät falseksi).
 func ability1_held() -> bool:
-	return false
+	return float(_aim_hold.a1) > 0.0
 
 
 func ability2_held() -> bool:
-	return false
+	return float(_aim_hold.a2) > 0.0
 
 
 func ability1_released() -> bool:
-	return false
+	return bool(_aim_release.a1)
 
 
 func ability2_released() -> bool:
-	return false
+	return bool(_aim_release.a2)
 
 
 func ult_held() -> bool:
