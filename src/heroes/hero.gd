@@ -1852,6 +1852,11 @@ func buy_item(id: String) -> bool:
 	if bool(item.get("require_artifact", false)):
 		legendary_artifact = false   # artefakti kuluu legendan ostoon
 	_recompute_items()
+	# Ostoloki telemetriaan: id, ostoaika ja tieri (raportin itembalanssiosio).
+	var buy_log: Array = profile.stats.get("item_log", [])
+	buy_log.append({"id": id, "t": float(arena.match_elapsed),
+		"tier": str(item.get("tier", ""))})
+	profile.stats["item_log"] = buy_log
 	if not Game.simulating and profile.is_human():
 		arena.popup(global_position + Vector2(0, -64),
 			"%s  -%dG" % [str(item.get("name", id)), cost], Palette.GOLD, 15)
@@ -1869,6 +1874,11 @@ func sell_item(id: String) -> bool:
 	items.erase(id)
 	profile.stats.gold_spent = maxi(int(profile.stats.gold_spent) - refund, 0)
 	_recompute_items()
+	# Myynti samaan ostolokiin; sold-lippu erottaa sen ostoista.
+	var sell_log: Array = profile.stats.get("item_log", [])
+	sell_log.append({"id": id, "t": float(arena.match_elapsed),
+		"tier": str(item.get("tier", "")), "sold": true})
+	profile.stats["item_log"] = sell_log
 	if not Game.simulating and profile.is_human():
 		arena.popup(global_position + Vector2(0, -64),
 			"MYYTY %s  +%dG" % [str(item.get("name", id)), refund], Palette.GOLD, 15)

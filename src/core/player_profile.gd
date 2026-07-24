@@ -42,6 +42,7 @@ func reset_stats() -> void:
 		"minion_kills": 0,    # kaadetut minionit (CS)
 		"gold": 0,            # MOBA-talouden pohja (KUMULATIIVINEN, ei vähene ostoista)
 		"gold_spent": 0,      # itemeihin käytetty kulta (lompakko = gold - gold_spent)
+		"item_log": [],       # ostot/myynnit: {id, t, tier} (+ "sold": true myynnille)
 		"kill_gold": 0,       # tappopalkkioista saatu kulta
 		"assist_gold_earned": 0, # avustuksista saatu kulta
 		"xp": 0.0,            # kokonais-XP; taso pysähtyy 12:een, telemetria jatkuu

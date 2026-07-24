@@ -1620,6 +1620,9 @@ func sim_snapshot() -> Dictionary:
 			ai_level = int(h.controller.level)
 			if h.controller is BotBrain:
 				moba_role = str(h.controller._moba_job)
+		# Ostoloki ja lopullinen skill build raportin balanssianalyysiin.
+		var item_log: Array = p.stats.get("item_log", [])
+		var skill_build: Dictionary = p.stats.get("skill_build", {})
 		var hd := {
 			"hero_id": h.hero_id, "team": h.team,
 			"level": h.level, "ai_level": ai_level,
@@ -1653,6 +1656,8 @@ func sim_snapshot() -> Dictionary:
 			"hero_xp": float(p.stats.hero_xp),
 			"gold_spent": int(p.stats.get("gold_spent", 0)),
 			"items": h.items.duplicate(),
+			"item_log": item_log.duplicate(true),
+			"skill_build": skill_build.duplicate(true),
 			"gold_milestones": p.stats.gold_milestones.duplicate(true),
 			"xp_milestones": p.stats.xp_milestones.duplicate(true),
 			"level_times": p.stats.level_times.duplicate(true),
