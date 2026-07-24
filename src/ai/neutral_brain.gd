@@ -1,12 +1,14 @@
 class_name NeutralBrain
-## Viidakko-olentojen ohjain. Pysyy leirinsä lähellä, hyökkää pelaajia
-## (joukkueet 0/1) vastaan ja palaa kotiin jos se houkutellaan liian kauas.
-## Toteuttaa saman rajapinnan kuin DeviceInput/BotBrain, mutta ei käytä kykyjä.
+## Viidakko-olentojen ohjain. Pysyy leirinsä lähellä, laiduntaa rauhassa ja
+## palaa kotiin jos se houkutellaan liian kauas. Toteuttaa saman rajapinnan
+## kuin DeviceInput/BotBrain, mutta ei käytä kykyjä.
 ##
-## Äly: kohdistaa ensisijaisesti siihen pelaajaan joka on viimeksi lyönyt sitä
-## (uhka), muuten lähimpään aggro-säteellä olevaan. Lähestyy pienellä
-## kiertoliikkeellä eikä puske suoraan päin, ja luopuu kohteesta jos se pakenee
-## leashin yli.
+## Aggromalli: olento EI hyökkää ohikulkijoiden kimppuun. Se aggroutuu VAIN
+## kun sitä vahingoitetaan — ja silloin koko sama leiri liittyy taisteluun
+## (Critter.take_damage kutsuu provoke()-apuria leiritovereille). Kohteena on
+## ensisijaisesti tuorein oma vahingoittaja, muuten leirin yhteinen ärsyke.
+## Lähestyy pienellä kiertoliikkeellä eikä puske suoraan päin, ja luopuu
+## kohteesta jos se pakenee leashin yli (paluu kotiin nollaa aggron perillä).
 
 # Vaikeuskertoimet luetaan Hero.setupissa kun is_bot() == true. Neutraaleilla
 # nämä pysyvät 1.0:ssa (ei huijausta suuntaan tai toiseen).
@@ -17,7 +19,10 @@ var ult_gain_mult := 1.0
 var speed_mult := 1.0
 
 var home := Vector2.ZERO
-var aggro_radius := 260.0        # kuinka läheltä olento havaitsee pelaajan
+# HUOM: aggro_radius EI enää käynnistä viidakko-olennon aggroa (aggro tulee
+# vain vahingosta). Kenttä säilyy, koska MinionBrain periytyy tästä ja käyttää
+# sitä linja-aggroonsa (minion.gd).
+var aggro_radius := 260.0
 var attack_range := 76.0         # kuinka läheltä se pysähtyy lyömään
 var leash := 380.0               # kuinka kauas kotoa se lähtee ennen paluuta
 var threat_window := 5.0         # kuinka tuoreen osuman perusteella se kostaa
@@ -26,6 +31,8 @@ var _mv := Vector2.ZERO
 var _aim := Vector2.RIGHT
 var _attack := false
 var _target: Hero = null
+var _provoked: Hero = null       # leiriavun/oman osuman ärsyke (aggro vain vahingosta)
+var _provoked_at := -1.0         # ärsykkeen hetki (match_elapsed)
 var _strafe := 1.0
 var _strafe_t := 0.0
 var _returning := false
@@ -58,11 +65,13 @@ func update(hero, delta: float) -> void:
 	if to_home.length() > leash:
 		_returning = true
 		_target = null
+		_provoked = null
 	if _returning:
 		# Complete the leash reset before reacquiring a target. This prevents
 		# boundary ping-pong and risk-free ranged damage from outside the camp.
 		if to_home.length() <= 46.0:
 			_returning = false
+			_provoked = null
 			if hero.has_method("on_leash_reset"):
 				hero.on_leash_reset()
 			else:
@@ -106,23 +115,36 @@ func update(hero, delta: float) -> void:
 			_mv = (spot - pos).normalized() * 0.3
 
 
-## Kohdevalinta: 1) tuorein vahingoittaja (kosto), 2) lähin pelaaja aggro-
-## säteellä. Jo valittua kohdetta seurataan hieman kauemmas (hystereesi).
+## Kohdevalinta: 1) tuorein oma vahingoittaja (kosto), 2) leirin yhteinen
+## ärsyke (leiriapu: toveria lyötiin). Olento EI koskaan aloita hyökkäystä
+## pelkästä läheisyydestä — rauhaan jätetty leiri pysyy rauhallisena.
 func _pick_target(hero, pos: Vector2) -> Hero:
 	var threat := _recent_attacker(hero, pos)
 	if threat != null:
 		return threat
-	var best: Hero = null
-	var best_d_sq := 1.0e20
-	for enemy in hero.arena.alive_enemies(hero.team):
-		if enemy.is_unit:
-			continue   # monsteri ei vedä aggroa minioneihin tai rakennuksiin
-		var limit: float = aggro_radius * (1.4 if enemy == _target else 1.0)
-		var d_sq: float = enemy.global_position.distance_squared_to(pos)
-		if d_sq <= limit * limit and d_sq < best_d_sq:
-			best_d_sq = d_sq
-			best = enemy
-	return best
+	if _provoked != null:
+		var now: float = hero.arena.match_elapsed
+		if not is_instance_valid(_provoked) or not _provoked.alive \
+				or now - _provoked_at > threat_window \
+				or _provoked.global_position.distance_squared_to(pos) > leash * leash:
+			_provoked = null
+		else:
+			return _provoked
+	return null
+
+
+## Aggro vahingosta: oma osuma tai saman leirin toverin osuma (Critter kutsuu).
+## Paluumatkalla olevaa olentoa ei provosoida uudelleen — leash-reset viedään
+## loppuun, ettei leiristä saa riskitöntä vahinkoa sen rajalta.
+func provoke(attacker: Hero, now: float) -> void:
+	if _returning:
+		return
+	if attacker == null or not is_instance_valid(attacker) or not attacker.alive:
+		return
+	if attacker.is_unit or attacker.team > 1:
+		return
+	_provoked = attacker
+	_provoked_at = now
 
 
 func _avoid_walls(hero, desired: Vector2) -> Vector2:

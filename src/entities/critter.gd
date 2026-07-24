@@ -8,20 +8,38 @@ extends Hero
 ## Kolme tyyppiä:
 ##   DAMAGE_CAMP  — sivuleirit (Raivopeto): kaataja saa vahinkobuffin.
 ##   POINTS_CAMP  — pistereiri (Aarrepeto): kaataja saa pisteitä.
-##   BOSS         — keskustan pomo (Viidakkopomo): ilmestyy ajastimella,
-##                  raivostuu alle 40 % HP:lla ja iskee alueelle telegrafilla;
+##   BOSS         — keskustan pomo (Baron): ilmestyy ajastimella, raivostuu
+##                  alle 40 % HP:lla ja purkauttaa telegrafoituja happorenkaita;
 ##                  kaataja saa ison pitkän boostin.
 ##
+## Aggro: olennot EIVÄT hyökkää ohikulkijoiden kimppuun. Ne aggroutuvat vain
+## vahingosta, ja silloin koko sama leiri liittyy taisteluun (_provoke_camp).
 ## Hyökkäys on telegrafoitu: olento vetäytyy hetkeksi taakse (varoitus) ennen
 ## iskua, joten sen voi väistää. Elinkaari kulkee Heron respawn-koneiston kautta.
 
 enum Kind { DAMAGE_CAMP, POINTS_CAMP, BOSS, DRAGON, RED_CAMP, BLUE_CAMP, SMALL_CAMP }
 
-# Pomon alueisku
-const SLAM_RADIUS := 205.0
-const SLAM_KB := 620.0
-const SLAM_WINDUP := 0.78
-const SLAM_INTERVAL := 6.5
+# Leiriapu: saman leirin olennot (kodit tämän säteellä toisistaan) aggroutuvat
+# yhdessä kun yhtä vahingoitetaan.
+const CAMP_ASSIST_RADIUS := 420.0
+
+# Baronin happopurkaus: 3 telegrafoitua maarengasta hyökkääjien alle.
+const ACID_INTERVAL := 7.5
+const ACID_WARNING := 1.0
+const ACID_RADIUS := 110.0
+const ACID_DMG := 46.0
+const ACID_SLOW := 0.55
+const ACID_SLOW_TIME := 1.1
+
+# Dragonin tulihenkäys: levenevä kartiotelegrafi + liekkikartio ja palotikki.
+const BREATH_INTERVAL := 7.0
+const BREATH_WARNING := 0.8
+const BREATH_RANGE := 430.0
+const BREATH_HALF_DEG := 34.0
+const BREATH_DMG := 36.0
+const BREATH_BURN_TICK := 4.0
+const BREATH_BURN_TICKS := 3
+const BREATH_TICK_GAP := 0.66    # 3 tikkiä ~2 s aikana
 
 var kind := Kind.DAMAGE_CAMP
 var home := Vector2.ZERO
@@ -40,10 +58,12 @@ var _wind := 0.0                   # iskun latautuminen jäljellä (0 = ei keske
 var _attack_tell := 0.0            # 0..1 telegrafi (0 = ei, 1 = juuri ennen iskua)
 var _attack_dir := Vector2.RIGHT
 var _enraged := false
-var _slam_cd := SLAM_INTERVAL
-var _slam_tell := 0.0
-var _slam_max := SLAM_WINDUP
-var _slam_origin := Vector2.ZERO
+var _special_cd := ACID_INTERVAL   # pomon erikoiskyvyn jäähdytys (Baron/Dragon)
+var _acid_tell := 0.0              # happopurkauksen varoitusaika jäljellä
+var _acid_spots: Array = []        # happorenkaiden paikat (Vector2)
+var _breath_tell := 0.0            # tulihenkäyksen varoitusaika jäljellä
+var _breath_dir := Vector2.RIGHT   # lukittu henkäyssuunta
+var _burns: Array = []             # palotikit: [{hero, ticks, t}]
 var clear_started_at := -1.0
 var clear_started_team := -1
 var clear_active_time := 0.0
@@ -89,7 +109,6 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 			kb_resist = 0.6
 			_color = Color("d9662a")   # puna-oranssi: erottuu joukkue-oranssista
 			_windup_time = 0.24
-			brain.aggro_radius = 250.0
 			brain.attack_range = 74.0
 			brain.leash = 360.0
 			cd_max.basic = 0.95
@@ -106,44 +125,46 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 			kb_resist = 0.68
 			_color = Color("e0bf3a")
 			_windup_time = 0.30
-			brain.aggro_radius = 220.0
 			brain.attack_range = 74.0
 			brain.leash = 320.0
 			cd_max.basic = 1.15
 		Kind.BOSS:
+			# Baron lyö nyt läheltä: raskas telegrafoitu viilto (~285 px) korvaa
+			# vanhan oudon 560 px:n poken. DPS pidetty ennallaan: 52 / (1.7 + 0.5)
+			# = 23.6/s (oli 38 / (1.15 + 0.48) = 23.3/s).
 			gold_value = 400
 			xp_value = 600
 			max_hp = 2200.0
 			radius = 58.0
 			base_speed = 102.0
-			attack_reach = 560.0
-			attack_dmg = 38.0
+			attack_reach = 285.0
+			attack_dmg = 52.0
 			attack_kb = 520.0
 			respawn_delay = 240.0
 			kb_resist = 0.92
 			_color = Color("b64ad6")
-			_windup_time = 0.48
-			brain.aggro_radius = 560.0
-			brain.attack_range = 510.0
+			_windup_time = 0.5
+			brain.attack_range = 240.0
 			brain.leash = 780.0
-			cd_max.basic = 1.15
+			cd_max.basic = 1.7
 		Kind.DRAGON:
+			# Dragonin kynäisy ~260 px lyhyellä telegrafilla (oli 520 px poke).
+			# DPS ennallaan: 30 / (1.35 + 0.34) = 17.8/s (oli 28 / 1.62 = 17.3/s).
 			gold_value = 280
 			xp_value = 420
 			max_hp = 1450.0
 			radius = 54.0
 			base_speed = 96.0
-			attack_reach = 520.0
-			attack_dmg = 28.0
+			attack_reach = 260.0
+			attack_dmg = 30.0
 			attack_kb = 420.0
 			respawn_delay = 150.0
 			kb_resist = 0.88
 			_color = Color("37cdbb")
-			_windup_time = 0.42
-			brain.aggro_radius = 520.0
-			brain.attack_range = 470.0
+			_windup_time = 0.34
+			brain.attack_range = 225.0
 			brain.leash = 700.0
-			cd_max.basic = 1.2
+			cd_max.basic = 1.35
 		Kind.RED_CAMP:
 			gold_value = 110
 			xp_value = 170
@@ -157,7 +178,6 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 			kb_resist = 0.88
 			_color = Color("df4938")
 			_windup_time = 0.27
-			brain.aggro_radius = 460.0
 			brain.attack_range = 320.0
 			brain.leash = 520.0
 			cd_max.basic = 1.18
@@ -174,7 +194,6 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 			kb_resist = 0.88
 			_color = Color("4e8ee8")
 			_windup_time = 0.31
-			brain.aggro_radius = 500.0
 			brain.attack_range = 400.0
 			brain.leash = 540.0
 			cd_max.basic = 1.25
@@ -191,12 +210,11 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 			kb_resist = 0.78
 			_color = Color("79b45e")
 			_windup_time = 0.25
-			brain.aggro_radius = 235.0
 			brain.attack_range = 70.0
 			brain.leash = 300.0
 			cd_max.basic = 1.12
 	hp = max_hp
-	_slam_cd = SLAM_INTERVAL
+	_special_cd = ACID_INTERVAL if kind == Kind.BOSS else BREATH_INTERVAL
 	_base_color = _color
 
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
@@ -322,9 +340,9 @@ func _basic(dir: Vector2) -> void:
 		_:
 			AudioMgr.play("jungle_small_attack", 0.10, -8.0, global_position)
 			Fx.slash(arena, global_position, dir, attack_reach, 72.0, _color)
-	# Buff guardians and major objectives also punish ranged kiting. Previously
-	# every attack was effectively a short melee cone and ranged clears were free.
-	if kind in [Kind.RED_CAMP, Kind.BLUE_CAMP, Kind.DRAGON, Kind.BOSS]:
+	# Buff-vartijat rankaisevat kaukokitausta ammuksella. Baron ja Dragon lyövät
+	# nyt raskaan lähiviillon kartioon — telegrafin voi lukea ja väistää.
+	if kind in [Kind.RED_CAMP, Kind.BLUE_CAMP]:
 		_launch_ranged_attack(dir)
 		return
 	for enemy in arena.alive_enemies(team):
@@ -336,10 +354,10 @@ func _basic(dir: Vector2) -> void:
 		if absf(rad_to_deg(dir.angle_to(to_e))) > 72.0:
 			continue
 		deal_damage_to(enemy, attack_dmg, attack_kb, to_e.normalized())
-		if kind == Kind.BLUE_CAMP:
-			Fx.spark(arena, enemy.global_position, Palette.glow(Color("72b8ff"), 1.55))
-		elif kind == Kind.RED_CAMP:
-			Fx.burst(arena, enemy.global_position, Color("ff7a3d"), 7, 155.0, 0.24, 3.0)
+		if kind == Kind.BOSS:
+			Fx.burst(arena, enemy.global_position, Color("d26aff"), 8, 170.0, 0.26, 4.0)
+		elif kind == Kind.DRAGON:
+			Fx.spark(arena, enemy.global_position, Color("49e7d2"))
 	if is_major_objective():
 		arena.shake(0.12)
 		Fx.spark(arena, global_position + dir * attack_reach * 0.7, Palette.glow(_color, 1.4))
@@ -361,7 +379,7 @@ func _launch_ranged_attack(dir: Vector2) -> void:
 		best_d = dist
 	if target == null:
 		return
-	var lead_time := 0.12 if kind in [Kind.RED_CAMP, Kind.BLUE_CAMP] else 0.18
+	var lead_time := 0.12
 	var aim_point: Vector2 = target.global_position + target.velocity * lead_time
 	var shot_dir := (aim_point - global_position).normalized()
 	var shot_speed := 570.0
@@ -376,15 +394,6 @@ func _launch_ranged_attack(dir: Vector2) -> void:
 			shot_speed = 540.0
 			homing = 3.8
 			visual_id = "critter_frost"
-		Kind.DRAGON:
-			shot_speed = 700.0
-			shot_radius = 14.0
-			visual_id = "dragon_breath"
-		Kind.BOSS:
-			shot_speed = 630.0
-			shot_radius = 16.0
-			homing = 3.2
-			visual_id = "baron_orb"
 	Projectile.launch(self, global_position + shot_dir * (radius + 8.0), shot_dir, {
 		"speed": shot_speed,
 		"dmg": attack_dmg,
@@ -398,31 +407,163 @@ func _launch_ranged_attack(dir: Vector2) -> void:
 	})
 	Fx.bolt(arena, global_position, global_position + shot_dir * 74.0,
 		Palette.glow(_color, 1.5))
-	if is_major_objective():
-		arena.shake(0.1)
 
 
-## Pomon erikoiskäyttäytyminen: raivostuminen ja telegrafoitu alueisku.
+## Pomojen erikoiskäyttäytyminen: raivostuminen + telegrafoitu erikoiskyky
+## (Baron: happopurkaus, Dragon: tulihenkäys). Erikoiskyvyt laukeavat VAIN
+## aggroutuneena — rauhaan jätetty pomo ei tee mitään.
 func _passive_update(delta: float) -> void:
 	if not is_major_objective():
 		return
+	_tick_burns(delta)
 	if not _enraged and hp <= max_hp * 0.4:
 		_enrage()
-	if _slam_tell > 0.0:
-		_slam_tell -= delta
-		if _slam_tell <= 0.0:
-			_do_slam()
+	# Käynnissä oleva telegrafi viedään aina loppuun (väistettävä lupaus pitää).
+	if _acid_tell > 0.0:
+		_acid_tell -= delta
+		if _acid_tell <= 0.0:
+			_erupt_acid()
 		return
-	_slam_cd -= delta
-	if _slam_cd <= 0.0 and _player_near(SLAM_RADIUS + 40.0):
-		_slam_cd = SLAM_INTERVAL * (0.62 if _enraged else 1.0)
-		_slam_tell = SLAM_WINDUP
-		_slam_max = SLAM_WINDUP
-		_slam_origin = global_position
-		AudioMgr.play("baron_slam_warning" if kind == Kind.BOSS else "dragon_slam_warning",
-			0.025, -1.0, global_position)
-		arena.popup(global_position + Vector2(0, -radius - 34.0),
-			"ISKU TULEE!", Palette.glow(Color("ff6a4a"), 1.4), 18)
+	if _breath_tell > 0.0:
+		_breath_tell -= delta
+		if _breath_tell <= 0.0:
+			_breathe_fire()
+		return
+	if not _in_combat():
+		return
+	_special_cd -= delta
+	if _special_cd > 0.0:
+		return
+	_special_cd = (ACID_INTERVAL if kind == Kind.BOSS else BREATH_INTERVAL) \
+		* (0.62 if _enraged else 1.0)
+	if kind == Kind.BOSS:
+		_begin_acid()
+	else:
+		_begin_breath()
+
+
+## Onko pomo aggroutunut (ohjaimella on elävä kohde)?
+func _in_combat() -> bool:
+	var brain := controller as NeutralBrain
+	return brain != null and brain._target != null \
+		and is_instance_valid(brain._target) and brain._target.alive
+
+
+## Happopurkauksen telegrafi: kolme varoitusrengasta nykyisten hyökkääjien
+## alle/lähelle (pieni liike-ennakko, jotta rengas laskeutuu kulkusuuntaan).
+func _begin_acid() -> void:
+	_acid_spots.clear()
+	var attackers: Array = []
+	for enemy in arena.alive_enemies(team):
+		if enemy.is_unit:
+			continue
+		if enemy.global_position.distance_to(global_position) <= 620.0:
+			attackers.append(enemy)
+	if attackers.is_empty():
+		return
+	attackers.sort_custom(func(a, b):
+		return a.global_position.distance_squared_to(global_position) \
+			< b.global_position.distance_squared_to(global_position))
+	for i in range(mini(3, attackers.size())):
+		var tgt: Hero = attackers[i]
+		_acid_spots.append(tgt.global_position + tgt.velocity * 0.35)
+	# Loput renkaat ripotellaan ensimmäisen ympärille (aina kolme purkausta).
+	var k := 0
+	while _acid_spots.size() < 3:
+		k += 1
+		var base_p: Vector2 = _acid_spots[0]
+		var a: float = float(k) * 2.4 + global_position.x * 0.01
+		_acid_spots.append(base_p + Vector2(cos(a), sin(a)) * 150.0)
+	_acid_tell = ACID_WARNING
+	AudioMgr.play("baron_slam_warning", 0.025, -1.0, global_position)
+	arena.popup(global_position + Vector2(0, -radius - 34.0),
+		"HAPPOPURKAUS!", Palette.glow(Color("b6ff4a"), 1.4), 18)
+
+
+## Happorenkaat purkautuvat: vahinko + lyhyt hidastus renkaissa seisoville.
+## Yksi osuma per sankari vaikka renkaat limittyisivät.
+func _erupt_acid() -> void:
+	if _acid_spots.is_empty():
+		return
+	arena.shake(0.4)
+	AudioMgr.play("baron_slam", 0.025, 0.0, global_position)
+	var hit: Dictionary = {}
+	for spot_v in _acid_spots:
+		var spot: Vector2 = spot_v
+		Fx.ring(arena, spot, Palette.glow(Color("b6ff4a"), 1.5), ACID_RADIUS, 0.45, 9.0)
+		Fx.burst(arena, spot, Color("9be03a"), 10, 190.0, 0.3, 4.0)
+		for enemy in arena.alive_enemies(team):
+			if enemy.is_unit or hit.has(enemy):
+				continue
+			var to_e: Vector2 = enemy.global_position - spot
+			if to_e.length() > ACID_RADIUS + enemy.radius:
+				continue
+			hit[enemy] = true
+			deal_damage_to(enemy, ACID_DMG, 240.0, to_e.normalized())
+			enemy.apply_slow(ACID_SLOW, ACID_SLOW_TIME)
+	_acid_spots.clear()
+
+
+## Tulihenkäyksen telegrafi: kartiosuunta lukitaan nykyistä kohdetta kohti
+## (0.8 s varoitus -> sivuaskel riittää väistöön).
+func _begin_breath() -> void:
+	var brain := controller as NeutralBrain
+	var dir: Vector2 = aim
+	if brain != null and brain._target != null and is_instance_valid(brain._target):
+		var to_t: Vector2 = brain._target.global_position - global_position
+		if to_t.length() > 1.0:
+			dir = to_t.normalized()
+	if dir.length() < 0.1:
+		dir = Vector2.RIGHT
+	_breath_dir = dir
+	_breath_tell = BREATH_WARNING
+	AudioMgr.play("dragon_slam_warning", 0.025, -1.0, global_position)
+	arena.popup(global_position + Vector2(0, -radius - 34.0),
+		"TULIHENKÄYS!", Palette.glow(Color("ff8a3a"), 1.4), 18)
+
+
+## Liekkikartio: vahinko + pieni palotikki (~2 s) kartioon jääneille.
+func _breathe_fire() -> void:
+	arena.shake(0.35)
+	AudioMgr.play("dragon_slam", 0.025, 0.0, global_position)
+	var dir: Vector2 = _breath_dir
+	Fx.slash(arena, global_position, dir, BREATH_RANGE * 0.7, 150.0,
+		Palette.glow(Color("ff9a4a"), 1.5))
+	Fx.burst(arena, global_position + dir * BREATH_RANGE * 0.45,
+		Color("ffb35a"), 14, 260.0, 0.35, 5.0)
+	for enemy in arena.alive_enemies(team):
+		if enemy.is_unit:
+			continue
+		var to_e: Vector2 = enemy.global_position - global_position
+		var d: float = to_e.length()
+		if d > BREATH_RANGE + enemy.radius:
+			continue
+		if d > 1.0 and absf(rad_to_deg(dir.angle_to(to_e.normalized()))) > BREATH_HALF_DEG:
+			continue
+		deal_damage_to(enemy, BREATH_DMG, 300.0, to_e.normalized())
+		_burns.append({"hero": enemy, "ticks": BREATH_BURN_TICKS, "t": BREATH_TICK_GAP})
+
+
+## Palotikit henkäysosuman jälkeen: pieni jälkivahinko, lähde pysyy tänä
+## olentona (elämänimu/telemetria toimivat normaalisti).
+func _tick_burns(delta: float) -> void:
+	if _burns.is_empty():
+		return
+	var alive_burns: Array = []
+	for b in _burns:
+		var victim: Hero = b.hero
+		if victim == null or not is_instance_valid(victim) or not victim.alive:
+			continue
+		var left: float = float(b.t) - delta
+		var ticks: int = int(b.ticks)
+		if left <= 0.0:
+			deal_damage_to(victim, BREATH_BURN_TICK, 0.0, Vector2.ZERO)
+			Fx.spark(arena, victim.global_position, Color("ff9a4a"))
+			ticks -= 1
+			left += BREATH_TICK_GAP
+		if ticks > 0:
+			alive_burns.append({"hero": victim, "ticks": ticks, "t": left})
+	_burns = alive_burns
 
 
 ## Raivostuminen alle 40 % HP:lla. Nopeampi ja punertava; iskunopeus ja
@@ -440,38 +581,6 @@ func _enrage() -> void:
 	Fx.ring(arena, global_position, Palette.glow(Color("ff425a"), 1.5), radius + 50.0, 0.6, 8.0)
 
 
-func _player_near(r: float) -> bool:
-	for enemy in arena.alive_enemies(team):
-		if enemy.is_unit:
-			continue
-		if enemy.global_position.distance_to(global_position) < r:
-			return true
-	return false
-
-
-## Alueisku telegrafoidusta pisteestä: vahinko + tainnutus + tönäisy.
-func _do_slam() -> void:
-	arena.shake(0.55)
-	AudioMgr.play("baron_slam" if kind == Kind.BOSS else "dragon_slam",
-		0.025, 0.0, _slam_origin)
-	Fx.ring(arena, _slam_origin, Palette.glow(_color, 1.6), SLAM_RADIUS, 0.5, 12.0)
-	Fx.ring(arena, _slam_origin, Palette.with_alpha(Color("ff6a4a"), 0.6), SLAM_RADIUS * 0.55, 0.4, 7.0)
-	Fx.dust(arena, _slam_origin)
-	for enemy in arena.alive_enemies(team):
-		if enemy.is_unit:
-			continue
-		var to_e: Vector2 = enemy.global_position - _slam_origin
-		if to_e.length() > SLAM_RADIUS + enemy.radius:
-			continue
-		var away: Vector2 = to_e.normalized()
-		if away == Vector2.ZERO:
-			away = Vector2.UP
-		var slam_dmg := 44.0 if kind == Kind.BOSS else 32.0
-		deal_damage_to(enemy, slam_dmg, SLAM_KB, away)
-		enemy.apply_stun(0.5)
-		enemy.visual.squash(0.7, 1.4)
-
-
 ## Tyrmäys: ei sankarin KO-polkua. Ilmoittaa areenalle palkintoa varten ja
 ## käynnistää respawn-ajastimen (Heron respawn-koneisto herättää olennon).
 func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO) -> float:
@@ -486,7 +595,29 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 			# pidempi tauko jää kokonaisikkunaan ja näkyy kesken jätettynä leirinä.
 			clear_active_time += minf(now - clear_last_damage_at, 3.0)
 		clear_last_damage_at = now
+		# Aggro vain vahingosta: herätä oma ohjain JA koko sama leiri.
+		_provoke_camp(source, now)
 	return super.take_damage(amount, source, kb, kb_dir)
+
+
+## Leiriapu: vahingoitettu olento provosoi itsensä ja kaikki leiritoverit
+## (olennot joiden kotipesä on CAMP_ASSIST_RADIUS-säteellä omasta kodista)
+## samaa hyökkääjää vastaan. Baron ja Dragon ovat yksin leirissään.
+func _provoke_camp(attacker: Hero, now: float) -> void:
+	var own := controller as NeutralBrain
+	if own != null:
+		own.provoke(attacker, now)
+	if arena == null:
+		return
+	for c in arena.critters:
+		var mate := c as Critter
+		if mate == null or mate == self or not mate.alive:
+			continue
+		if mate.home.distance_squared_to(home) > CAMP_ASSIST_RADIUS * CAMP_ASSIST_RADIUS:
+			continue
+		var brain := mate.controller as NeutralBrain
+		if brain != null:
+			brain.provoke(attacker, now)
 
 
 func clear_duration() -> float:
@@ -522,7 +653,10 @@ func _knockout(source: Hero) -> void:
 	slow_factor = 1.0
 	_wind = 0.0
 	_attack_tell = 0.0
-	_slam_tell = 0.0
+	_acid_tell = 0.0
+	_acid_spots.clear()
+	_breath_tell = 0.0
+	_burns.clear()
 	respawn_timer = respawn_delay
 	_recent_damagers.clear()
 	Fx.knockout_burst(arena, global_position, _color)
@@ -568,12 +702,16 @@ func _respawn() -> void:
 	_color = _base_color
 	_wind = 0.0
 	_attack_tell = 0.0
-	_slam_tell = 0.0
-	_slam_cd = SLAM_INTERVAL
+	_acid_tell = 0.0
+	_acid_spots.clear()
+	_breath_tell = 0.0
+	_burns.clear()
+	_special_cd = ACID_INTERVAL if kind == Kind.BOSS else BREATH_INTERVAL
 	var brain := controller as NeutralBrain
 	if brain != null:
 		brain._returning = false
 		brain._target = null
+		brain._provoked = null
 	for slot in cd:
 		cd[slot] = 0.0
 	Fx.ring(arena, global_position, Palette.with_alpha(_color, 0.9), radius + 30.0, 0.5)
@@ -605,12 +743,16 @@ func reset_for_round(_keep_ult_fraction := 0.5) -> void:
 	_color = _base_color
 	_wind = 0.0
 	_attack_tell = 0.0
-	_slam_tell = 0.0
-	_slam_cd = SLAM_INTERVAL
+	_acid_tell = 0.0
+	_acid_spots.clear()
+	_breath_tell = 0.0
+	_burns.clear()
+	_special_cd = ACID_INTERVAL if kind == Kind.BOSS else BREATH_INTERVAL
 	var brain := controller as NeutralBrain
 	if brain != null:
 		brain._returning = false
 		brain._target = null
+		brain._provoked = null
 	for slot in cd:
 		cd[slot] = 0.0
 	set_collision_layer_value(2, true)
@@ -637,9 +779,12 @@ class CritterVisual:
 		var breathe: float = sin(_time * (4.5 if boss else 6.5)) * (2.0 + r * 0.03)
 		var tell: float = cr._attack_tell
 
-		# Pomon alueiskun telegrafi maassa (piirretään ensin, hahmon alle).
-		if boss and cr._slam_tell > 0.0:
-			_slam_telegraph(cr)
+		# Pomojen erikoiskykyjen telegrafit maassa (piirretään ensin, hahmon alle).
+		if boss:
+			if cr._acid_tell > 0.0:
+				_acid_telegraph(cr)
+			if cr._breath_tell > 0.0:
+				_breath_telegraph(cr)
 
 		_shadow(r)
 		_ground_ring(cr, r)
@@ -700,11 +845,12 @@ class CritterVisual:
 				warn = Color("a8e56f")
 				half_arc = deg_to_rad(52.0)
 			Critter.Kind.DRAGON:
+				# Kaari vastaa nyt oikeaa osumakartiota (±72°) lyhyellä kantamalla.
 				warn = Color("49e7d2")
-				half_arc = deg_to_rad(92.0)
+				half_arc = deg_to_rad(74.0)
 			Critter.Kind.BOSS:
 				warn = Color("d35cff")
-				half_arc = deg_to_rad(86.0)
+				half_arc = deg_to_rad(76.0)
 			_:
 				warn = cr._color
 		var reach: float = cr.attack_reach + 14.0
@@ -756,15 +902,46 @@ class CritterVisual:
 				var sx: float = -bw / 2.0 + bw * float(k) / 4.0
 				draw_line(Vector2(sx, by), Vector2(sx, by + 7.0), Color(0, 0, 0, 0.5), 1.0)
 
-	## Pomon alueiskun varoitusalue (kasvaa telegrafin edetessä).
-	func _slam_telegraph(cr: Critter) -> void:
-		var frac: float = clampf(1.0 - cr._slam_tell / maxf(cr._slam_max, 0.01), 0.0, 1.0)
-		var c: Vector2 = cr._slam_origin - hero.global_position
-		var warn := Color("ff5a3a")
-		var rad: float = Critter.SLAM_RADIUS
-		draw_circle(c, rad, Palette.with_alpha(warn, 0.10 + 0.14 * frac))
-		draw_arc(c, rad, 0.0, TAU, 52, Palette.with_alpha(Palette.glow(warn, 1.4), 0.5 + 0.4 * frac), 3.0)
-		draw_arc(c, rad * frac, 0.0, TAU, 52, Palette.with_alpha(Palette.glow(warn, 1.6), 0.85), 4.0)
+	## Baronin happopurkauksen varoitusrenkaat hyökkääjien alla: rengas täyttyy
+	## telegrafin edetessä -> purkaushetki on luettavissa tarkasti.
+	func _acid_telegraph(cr: Critter) -> void:
+		var frac: float = clampf(1.0 - cr._acid_tell / Critter.ACID_WARNING, 0.0, 1.0)
+		var warn := Color("b6ff4a")
+		for spot_v in cr._acid_spots:
+			var spot: Vector2 = spot_v
+			var c: Vector2 = spot - hero.global_position
+			draw_circle(c, Critter.ACID_RADIUS, Palette.with_alpha(warn, 0.08 + 0.12 * frac))
+			draw_arc(c, Critter.ACID_RADIUS, 0.0, TAU, 40,
+				Palette.with_alpha(Palette.glow(warn, 1.4), 0.5 + 0.4 * frac), 3.0)
+			draw_arc(c, Critter.ACID_RADIUS * frac, 0.0, TAU, 40,
+				Palette.with_alpha(Palette.glow(warn, 1.6), 0.85), 4.0)
+			# Kuplivat pisteet kertovat että maa alkaa syöpyä.
+			for i in range(3):
+				var a: float = _time * 5.0 + float(i) * 2.1 + spot.x * 0.01
+				var bubble: Vector2 = c + Vector2(cos(a), sin(a)) * Critter.ACID_RADIUS * 0.5
+				draw_circle(bubble, 3.0, Palette.with_alpha(Palette.glow(warn, 1.5), 0.3 + 0.5 * frac))
+
+	## Dragonin tulihenkäyksen levenevä kartiotelegrafi lukittuun suuntaan.
+	func _breath_telegraph(cr: Critter) -> void:
+		var frac: float = clampf(1.0 - cr._breath_tell / Critter.BREATH_WARNING, 0.0, 1.0)
+		var dir: Vector2 = cr._breath_dir
+		var ang: float = dir.angle()
+		var half: float = deg_to_rad(Critter.BREATH_HALF_DEG)
+		var warn := Color("ff9a4a")
+		var reach: float = Critter.BREATH_RANGE * (0.35 + 0.65 * frac)
+		var pts := PackedVector2Array([Vector2.ZERO])
+		for i in range(9):
+			var a: float = ang - half + half * 2.0 * float(i) / 8.0
+			pts.append(Vector2.RIGHT.rotated(a) * reach)
+		draw_colored_polygon(pts, Palette.with_alpha(warn, 0.07 + 0.10 * frac))
+		# Kartion reunat piirretään täyteen mittaan: alue on selvä alusta asti.
+		var edge := Palette.with_alpha(Palette.glow(warn, 1.4), 0.45 + 0.45 * frac)
+		draw_line(Vector2.ZERO, Vector2.RIGHT.rotated(ang - half) * Critter.BREATH_RANGE, edge, 2.5)
+		draw_line(Vector2.ZERO, Vector2.RIGHT.rotated(ang + half) * Critter.BREATH_RANGE, edge, 2.5)
+		draw_arc(Vector2.ZERO, Critter.BREATH_RANGE, ang - half, ang + half, 24, edge, 2.5)
+		# Etenevä rintama näyttää tarkan laukaisuhetken.
+		draw_arc(Vector2.ZERO, reach, ang - half, ang + half, 24,
+			Palette.with_alpha(Palette.glow(warn, 1.6), 0.85), 4.0)
 
 	# --- Tyyppikohtaiset ulkoasut ---
 
@@ -1017,15 +1194,36 @@ class CritterVisual:
 			var eye := head + forward * r * 0.16 + side * es * r * 0.18
 			draw_circle(eye, r * 0.08, Palette.glow(Color("efff9b"), 1.55))
 
-	## Dragon: pitkä turkoosi jokilohikäärme. Selvät siivet, häntä, kuono ja
-	## hengitysydin tekevät siitä eri olennon kuin Baronista.
+	## Dragon: siivekäs käärmelohikäärme. Siivet lepäävät supussa rauhassa,
+	## avautuvat taistelussa ja LEIMAHTAVAT auki tulihenkäyksen telegrafissa.
+	## Kekäleet leijuvat ympärillä; silmät ja hengitysydin hehkuvat aggrossa,
+	## rauhallisena olento on selvästi himmeä ja passiivinen.
 	func _paint_dragon(cr: Critter, r: float, col: Color, dark: Color,
 			tell: float, moving: float) -> void:
 		var forward: Vector2 = hero.aim.normalized() if hero.aim.length() > 0.1 else Vector2.RIGHT
 		var side := forward.orthogonal()
-		var wing_flap := sin(_time * (7.0 + moving * 4.0)) * r * 0.12
-		var aura := Color("49e7d2") if not cr._enraged else Color("ff6a52")
-		# Pitkä, kaareva häntä kolmesta kapenevasta osasta.
+		var fighting: bool = cr._in_combat()
+		var eng: bool = cr._enraged
+		var aura := Color("ff6a52") if eng else Color("49e7d2")
+		var breath_frac := 0.0
+		if cr._breath_tell > 0.0:
+			breath_frac = clampf(1.0 - cr._breath_tell / Critter.BREATH_WARNING, 0.0, 1.0)
+		# Siipien levitys: supussa rauhassa, auki taistelussa, levällään henkäyksessä.
+		var spread := 0.6
+		if fighting:
+			spread = 1.0
+		if cr._breath_tell > 0.0:
+			spread = 1.05 + 0.4 * breath_frac
+		var wing_flap := sin(_time * (4.0 + moving * 4.0 + (3.0 if fighting else 0.0))) * r * 0.10
+		# Kekäleet: hehkuvia kipinöitä nousee olennosta (taistelussa tiheämmin).
+		var embers: int = 6 if fighting else 3
+		for i in range(embers):
+			var ph: float = _time * (0.7 + 0.13 * float(i)) + float(i) * 2.3
+			var lift: float = fposmod(ph * 0.6, 1.0)
+			var ep := Vector2(cos(ph * 1.6) * r * 1.15, (0.4 - lift) * r * 1.6)
+			var tw: float = (1.0 - lift) * (0.9 if fighting else 0.4)
+			draw_circle(ep, 2.6, Palette.with_alpha(Palette.glow(Color("ffb35a"), 1.5), tw))
+		# Pitkä, kaareva häntä kapenevista osista.
 		var tail := PackedVector2Array()
 		for i in range(5):
 			var f: float = float(i) / 4.0
@@ -1037,15 +1235,18 @@ class CritterVisual:
 		for wing_s in [-1.0, 1.0]:
 			var ws: float = wing_s
 			var wing_root := -forward * r * 0.08 + side * ws * r * 0.32
-			var wing_mid := -forward * r * 0.48 + side * ws * (r * 1.15 + wing_flap)
-			var wing_tip := forward * r * 0.32 + side * ws * (r * 1.50 + wing_flap)
-			var wing_back := forward * r * 0.48 + side * ws * r * 0.48
+			var wing_mid := -forward * r * 0.48 + side * ws * (r * 1.15 * spread + wing_flap)
+			var wing_tip := forward * r * 0.32 + side * ws * (r * 1.50 * spread + wing_flap)
+			var wing_back := forward * r * 0.48 + side * ws * r * 0.48 * maxf(spread, 0.8)
 			var wing := PackedVector2Array([wing_root, wing_mid, wing_tip, wing_back])
 			draw_colored_polygon(wing, Palette.with_alpha(dark, 0.95))
 			draw_polyline(PackedVector2Array(Array(wing) + [wing[0]]),
-				Palette.with_alpha(Palette.glow(aura, 1.3), 0.76), 3.0)
+				Palette.with_alpha(Palette.glow(aura, 1.3), 0.4 + (0.4 if fighting else 0.0)), 3.0)
 			draw_line(wing_root, wing_tip, Palette.with_alpha(col, 0.62), 2.0)
-		# Suomuinen vartalo ja hengitysydin.
+			# Siipiluut piirtyvät esiin kun siipi on levällään.
+			if spread > 0.8:
+				draw_line(wing_root, wing_mid, Palette.with_alpha(col, 0.5), 1.5)
+		# Suomuinen vartalo ja hengitysydin (hehkuu henkäyksen lähestyessä).
 		var torso := PackedVector2Array([
 			forward * r * 0.78, side * r * 0.62,
 			-forward * r * 0.78, -side * r * 0.62,
@@ -1057,8 +1258,11 @@ class CritterVisual:
 			draw_arc(forward * r * along, r * 0.24, -PI * 0.2, PI * 1.2, 10,
 				Palette.with_alpha(Color("a8fff4"), 0.32), 1.5)
 		var breath_p := forward * r * 0.18
-		draw_circle(breath_p, r * (0.18 + tell * 0.13), Palette.with_alpha(aura, 0.35))
-		draw_circle(breath_p, r * (0.09 + tell * 0.08), Palette.glow(Color("d7fff8"), 1.55))
+		var core_boost: float = tell * 0.13 + breath_frac * 0.2
+		draw_circle(breath_p, r * (0.18 + core_boost),
+			Palette.with_alpha(aura, 0.25 + (0.2 if fighting else 0.0)))
+		draw_circle(breath_p, r * (0.09 + core_boost * 0.6),
+			Palette.glow(Color("d7fff8"), 1.2 + (0.4 if fighting else 0.0)))
 		# Kuono, leukalinja ja taakse suuntautuvat sarvet.
 		var head := forward * r * 0.78
 		var snout := head + forward * r * (0.36 + tell * 0.10)
@@ -1067,92 +1271,105 @@ class CritterVisual:
 			snout + forward * r * 0.18, snout + side * r * 0.28,
 			head - forward * r * 0.10, snout - side * r * 0.28,
 		]), col)
+		# Silmät: taistelussa kirkas hehku, rauhassa himmeät.
+		var eye_col := Palette.glow(Color("ff8a5a") if eng else Color("f2ff9b"),
+			1.7 if fighting else 0.85)
 		for horn_s in [-1.0, 1.0]:
 			var hs: float = horn_s
 			draw_line(head + side * hs * r * 0.24,
 				head - forward * r * 0.55 + side * hs * r * 0.48,
 				Color("d8fff5"), 4.0)
 			var eye := head + forward * r * 0.12 + side * hs * r * 0.22
-			draw_circle(eye, r * 0.09, Palette.glow(Color("f2ff9b"), 1.6))
-		# Leuka aukeaa latauksessa ja näyttää tulevan iskun.
-		draw_line(snout - side * r * (0.22 + tell * 0.12),
-			snout + side * r * (0.22 + tell * 0.12), Color("072523"), 4.0 + tell * 5.0)
+			draw_circle(eye, r * 0.11, Color("072523"))
+			draw_circle(eye, r * 0.085, eye_col)
+		# Leuka aukeaa latauksessa/henkäyksessä ja näyttää tulevan iskun.
+		var jaw_open: float = maxf(tell, breath_frac)
+		draw_line(snout - side * r * (0.22 + jaw_open * 0.12),
+			snout + side * r * (0.22 + jaw_open * 0.12), Color("072523"), 4.0 + jaw_open * 5.0)
 
-	## Viidakkopomo: iso uhkaava hirviö — harja, sarvet, hehkuva ydin ja
-	## kolme silmää. Raivostuessaan punertava ja halkeileva.
+	## Baron: massiivinen panssaroitu behemotti-mato. Kerrostetut kuorilevyt,
+	## aaltoileva häntäpanssari, eteen kaartuvat sarvet ja kolme hehkuvaa
+	## silmää. Rauhassa hidas hengityssyke ja himmeät silmät; aggrossa aura
+	## ja hehkut kirkastuvat selvästi.
 	func _paint_boss(cr: Critter, r: float, col: Color, dark: Color, tell: float) -> void:
 		var eng: bool = cr._enraged
-		var dragon: bool = cr.kind == Critter.Kind.DRAGON
-		# Pyörivä aura taakse.
-		var aura := Color("ff5a4a") if eng else (Color("37e5d0") if dragon else Color("c46adf"))
-		draw_arc(Vector2.ZERO, r + 20.0, -_time * 0.6, -_time * 0.6 + TAU * 0.85, 44,
-			Palette.with_alpha(Palette.glow(aura, 1.3), 0.35 + (0.2 if eng else 0.0)), 3.0)
-		draw_arc(Vector2.ZERO, r + 30.0, _time * 0.4, _time * 0.4 + TAU * 0.6, 44,
-			Palette.with_alpha(Palette.glow(aura, 1.2), 0.2), 2.0)
-		# Baronille neljä hitaasti aaltoilevaa void-lonkeroa ja kruunumainen selkä.
-		for tentacle_i in range(4):
-			var base_a: float = PI * 0.25 + tentacle_i * PI * 0.5
-			var tentacle := PackedVector2Array()
-			for seg_i in range(5):
-				var f: float = float(seg_i) / 4.0
-				var a: float = base_a + sin(_time * 2.4 + tentacle_i * 1.7 + f * 3.0) * 0.22
-				tentacle.append(Vector2.RIGHT.rotated(a) * r * (0.55 + f * 0.95))
-			draw_polyline(tentacle, Palette.with_alpha(Color("321044"), 0.92), r * 0.20)
-			draw_polyline(tentacle, Palette.with_alpha(aura, 0.38), r * 0.07)
-		for crown_i in range(5):
-			var x: float = (float(crown_i) - 2.0) * r * 0.26
-			var crown_h: float = r * (0.38 + 0.12 * absf(float(crown_i) - 2.0))
+		var fighting: bool = cr._in_combat()
+		var forward: Vector2 = hero.aim.normalized() if hero.aim.length() > 0.1 else Vector2.RIGHT
+		var side := forward.orthogonal()
+		var back_a: float = (-forward).angle()
+		var aura := Color("ff5a4a") if eng else Color("c46adf")
+		# Hengityssyke: rauhassa hidas ja syvä, taistelussa tiheä.
+		var breath_pulse: float = 0.5 + 0.5 * sin(_time * (5.0 if fighting else 2.2))
+		var swell: float = 1.0 + 0.035 * breath_pulse
+		# Taisteluaura vain aggroutuneena — rauhallinen pomo on selvästi passiivinen.
+		if fighting:
+			draw_arc(Vector2.ZERO, r + 22.0, -_time * 0.8, -_time * 0.8 + TAU * 0.8, 44,
+				Palette.with_alpha(Palette.glow(aura, 1.35), 0.4 + (0.15 if eng else 0.0)), 3.0)
+		# Panssaroitu matovartalo: kapenevat häntäsegmentit aaltoilevat takana ja
+		# jokaisessa on kuorisauma + taakse osoittava selkäpiikki.
+		for seg_i in range(4):
+			var f: float = float(seg_i + 1)
+			var wob: float = sin(_time * (1.6 + (1.6 if fighting else 0.0)) - f * 1.1) * r * 0.16
+			var seg_c: Vector2 = -forward * r * (0.55 + f * 0.5) + side * wob
+			var seg_r: float = r * (0.78 - f * 0.13)
+			draw_circle(seg_c, seg_r + 3.0, Palette.darker(col, 0.5))
+			draw_circle(seg_c, seg_r, col.lerp(dark, 0.22 + f * 0.12))
+			draw_arc(seg_c, seg_r * 0.8, back_a - 1.2, back_a + 1.2, 12,
+				Palette.with_alpha(Color("2a1435"), 0.8), 3.0)
 			draw_colored_polygon(PackedVector2Array([
-				Vector2(x - r * 0.10, -r * 0.72), Vector2(x + r * 0.10, -r * 0.72),
-				Vector2(x, -r * 0.72 - crown_h)]), Palette.darker(aura, 0.38))
-		# Rispaantunut harja rungon ympärillä.
-		var frills := 16
-		for i in range(frills):
-			var a: float = TAU * float(i) / float(frills) + _time * 0.2
-			var rr: float = r * (1.12 + 0.12 * sin(_time * 3.0 + float(i)))
-			var base_p: Vector2 = Vector2(cos(a), sin(a)) * (r * 0.95)
-			var tip: Vector2 = Vector2(cos(a), sin(a)) * rr
-			draw_colored_polygon(PackedVector2Array([
-				base_p + Vector2(-cos(a), -sin(a)).rotated(PI / 2.0) * 4.0,
-				base_p + Vector2(-cos(a), -sin(a)).rotated(-PI / 2.0) * 4.0, tip]),
-				Palette.darker(col, 0.4))
-		# Runko.
-		draw_circle(Vector2.ZERO, r + 4.0, Palette.darker(col, 0.55))
-		draw_circle(Vector2.ZERO, r, col)
-		draw_circle(Vector2(0, r * 0.34), r * 0.72, Palette.with_alpha(dark, 0.45))
-		# Hehkuva ydin rinnassa (sykkii, kirkkaampi raivossa).
-		var core_pulse: float = 0.6 + 0.4 * sin(_time * (10.0 if eng else 6.0))
-		var core_col := Color("ff8a4a") if eng else (Color("8ffff0") if dragon else Color("e6a8ff"))
-		draw_circle(Vector2(0, r * 0.1), r * (0.3 + 0.06 * core_pulse),
-			Palette.with_alpha(Palette.glow(core_col, 1.6), 0.4))
-		draw_circle(Vector2(0, r * 0.1), r * 0.16, Palette.glow(core_col, 1.7))
-		# Raivon halkeamat.
+				seg_c - side * 5.0 - forward * seg_r * 0.55,
+				seg_c + side * 5.0 - forward * seg_r * 0.55,
+				seg_c - forward * (seg_r + r * 0.26)]),
+				Palette.darker(aura, 0.45))
+		# Päärunko hengittää (swell) — kerrostetut kuorilevyt limittäin selässä.
+		draw_circle(Vector2.ZERO, (r + 4.0) * swell, Palette.darker(col, 0.55))
+		draw_circle(Vector2.ZERO, r * swell, col)
+		for plate_i in range(3):
+			var pf: float = float(plate_i)
+			var pr: float = r * (0.96 - pf * 0.22) * swell
+			draw_arc(Vector2.ZERO, pr, back_a - 1.35 + pf * 0.12, back_a + 1.35 - pf * 0.12,
+				20, Palette.with_alpha(Palette.darker(col, 0.35), 0.9), 6.0 - pf)
+			draw_arc(Vector2.ZERO, pr - 3.0, back_a - 1.3 + pf * 0.12, back_a + 1.3 - pf * 0.12,
+				20, Palette.with_alpha(Palette.glow(col, 1.25), 0.3), 1.5)
+		# Sarvet kaartuvat eteen-ulos; kärjet hehkuvat taistelussa.
+		for sgn in [-1.0, 1.0]:
+			var s: float = sgn
+			var horn_base: Vector2 = forward * r * 0.3 + side * s * r * 0.5
+			var horn_mid: Vector2 = forward * r * 0.62 + side * s * r * 0.85
+			var horn_tip: Vector2 = forward * r * 1.08 + side * s * r * 0.95
+			draw_polyline(PackedVector2Array([horn_base, horn_mid, horn_tip]),
+				Palette.darker(col, 0.65), 7.0)
+			draw_circle(horn_tip, 4.5, Palette.glow(aura, 1.5 if fighting else 1.0))
+		# Hehkuva ydin selässä: syke näkyy kaukaa, kirkastuu aggrossa/raivossa.
+		var core_col := Color("ff8a4a") if eng else Color("e6a8ff")
+		draw_circle(-forward * r * 0.22, r * (0.2 + 0.05 * breath_pulse),
+			Palette.with_alpha(Palette.glow(core_col, 1.6), 0.55 if fighting else 0.3))
+		draw_circle(-forward * r * 0.22, r * 0.1,
+			Palette.glow(core_col, 1.7 if fighting else 1.1))
+		# Raivon halkeamat panssarissa.
 		if eng:
 			for i in range(4):
 				var a: float = TAU * float(i) / 4.0 + 0.4
 				var p0 := Vector2(cos(a), sin(a)) * (r * 0.2)
 				var p1 := Vector2(cos(a + 0.3), sin(a + 0.3)) * (r * 0.75)
 				draw_line(p0, p1, Palette.glow(Color("ff8a3a"), 1.6), 2.0)
-		# Sarvet.
-		for sgn in [-1.0, 1.0]:
-			var s: float = sgn
-			var horn_base := Vector2(s * r * 0.52, -r * 0.58)
-			var horn_mid := Vector2(s * r * 0.86, -r * 0.95)
-			var horn_tip := Vector2(s * r * 1.16, -r * 1.5)
-			draw_polyline(PackedVector2Array([horn_base, horn_mid, horn_tip]),
-				Palette.darker(col, 0.65), 7.0)
-			draw_circle(horn_tip, 4.5, Palette.glow(aura, 1.4))
-		# Suu ja torahampaat — aukeaa telegrafissa.
-		var mw: float = r * (0.5 + tell * 0.4)
-		var mh: float = r * (0.14 + tell * 0.32)
-		draw_rect(Rect2(-mw * 0.5, r * 0.28, mw, mh), Color("1a0518"))
-		for i in range(4):
-			var fx: float = -1.0 + 2.0 * float(i) / 3.0
+		# Kita aukeaa viillon telegrafissa: hammaskehä leviää.
+		var maw: Vector2 = forward * r * 0.55
+		var mw: float = r * (0.3 + tell * 0.28)
+		draw_circle(maw, mw + 2.0, Palette.darker(col, 0.6))
+		draw_circle(maw, mw, Color("1a0518"))
+		for tooth_i in range(5):
+			var ta: float = forward.angle() - 0.9 + float(tooth_i) * 0.45
+			var tp: Vector2 = maw + Vector2.RIGHT.rotated(ta) * mw
 			draw_colored_polygon(PackedVector2Array([
-				Vector2(fx * mw * 0.42 - 2.0, r * 0.28), Vector2(fx * mw * 0.42 + 2.0, r * 0.28),
-				Vector2(fx * mw * 0.42, r * 0.28 + mh)]), Color("fff2e0"))
-		# Kolme hehkuvaa silmää.
-		var eye_glow := Palette.glow(Color("ff5a3a"), 1.7) if eng else Palette.glow(Color("ffe14a"), 1.5)
-		_critter_eyes(Vector2(0, -r * 0.2), r * 0.38, r * 0.15, eye_glow, true)
-		draw_circle(Vector2(0, -r * 0.42), r * 0.12, eye_glow)
-		draw_circle(Vector2(0, -r * 0.42), r * 0.05, Color("28101a"))
+				tp + Vector2.RIGHT.rotated(ta + PI / 2.0) * 3.0,
+				tp + Vector2.RIGHT.rotated(ta - PI / 2.0) * 3.0,
+				tp + Vector2.RIGHT.rotated(ta) * (5.0 + tell * 6.0)]), Color("fff2e0"))
+		# Kolme silmää kidan yllä: rauhassa himmeät, aggrossa kirkkaat.
+		var eye_col := Color("ff5a3a") if eng else Color("ffe14a")
+		var eye_glow := Palette.glow(eye_col, 1.7 if fighting else 0.8)
+		for es_v in [-1.0, 0.0, 1.0]:
+			var es: float = es_v
+			var eye: Vector2 = forward * r * 0.8 + side * es * r * 0.28
+			draw_circle(eye, r * 0.12, Color(0.05, 0.02, 0.03))
+			draw_circle(eye, r * 0.09, eye_glow)
