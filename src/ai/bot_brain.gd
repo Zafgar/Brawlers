@@ -44,6 +44,8 @@ var patience := 0.0             # assassiinin kärsivällisyys (odottaa hyvää 
 var self_preserve := 0.0        # kuinka herkästi botti pakenee kyvyillä vaarassa
 var jungle_focus := 0.0         # kuinka aktiivisesti botti tunnistaa ja farmaa viidakon leirit/pomon
 var farm_skill := 0.0           # linjafarmi: korkea taso hakee matalan HP:n last hitit
+var retreat_frac := 0.25        # HP-osuus jonka alla botti vetäytyy taistelusta
+var kite_skill := 0.0           # kaukotaistelijan etäisyydenpito taistelussa (kiting)
 var combo_skill := 0.0          # muistaako avaajan kohteen ja käyttääkö oikean jatkokyvyn
 var cooldown_discipline := 0.0  # säästääkö liikkuvuutta/pakoa ja välttääkö tuplakastit
 var tower_judgement := 0.0      # kuinka tarkasti botti arvioi aallon, aggron ja poistumistien
@@ -100,6 +102,7 @@ var _aim_release := {"a1": false, "a2": false}
 var _aim_lock := Vector2.ZERO
 var _aim_lock_t := 0.0
 var _hold_seen_t := -1.0        # viimeisin päivityshetki (kuolema nollaa pidot)
+var _shop_trip_cd := 0.0        # kauppareissujen välinen jäähdytys (MOBA)
 
 var _time := 0.0
 var _decision_timer := 0.0
@@ -168,6 +171,11 @@ func _init(p_level: int, p_rank := -1) -> void:
 	self_preserve = pow(t, 1.3)
 	jungle_focus = pow(t, 1.2)
 	farm_skill = lerpf(0.05, 1.0, pow(t, 1.1))
+	# Itsesuojelu näkyy pelissä: Wood tappelee käytännössä kuolemaansa asti
+	# (syöttää silmin nähden), Challenger perääntyy jo noin kolmanneksella.
+	# Kiting erottaa kaukotaistelijat: korkea rank pitää välin hyökätessäänkin.
+	retreat_frac = lerpf(0.10, 0.34, pow(t, 0.9))
+	kite_skill = pow(t, 1.1)
 	combo_skill = lerpf(0.03, 1.0, pow(t, 1.3))
 	cooldown_discipline = lerpf(0.05, 1.0, pow(t, 1.1))
 	# Pohja 0.30 ja loivempi eksponentti: Wood ja Bronze olivat käytännössä
@@ -383,6 +391,7 @@ func update(hero: Hero, delta: float) -> void:
 	if _role == "":
 		_setup_role(hero)
 	_combo_timer = maxf(_combo_timer - delta, 0.0)
+	_shop_trip_cd = maxf(_shop_trip_cd - delta, 0.0)
 	if _combo_timer <= 0.0 or _combo_target == null or not is_instance_valid(_combo_target) \
 			or not _combo_target.alive:
 		_clear_combo()
@@ -471,10 +480,11 @@ func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	if hero.carrying:
 		_mode = Mode.CARRY
 		return
-	# Assassinit ja tuet vetäytyvät aikaisemmin (hauraita).
-	var retreat_hp := 0.3
+	# Pakoraja skaalautuu rankilla (retreat_frac); assassinit ja tuet
+	# vetäytyvät hieman aikaisemmin (hauraita).
+	var retreat_hp: float = retreat_frac
 	if _is_assassin or _is_support:
-		retreat_hp = 0.4
+		retreat_hp += 0.08
 	if hero.hp < hero.max_hp * retreat_hp:
 		_mode = Mode.RETREAT
 		return
@@ -634,10 +644,8 @@ func _update_recall_decision(hero: Hero, arena, bb: TeamBlackboard,
 	# Puolustus- ja apukutsutehtävät menevät paluun edelle.
 	if bb.defender == hero or (bb.help_lane != "" and hero in bb.helpers):
 		return
-	var threshold := 0.5 if was_recalling else 0.35
-	if hero.hp >= hero.max_hp * threshold:
-		return
-	# Kotimatka kävellen on lyhyt -> 3.5 s kanavointi ei kannata.
+	# Yhteiset vartijat matalan HP:n paluulle JA kauppareissulle:
+	# kotimatka kävellen on lyhyt -> 3.5 s kanavointi ei kannata.
 	if hero.global_position.distance_to(mm.fountain_spot(hero.team)) < 1000.0:
 		return
 	# Vihollissankari lähellä (700) tai mikä tahansa vihollinen aivan vieressä ->
@@ -647,7 +655,58 @@ func _update_recall_decision(hero: Hero, arena, bb: TeamBlackboard,
 		return
 	if _enemy_within(hero, arena, 460.0):
 		return
-	_recall = true
+	var threshold := 0.5 if was_recalling else 0.35
+	if hero.hp < hero.max_hp * threshold:
+		_recall = true
+		return
+	# KAUPPAREISSU: build kesken ja lompakossa iso ostos valmiina -> palaa
+	# ostoksille vaikka HP riittäisi. Hystereesi (was_recalling) pitää
+	# kanavoinnin käynnissä; jäähdytys ja rank-arvonta vain aloitukseen.
+	if _shop_trip_ready(hero, bb, was_recalling):
+		if not was_recalling:
+			_shop_trip_cd = 35.0
+		_recall = true
+
+
+## Kannattaako kauppareissu: buildista puuttuu itemejä ja varaa on isoon
+## ostokseen (yksittäistä halpaa commonia varten ei reissata, paitsi jos
+## lompakko pursuaa). Ripeys skaalautuu rankilla — paremmat pelaajat hakevat
+## iteminsä aiemmin, mutta jokainen käy lopulta.
+func _shop_trip_ready(hero: Hero, bb: TeamBlackboard, was_recalling: bool) -> bool:
+	if hero.items.size() >= 6:
+		return false
+	if not was_recalling and _shop_trip_cd > 0.0:
+		return false
+	# Baron-/ryhmätyöntökutsua ei hylätä ostosreissun takia.
+	if bb.macro_call != "" and hero in bb.macro_participants:
+		return false
+	var goal := _shop_goal(hero)
+	if goal == "":
+		return false
+	var wallet: int = int(hero.profile.wallet())
+	var nxt: String = ItemDef.next_purchase(goal, hero.items, wallet)
+	if nxt == "":
+		return false
+	if ItemDef.combine_cost(nxt, hero.items) < 700 and wallet < 1500:
+		return false
+	if not was_recalling and randf() >= 0.25 + 0.75 * BotRank.t(rank):
+		return false
+	return true
+
+
+## Seuraava ostotavoite samalla logiikalla kuin Hero._bot_shop: Baron-
+## artefaktin legenda ensin jos siihen on varaa, muuten ensimmäinen kesken
+## oleva roolibuildin tavoite.
+func _shop_goal(hero: Hero) -> String:
+	if hero.legendary_artifact:
+		var leg := _item_legendary()
+		if leg != "" and not hero.items.has(leg) \
+				and int(hero.profile.wallet()) >= ItemDef.combine_cost(leg, hero.items):
+			return leg
+	for g in _item_build():
+		if not hero.items.has(str(g)):
+			return str(g)
+	return ""
 
 
 ## MOBA-päätöksenteko: lähellä oleva vihollinen -> taistele; muuten työnnä
@@ -1059,7 +1118,11 @@ func _nearest_enemy_minion(hero: Hero, arena, max_dist: float) -> Hero:
 			continue
 		var hp_frac: float = clampf(e.hp / maxf(e.max_hp, 1.0), 0.0, 1.0)
 		var score: float = d - farm_skill * (1.0 - hp_frac) * 280.0
-		var estimated_hit: float = 18.0 + farm_skill * 38.0
+		# Rehellinen osuma-arvio: perusisku kasvaa tasoista ja itemeistä, joten
+		# korkea rank last hittaa täsmällisesti myös myöhäispelissä. Matala
+		# farm_skill arvioi yhä alakanttiin — se on taitoero.
+		var estimated_hit: float = (16.0 + farm_skill * 30.0) \
+			* hero.level_damage_mult * (1.0 + hero.item_stat("attack"))
 		if e.hp <= estimated_hit:
 			score -= farm_skill * 190.0
 		if score < best_score:
@@ -1453,6 +1516,18 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, delta: float) -> vo
 			_strafe_dir = -_strafe_dir
 		var to_t: Vector2 = (_target.global_position - pos).normalized()
 		desired += to_t.orthogonal() * sin(_time * 2.5) * 0.5 * _strafe_dir
+
+	# Kiting: kaukotaistelija pakittaa kun vihollissankari tulee liian lähelle.
+	# Korkea kite_skill pitää välin määrätietoisesti ja tulittaa pakittaessaan
+	# (peruskantama > pref-etäisyys), matala tuskin reagoi ja jää turpaan.
+	# Melee-jahti ei muutu.
+	if _mode in [Mode.FIGHT, Mode.ATTACK_CARRIER] and _is_ranged \
+			and _target != null and is_instance_valid(_target) and not _target.is_unit:
+		var kite_dist: float = pos.distance_to(_target.global_position)
+		if kite_dist < _pref_range * 0.78:
+			var back: Vector2 = (pos - _target.global_position).normalized()
+			desired = desired * (1.0 - 0.55 * kite_skill) \
+				+ back * (0.35 + 0.65 * kite_skill)
 
 	# Erottelu ENSIN: ei tungeta liittolaisen päälle. Tehdään ennen esteenväistöä,
 	# jotta seinänseuranta saa viimeisen sanan eikä erottelu työnnä takaisin seinään.
@@ -2628,13 +2703,17 @@ func _update_dodge(hero: Hero, arena, delta: float) -> void:
 			_move = (home - hero.global_position).normalized()
 			_flags.dodge = true
 			return
+	# Väistöennakko: korkea rank huomaa ammuksen kauempaa ja astuu sivuun
+	# ennakoivan näköisesti; matala reagoi vasta aivan lähellä (ja Woodin
+	# dodge_chance 0 tarkoittaa ettei se väistä koskaan).
+	var detect_radius: float = lerpf(150.0, 330.0, prediction)
 	for child in arena.get_children():
 		if not child is Projectile:
 			continue
 		if child.team == hero.team:
 			continue
 		var to_hero: Vector2 = hero.global_position - child.global_position
-		if to_hero.length() > 220.0:
+		if to_hero.length() > detect_radius:
 			continue
 		if child.direction.dot(to_hero.normalized()) < 0.6:
 			continue
