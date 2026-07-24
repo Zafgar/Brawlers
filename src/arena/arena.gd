@@ -146,6 +146,11 @@ var relic: Relic = null
 var camera: GameCamera = null
 var hud = null                    # HudLayer
 var heroes: Array = []
+# Vain pelaajasankarit (ei minioneja/rakennuksia/olentoja). Rakennetaan kerran
+# _readyssa: kuumat polut (talous, telemetria, AI:n ympäristökyselyt, HUD)
+# eivät suodata joka kutsulla ~100 yksikön heroes-listaa uudelleen.
+var player_heroes: Array = []
+var projectiles: Array = []        # aktiiviset ammukset (bottien väistöennakko lukee)
 var zones: Array = []
 var buffs: Array = []              # aktiiviset FieldBuffit (botit lukevat näitä)
 var artifacts: Array = []          # maassa lojuvat Baron-artefaktit (MOBA)
@@ -215,6 +220,7 @@ func _ready() -> void:
 		hero.global_position = map.spawn_point(profile.team, profile.index)
 		add_child(hero)
 		heroes.append(hero)
+		player_heroes.append(hero)
 
 	# Viidakko-olennot (leirit) luodaan pelaajien jälkeen, jotta heroes[0]
 	# pysyy pelaajana. Pomo ilmestyy myöhemmin ajastimella.
@@ -319,8 +325,10 @@ func _make_hero(id: String) -> Hero:
 
 
 func _physics_process(delta: float) -> void:
-	zones = zones.filter(func(z): return is_instance_valid(z))
-	buffs = buffs.filter(func(b): return is_instance_valid(b))
+	# Siivous paikallaan (remove_at takaperin): ei uutta taulukkoa joka framella.
+	_prune_invalid(zones)
+	_prune_invalid(buffs)
+	_prune_invalid(projectiles)
 	for blackboard in blackboards:
 		blackboard.update(delta)
 
@@ -989,10 +997,10 @@ func _activate_moba_camps(crash_lane: String) -> void:
 
 
 func _tick_moba_economy(delta: float) -> void:
-	for h in heroes:
-		if not is_instance_valid(h) or h.is_unit or h is Structure or h.team > 1:
-			continue
-		if h.profile == null:
+	# Joka framella ajettava silmukka: vain pelaajasankarit (välimuisti), ei
+	# koko heroes-listan (minionit/rakenteet mukana) suodatusta 60x sekunnissa.
+	for h in player_heroes:
+		if not is_instance_valid(h) or h.profile == null:
 			continue
 		var income := PASSIVE_GOLD_PER_SEC * delta
 		# Itemit: kultatulo (gold_per_sec) lasketaan passiivituloon.
@@ -1011,9 +1019,8 @@ func _tick_moba_telemetry(delta: float) -> void:
 		return
 	var sample := _moba_telemetry_accum
 	_moba_telemetry_accum = 0.0
-	for h in heroes:
-		if not is_instance_valid(h) or not h.alive or h.is_unit or h is Structure \
-				or h.team > 1 or h.profile == null:
+	for h in player_heroes:
+		if not is_instance_valid(h) or not h.alive or h.profile == null:
 			continue
 		var pos: Vector2 = h.global_position
 		var mm := map as MapMoba
@@ -1966,8 +1973,16 @@ func on_relic_dropped(_hero: Hero) -> void:
 
 # --- Apurit kyvyille, boteille ja HUDille ---
 
+## Poistaa vapautetut alkiot listasta paikallaan (ei allokaatiota joka framella).
+func _prune_invalid(list: Array) -> void:
+	for i in range(list.size() - 1, -1, -1):
+		if not is_instance_valid(list[i]):
+			list.remove_at(i)
+
+
 func add_projectile(p: Projectile) -> void:
 	add_child(p)
+	projectiles.append(p)
 
 
 func add_zone(z: Zone) -> void:
@@ -1978,7 +1993,10 @@ func add_zone(z: Zone) -> void:
 func heroes_in_circle(pos: Vector2, r: float, team := -1, only_alive := true,
 		exclude_units := false) -> Array:
 	var result: Array = []
-	for hero in heroes:
+	# exclude_units-kyselyt (botti-AI:n tiheät ympäristötestit) käyvät läpi vain
+	# pelaajasankarit — heroes-listalla on loppupelissä ~100 minionia/rakennetta.
+	var source: Array = player_heroes if exclude_units else heroes
+	for hero in source:
 		if not is_instance_valid(hero):
 			continue
 		if only_alive and not hero.alive:
@@ -1998,16 +2016,17 @@ func alive_enemies(team: int) -> Array:
 
 ## Vain oikeat vihollissankarit (ei yksiköitä) — botin uhka-arvioon ja
 ## keskitettyyn tuleen, jottei minioneja/rakennuksia lasketa vihollispelaajiksi.
+## Suodatetaan player_heroes-välimuistista (sama joukko, murto-osa alkioista).
 func enemy_heroes(team: int) -> Array:
-	return heroes.filter(func(h): return is_instance_valid(h) and h.alive \
-		and h.team != team and not h.is_unit)
+	return player_heroes.filter(func(h): return is_instance_valid(h) and h.alive \
+		and h.team != team)
 
 
 func alive_allies(team: int) -> Array:
 	# Vain oikeat sankarit (ei olentoja/minioneja/rakennuksia) — muodostelma- ja
 	# tukilogiikka koskee pelaajia, ei yksiköitä.
-	return heroes.filter(func(h): return is_instance_valid(h) and h.alive \
-		and h.team == team and not h.is_unit)
+	return player_heroes.filter(func(h): return is_instance_valid(h) and h.alive \
+		and h.team == team)
 
 
 func team_points(team: int) -> float:

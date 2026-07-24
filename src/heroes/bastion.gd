@@ -55,11 +55,13 @@ func _channel_tick(_slot: String, delta: float) -> void:
 
 ## Torjuu vihollisammukset isolla etukaarella (ei kosketa taakse jääviä).
 func _block_front_projectiles() -> void:
-	for child in arena.get_children():
-		if not child is Projectile:
+	# Vain rekisteröidyt ammukset (arena.projectiles) — ei koko areenan
+	# lapsilistan läpikäyntiä joka kanavointitikillä.
+	for child in arena.projectiles:
+		if not is_instance_valid(child):
 			continue
 		var proj := child as Projectile
-		if proj.team == team:
+		if proj == null or proj.team == team:
 			continue
 		var to: Vector2 = proj.global_position - global_position
 		if to.length() > BLOCK_RADIUS or to.dot(aim) <= 0.0:

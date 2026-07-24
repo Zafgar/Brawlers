@@ -1586,8 +1586,11 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, delta: float) -> vo
 
 	# Erottelu ENSIN: ei tungeta liittolaisen päälle. Tehdään ennen esteenväistöä,
 	# jotta seinänseuranta saa viimeisen sanan eikä erottelu työnnä takaisin seinään.
-	for ally in arena.alive_allies(hero.team):
-		if ally == hero:
+	# Kuuma polku (joka frame per botti): luetaan player_heroes-välimuistia
+	# suoraan eikä rakenneta alive_allies()-välitaulukkoa 60x sekunnissa.
+	for ally in arena.player_heroes:
+		if ally == hero or not is_instance_valid(ally) or not ally.alive \
+				or ally.team != hero.team:
 			continue
 		var diff: Vector2 = pos - ally.global_position
 		if diff.length() < 70.0 and diff.length() > 0.01:
@@ -3070,8 +3073,11 @@ func _update_dodge(hero: Hero, arena, delta: float) -> void:
 	# ennakoivan näköisesti; matala reagoi vasta aivan lähellä (ja Woodin
 	# dodge_chance 0 tarkoittaa ettei se väistä koskaan).
 	var detect_radius: float = lerpf(150.0, 330.0, prediction)
-	for child in arena.get_children():
-		if not child is Projectile:
+	# Vain rekisteröidyt ammukset (arena.projectiles) — ei koko areenan
+	# lapsilistan (sankarit, minionit, efektit, popupit) läpikäyntiä 10 Hz
+	# per botti. Lista siivotaan areenan fysiikkavaiheessa.
+	for child in arena.projectiles:
+		if not is_instance_valid(child):
 			continue
 		if child.team == hero.team:
 			continue

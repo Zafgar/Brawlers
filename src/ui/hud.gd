@@ -135,6 +135,19 @@ class PaneHud:
 	var _big_until := -100.0
 	var _feed: Array = []
 
+	# Minikartan staattinen karttadata (seinät, reitit, leirit, puskat eivät
+	# muutu ottelun aikana): haetaan kartalta KERRAN eikä rakenneta uusia
+	# taulukoita/sanakirjoja 30-45 kertaa sekunnissa jokaiseen ruutuun.
+	var _mm_ready := false
+	var _mm_brushes: Array = []
+	var _mm_jungle_paths: Array = []
+	var _mm_chokes: Array = []
+	var _mm_alcoves: Array = []
+	var _mm_lane_paths: Array = []
+	var _mm_camps: Array = []
+	var _mm_sancta: Array = []     # [{rect, shop, team}]
+	var _mm_doors: Array = []      # [{center, team}]
+
 
 	func bind_hero(hero, count: int) -> void:
 		bound_hero = hero
@@ -397,10 +410,10 @@ class PaneHud:
 
 
 	func _team_heroes(team: int) -> Array:
+		# Vain pelaajasankarit (välimuisti) — kutsutaan joka HUD-piirrolla.
 		var out: Array = []
-		for hero in arena.heroes:
-			if is_instance_valid(hero) and not hero.is_unit and hero.profile != null \
-					and hero.team == team:
+		for hero in arena.player_heroes:
+			if is_instance_valid(hero) and hero.profile != null and hero.team == team:
 				out.append(hero)
 		out.sort_custom(func(a, b): return a.profile.index < b.profile.index)
 		return out
@@ -1117,9 +1130,41 @@ class PaneHud:
 			size.y - _margin() - map_size.y, map_size.x, map_size.y)
 
 
+	## Kerää minikartan staattisen karttadatan kerran (kartta ei muutu kesken
+	## ottelun). Poistaa taulukko-/sanakirja-allokaatiot 30-45 Hz piirtopolulta.
+	func _minimap_static_init() -> void:
+		if _mm_ready or arena.map == null:
+			return
+		_mm_ready = true
+		if arena.map.has_method("brush_zones"):
+			_mm_brushes = arena.map.brush_zones()
+		if arena.map.has_method("jungle_paths"):
+			_mm_jungle_paths = arena.map.jungle_paths()
+		if arena.map.has_method("jungle_choke_points"):
+			_mm_chokes = arena.map.jungle_choke_points()
+		if arena.map.has_method("lane_alcove_paths"):
+			_mm_alcoves = arena.map.lane_alcove_paths()
+		# MOBA-reitit tulevat kartalta: uusi kenttä piirtää topin ja bottomin.
+		if arena.map.has_method("lane_paths"):
+			for path in arena.map.lane_paths().values():
+				_mm_lane_paths.append(path)
+		elif arena.map.has_method("lane_path"):
+			_mm_lane_paths.append(arena.map.lane_path())
+		if arena.map.has_method("camp_markers"):
+			_mm_camps = arena.map.camp_markers()
+		if arena.map.has_method("sanctuary_rect"):
+			for team in range(2):
+				_mm_sancta.append({"rect": arena.map.sanctuary_rect(team),
+					"shop": arena.map.shop_spot(team), "team": team})
+				for door_id in arena.map.jungle_door_ids():
+					var gr: Rect2 = arena.map.jungle_door_rect(team, door_id)
+					_mm_doors.append({"center": gr.get_center(), "team": team})
+
+
 	func _draw_minimap() -> void:
 		if arena.map == null:
 			return
+		_minimap_static_init()
 		var rect := _minimap_rect()
 		var compact := _compact()
 		var pcol: Color = bound_hero.profile.color()
@@ -1161,42 +1206,31 @@ class PaneHud:
 
 		# Puskat näkyvät tummanvihreinä taktisesti: pelaaja tietää missä gank-
 		# katveet ovat, vaikka niiden sisällä oleva vihollinen ei myöhemmin näkyisi.
-		if arena.map.has_method("brush_zones"):
-			for brush in arena.map.brush_zones():
-				var br := brush as Rect2
-				var ba := _map_point(br.position, map_origin, world_size, scale_map)
-				var bb := _map_point(br.end, map_origin, world_size, scale_map)
-				draw_rect(Rect2(ba, bb - ba), Color("245b3477"))
-				draw_rect(Rect2(ba, bb - ba), Color("70b87866"), false, 1.0)
+		for brush in _mm_brushes:
+			var br := brush as Rect2
+			var ba := _map_point(br.position, map_origin, world_size, scale_map)
+			var bb := _map_point(br.end, map_origin, world_size, scale_map)
+			draw_rect(Rect2(ba, bb - ba), Color("245b3477"))
+			draw_rect(Rect2(ba, bb - ba), Color("70b87866"), false, 1.0)
 
 		# Viidakon pääväylät: leirit -> risteykset -> Dragon/Baron/gank-portit.
-		if arena.map.has_method("jungle_paths"):
-			for raw_path in arena.map.jungle_paths():
-				var jungle_pts := PackedVector2Array()
-				for wp in raw_path:
-					jungle_pts.append(_map_point(wp, map_origin, world_size, scale_map))
-				if jungle_pts.size() >= 2:
-					draw_polyline(jungle_pts, Color("477b4d77"), 3.0)
-		if arena.map.has_method("jungle_choke_points"):
-			for choke in arena.map.jungle_choke_points():
-				var ch := _map_point(choke, map_origin, world_size, scale_map)
-				draw_circle(ch, 1.8 if compact else 2.4, Color("a3d98a"))
-		if arena.map.has_method("lane_alcove_paths"):
-			for raw_path in arena.map.lane_alcove_paths():
-				var alcove_pts := PackedVector2Array()
-				for wp in raw_path:
-					alcove_pts.append(_map_point(wp, map_origin, world_size, scale_map))
-				if alcove_pts.size() >= 2:
-					draw_polyline(alcove_pts, Color("d0ad5477"), 2.0)
+		for raw_path in _mm_jungle_paths:
+			var jungle_pts := PackedVector2Array()
+			for wp in raw_path:
+				jungle_pts.append(_map_point(wp, map_origin, world_size, scale_map))
+			if jungle_pts.size() >= 2:
+				draw_polyline(jungle_pts, Color("477b4d77"), 3.0)
+		for choke in _mm_chokes:
+			var ch := _map_point(choke, map_origin, world_size, scale_map)
+			draw_circle(ch, 1.8 if compact else 2.4, Color("a3d98a"))
+		for raw_path in _mm_alcoves:
+			var alcove_pts := PackedVector2Array()
+			for wp in raw_path:
+				alcove_pts.append(_map_point(wp, map_origin, world_size, scale_map))
+			if alcove_pts.size() >= 2:
+				draw_polyline(alcove_pts, Color("d0ad5477"), 2.0)
 
-		# MOBA-reitit tulevat kartalta: uusi kenttä piirtää topin ja bottomin.
-		var paths: Array = []
-		if arena.map.has_method("lane_paths"):
-			for path in arena.map.lane_paths().values():
-				paths.append(path)
-		elif arena.map.has_method("lane_path"):
-			paths.append(arena.map.lane_path())
-		for path in paths:
+		for path in _mm_lane_paths:
 			var lane_pts := PackedVector2Array()
 			for wp in path:
 				lane_pts.append(_map_point(wp, map_origin, world_size, scale_map))
@@ -1206,50 +1240,49 @@ class PaneHud:
 
 		# Leirit ja major objectivet ovat näkyvissä jo ennen spawnia, jotta
 		# suurta viidakkoa voi lukea nopeasti myös kahden pelaajan splitissä.
-		if arena.map.has_method("camp_markers"):
-			for marker in arena.map.camp_markers():
-				var cp := _map_point(marker.pos, map_origin, world_size, scale_map)
-				var kind: String = marker.kind
-				var ccol := Color("d97139")
-				var cr := 2.4 if compact else 3.2
-				if kind == "red":
-					ccol = Color("df4938")
-				elif kind == "blue":
-					ccol = Color("4e8ee8")
-				elif kind == "small":
-					ccol = Color("79b45e")
-					cr -= 0.5
-				elif kind == "lane":
-					ccol = Color("e7c34b")
-					cr += 0.5
-				elif kind == "baron":
-					ccol = Color("bd60e5")
-					cr += 2.0
-				elif kind == "dragon":
-					ccol = Color("49d7c5")
-					cr += 2.0
-				draw_circle(cp, cr, ccol)
-				draw_arc(cp, cr + 1.5, 0, TAU, 14, Palette.with_alpha(Color.WHITE, 0.55), 1.0)
+		for marker in _mm_camps:
+			var cp := _map_point(marker.pos, map_origin, world_size, scale_map)
+			var kind: String = marker.kind
+			var ccol := Color("d97139")
+			var cr := 2.4 if compact else 3.2
+			if kind == "red":
+				ccol = Color("df4938")
+			elif kind == "blue":
+				ccol = Color("4e8ee8")
+			elif kind == "small":
+				ccol = Color("79b45e")
+				cr -= 0.5
+			elif kind == "lane":
+				ccol = Color("e7c34b")
+				cr += 0.5
+			elif kind == "baron":
+				ccol = Color("bd60e5")
+				cr += 2.0
+			elif kind == "dragon":
+				ccol = Color("49d7c5")
+				cr += 2.0
+			draw_circle(cp, cr, ccol)
+			draw_arc(cp, cr + 1.5, 0, TAU, 14, Palette.with_alpha(Color.WHITE, 0.55), 1.0)
 
 		# Base: fountain/sanctuary, tuleva shop ja oman tiimin jungle-oikotiet.
-		if arena.map.has_method("sanctuary_rect"):
-			for team in range(2):
-				var sr: Rect2 = arena.map.sanctuary_rect(team)
-				var sa := _map_point(sr.position, map_origin, world_size, scale_map)
-				var sb := _map_point(sr.end, map_origin, world_size, scale_map)
-				var tcol := Palette.team(team)
-				draw_rect(Rect2(sa, sb - sa), Palette.with_alpha(tcol, 0.22))
-				draw_rect(Rect2(sa, sb - sa), Palette.with_alpha(tcol, 0.62), false, 1.0)
-				var shop_pos := _map_point(arena.map.shop_spot(team), map_origin, world_size, scale_map)
-				draw_circle(shop_pos, 3.2 if compact else 4.2, Color("e7c34b"))
-				for door_id in arena.map.jungle_door_ids():
-					var gr: Rect2 = arena.map.jungle_door_rect(team, door_id)
-					var gc := _map_point(gr.get_center(), map_origin, world_size, scale_map)
-					var arrow_dir := 1.0 if team == 0 else -1.0
-					draw_line(gc - Vector2(arrow_dir * 3.5, 0),
-						gc + Vector2(arrow_dir * 3.5, 0), Palette.with_alpha(tcol, 0.9), 2.0)
-					_draw_diamond(gc + Vector2(arrow_dir * 3.5, 0), 2.2,
-						Palette.with_alpha(tcol, 0.9))
+		for sanct in _mm_sancta:
+			var sr := sanct.rect as Rect2
+			var sa := _map_point(sr.position, map_origin, world_size, scale_map)
+			var sb := _map_point(sr.end, map_origin, world_size, scale_map)
+			var tcol: Color = Palette.team(int(sanct.team))
+			draw_rect(Rect2(sa, sb - sa), Palette.with_alpha(tcol, 0.22))
+			draw_rect(Rect2(sa, sb - sa), Palette.with_alpha(tcol, 0.62), false, 1.0)
+			var shop_pos := _map_point(sanct.shop, map_origin, world_size, scale_map)
+			draw_circle(shop_pos, 3.2 if compact else 4.2, Color("e7c34b"))
+		for door in _mm_doors:
+			var door_team := int(door.team)
+			var dcol: Color = Palette.team(door_team)
+			var gc := _map_point(door.center, map_origin, world_size, scale_map)
+			var arrow_dir := 1.0 if door_team == 0 else -1.0
+			draw_line(gc - Vector2(arrow_dir * 3.5, 0),
+				gc + Vector2(arrow_dir * 3.5, 0), Palette.with_alpha(dcol, 0.9), 2.0)
+			_draw_diamond(gc + Vector2(arrow_dir * 3.5, 0), 2.2,
+				Palette.with_alpha(dcol, 0.9))
 
 		for structure in arena.structures:
 			if not is_instance_valid(structure) or not structure.alive:
@@ -1293,8 +1326,10 @@ class PaneHud:
 			map_origin, world_size, scale_map)
 		draw_rect(Rect2(view_a, view_b - view_a), Palette.with_alpha(pcol, 0.48), false, 1.0)
 
-		for hero in arena.heroes:
-			if not is_instance_valid(hero) or not hero.alive or hero.is_unit or hero.profile == null:
+		# Vain pelaajasankarit (välimuisti): heroes-listalla olisi loppupelissä
+		# myös ~100 minionia/rakennetta suodatettavana joka piirrolla.
+		for hero in arena.player_heroes:
+			if not is_instance_valid(hero) or not hero.alive or hero.profile == null:
 				continue
 			var hp := _map_point(hero.global_position, map_origin, world_size, scale_map)
 			if hero == bound_hero:
