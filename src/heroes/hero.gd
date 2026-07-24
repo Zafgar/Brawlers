@@ -2584,7 +2584,9 @@ func release_grabbed() -> void:
 ## piiritykseksi ja ottelut ratkeavat nexuksen tuhoon aikakaton sijaan.
 func _respawn_delay() -> float:
 	if arena != null and arena.mode == "moba":
-		return clampf(6.0 + arena.match_elapsed / 28.0, 6.0, 26.0)
+		# Katto 38 s: 26 s ei riittänyt piiritysikkunaksi (puolustaja ehti aina
+		# takaisin ennen base-tornia+kristallia -> 0/10 peliä päättyi nexukseen).
+		return clampf(6.0 + arena.match_elapsed / 24.0, 6.0, 38.0)
 	return RESPAWN_TIME
 
 

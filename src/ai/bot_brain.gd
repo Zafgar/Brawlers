@@ -48,6 +48,7 @@ var cooldown_discipline := 0.0  # säästääkö liikkuvuutta/pakoa ja välttä�
 var tower_judgement := 0.0      # kuinka tarkasti botti arvioi aallon, aggron ja poistumistien
 var macro_obedience := 1.0      # todennäköisyys totella joukkuekutsuja (apu/baron/ryhmätyöntö)
 var defense_delay := 0.0        # sekunteja ennen kuin nimetty puolustaja reagoi kriisiin
+var siege_focus := 1.0          # pysyykö botti rakennuskohteessa vai lähteekö puolustajan perään
 
 # Huippupään huijaukset: poikkeavat 1.0:sta vasta rankista 24 (Champion IV)
 # ylöspäin, portaattomasti Challenger I:een. Hero lukee kertoimet setup()issa.
@@ -154,7 +155,15 @@ func _init(p_level: int, p_rank := -1) -> void:
 	farm_skill = lerpf(0.05, 1.0, pow(t, 1.1))
 	combo_skill = lerpf(0.03, 1.0, pow(t, 1.3))
 	cooldown_discipline = lerpf(0.05, 1.0, pow(t, 1.1))
-	tower_judgement = lerpf(0.5, 1.0, pow(t, 0.9))
+	# Pohja 0.30 ja loivempi eksponentti: Wood ja Bronze olivat käytännössä
+	# identtisiä (0.52 vs 0.58) ja molemmat syöttivät torneille ~16 kuolemaa
+	# — pohjapään portaat tarvitsevat leveyttä erottuakseen.
+	tower_judgement = lerpf(0.30, 1.0, pow(t, 0.75))
+	# Piirityskuri: korkea rank pysyy rakennuskohteessa eikä lähde puolustajan
+	# perään. Ilman tätä "fiksut" varovaisuussäätimet (patience/self_preserve)
+	# VÄHENSIVÄT tornivahinkoa rankin noustessa ja keskitasot menivät ristiin
+	# ladder-testissä (Silver kaatoi 4.3 rakennetta, Gold vain 1.9).
+	siege_focus = pow(t, 0.9)
 	# Joukkuepeli: matala rank ei kuule kutsuja eikä ehdi puolustamaan ajoissa.
 	# Tämä erottaa rankit pelin SULKEMISESSA (ryhmätyöntö/Baron/puolustusreaktio)
 	# eikä vain mekaniikassa — tasaväkiset aikakattopelit olivat kolikonheittoa.
@@ -1158,7 +1167,17 @@ func _moba_push_target(hero: Hero, arena) -> Hero:
 		return open_nexus
 	var hero_scan: float = clampf(_pref_range + 150.0, 280.0, 700.0)
 	var enemy_hero := _nearest_enemy_hero(hero, arena, hero_scan)
+	# PIIRITYSKURI: kun rakennuskohde on jo lyöntietäisyydellä, korkea rank
+	# pysyy siinä eikä lähde puolustajan perään (arvonta per päätös). Matala
+	# rank antaa kohteen syöttiytyä — torniturva (_tower_emergency) suojaa yhä.
 	if enemy_hero != null:
+		var siege_st := _jungle_target as Structure
+		if siege_st != null and siege_st.alive \
+				and siege_st.kind != Structure.Kind.NEXUS \
+				and hero.global_position.distance_to(siege_st.global_position) \
+					< maxf(_basic_range, 320.0) + siege_st.radius \
+				and randf() < siege_focus:
+			return siege_st
 		return enemy_hero
 	var minion_scan := 420.0 if _moba_job == "jungle" else 950.0
 	# Matkalla Baronille/objectivelle ei pysähdytä farmaamaan aaltoa — vain

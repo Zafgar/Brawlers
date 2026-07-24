@@ -14,10 +14,12 @@ var lane_id := ""
 var gold_value := 20
 var xp_value := 42
 
-# Waves scale gently across the 20-minute match. Early waves stay readable,
-# while late waves survive long enough for heroes to support the push.
-const LATE_HP_SCALE := 0.28
-const LATE_DMG_SCALE := 0.22
+# Waves scale across the 20-minute match. Early waves stay readable; late
+# waves must genuinely threaten towers, or sieges stall and every match
+# drifts to the time cap (ladder-testi: 0/10 nexus-lopetusta liian miedolla
+# skaalauksella 0.28/0.22).
+const LATE_HP_SCALE := 0.55
+const LATE_DMG_SCALE := 0.45
 const MOBA_SCALE_TIME := 1200.0
 
 
