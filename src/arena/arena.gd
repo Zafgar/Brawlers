@@ -67,7 +67,9 @@ const MINION_CAP := 96
 # 45 s respawn oli aivan liian nopea: hyökkääjä juoksi kristallilta toiselle
 # eikä nexus ehtinyt koskaan auki, ja simissä kaikki matsit venyivät aikakattoon.
 const CRYSTAL_FIRST_RISE := 75.0     # superminionit puskevat tämän ajan ennen 1. kristallia
-const CRYSTAL_RESPAWN := 180.0       # murskattu kristalli: kunnon hyökkäysikkuna (3 min)
+# 180 s tuntui pelissä yhä "pieneltä hetkeltä" kahden linjan ristikkäisten
+# syklien takia -> LoL-inhibiittorin tahti: murrettu linja on auki 5 min.
+const CRYSTAL_RESPAWN := 300.0
 const DRAGON_FIRST := 90.0
 const BARON_FIRST := 180.0
 const PASSIVE_GOLD_PER_SEC := 1.5
