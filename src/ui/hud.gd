@@ -1419,6 +1419,7 @@ class PaneHud:
 		var spellvamp: float = hero.item_stat("spellvamp")
 		var hp_regen: float = hero.item_stat("hp_regen")
 		var mana_regen: float = hero.item_stat("mana_regen")
+		var heal_power: float = hero.item_stat("heal_power")
 		var lvl_dmg: float = hero.level_damage_mult
 		var lvl_spell: float = hero.level_spell_mult
 		var lvl_melee: float = hero.level_melee_mult
@@ -1497,6 +1498,11 @@ class PaneHud:
 			"perusosumista"))
 		sus.append(_stat_row("Loitsuimu", "%d %%" % int(round(spellvamp * 100.0)),
 			"kyvyistä"))
+		# Hoivateho: tukitavaroiden kerroin MUILLE annettuihin parannuksiin ja
+		# kilpiin (Hero.heal_hp / Hero.add_shield). Oma paikkaus ei hyödy.
+		sus.append(_stat_row("Hoivateho", "+%d %%" % int(round(heal_power * 100.0)),
+			"parannukset ja kilvet",
+			Palette.HEAL if heal_power > 0.0 else Palette.TEXT_MAIN))
 		sus.append(_stat_row("Ultilataus", "%d %%" % int(round(float(hero.ult_charge))),
 			"", Palette.GOLD if float(hero.ult_charge) >= 100.0 else Palette.TEXT_MAIN))
 

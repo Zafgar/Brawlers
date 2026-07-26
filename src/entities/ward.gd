@@ -9,6 +9,13 @@ extends Node2D
 const LIFETIME := 60.0
 const DETECT_RADIUS := 520.0
 const MAX_PER_HERO := 2
+# Vartijan valo: lyhty ei ole enää pelkkä karttamerkki vaan kilpiää tasavälein
+# lähellä olevat liittolaiset. Kilpi kirjautuu omistajalle (prevented), joten
+# Vartiolyhdyn 2100 g näkyy myös taistelun tuloksessa. Hoivateho vahvistaa.
+const PULSE_INTERVAL := 6.0
+const PULSE_SHIELD := 45.0
+const PULSE_RADIUS := 300.0
+const PULSE_DUR := 4.0
 
 var arena = null
 var owner_hero = null
@@ -18,6 +25,7 @@ var detected: Array = []         # säteellä olevat vihollissankarit (PaneHud l
 
 var _time := 0.0
 var _detect_t := 0.0
+var _pulse_t := 0.0              # kilpipulssin ajastin
 var _seen: Dictionary = {}       # instanssi-id -> nähty viime tikillä (reunatunnistus)
 
 
@@ -69,8 +77,33 @@ func _physics_process(delta: float) -> void:
 		# neljä kertaa sekunnissa.
 		if new_contact and not Game.simulating:
 			AudioMgr.play("ward_spot", 0.0, -8.0)
+	_pulse_shield(delta)
 	if arena.visual_position_active(global_position, 560.0):
 		queue_redraw()
+
+
+## Kilpipulssi liittolaisille. Ohittaa ne joilla on jo isompi kilpi, koska
+## add_shield ylikirjoittaa keston — pieni pulssi lyhentäisi kyvyn ison kilven.
+## record=false: kilpi ei kuulu millekään kykypaikalle, mutta imetty vahinko
+## kirjautuu silti omistajan vaimennukseksi (Hero.take_damage -> prevented).
+func _pulse_shield(delta: float) -> void:
+	if owner_hero == null or not is_instance_valid(owner_hero):
+		return
+	_pulse_t -= delta
+	if _pulse_t > 0.0:
+		return
+	_pulse_t = PULSE_INTERVAL
+	var amount: float = PULSE_SHIELD * (1.0 + float(owner_hero.item_stat("heal_power")))
+	var lit := false
+	for ally in arena.heroes_in_circle(global_position, PULSE_RADIUS, team, true, true):
+		if ally.shield_hp >= amount:
+			continue
+		ally.add_shield(PULSE_SHIELD, PULSE_DUR, owner_hero, false)
+		lit = true
+		Fx.ring(arena, ally.global_position,
+			Palette.with_alpha(Palette.SHIELD, 0.6), ally.radius + 14.0, 0.3)
+	if not lit:
+		_pulse_t = PULSE_INTERVAL * 0.25   # kevyt uudelleenyritys, ei joka framen skannaus
 
 
 func _draw() -> void:

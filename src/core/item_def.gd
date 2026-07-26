@@ -19,6 +19,36 @@ class_name ItemDef
 ## ennallaan, jotta alkupeli pysyy luettavana.
 ## Sama hyökkäysvoima kertautuu rakennuksia vastaan (Structure.take_damage),
 ## joten itemijohto näkyy suoraan piiritysnopeutena.
+##
+## TUKIRIVIN KORJAUS (72 ottelun mittaus): tukilinja oli pelin huonoin.
+## Airutlyhty 18.3 % voittoja / kulta-teho 1567, Kolikkotalismaani 26.1 % / 1578,
+## Vartiolyhty 44.4 % / 1826 — kun otannan epic-keskiarvo oli 3314 ja parhaat
+## (Torjuntakupu 4106, Riistanraatelija 3879) yli kaksinkertaisia.
+##
+## SYY EI OLLUT HINTA VAAN MUUNNOS: raportin kulta-teho = 1000 * (vahinko +
+## parannus + vaimennettu) / käytetty kulta. Tuen vanhat statit (cdr,
+## mana_regen, gold_per_sec, assist_gold) EIVÄT tuota yhtään noista kolmesta —
+## ne vain sallivat useamman loitsun, ja kun loitsut olivat pieniä, useampi
+## kerta ei ollut mitään. Tuki muutti kultansa tyhjäksi.
+##
+## KORJAUS: jokainen tukitavara kantaa nyt vähintään yhtä TUOTOSSTATTIA
+## (heal_power, ap) tai jakaa kilpiä suoraan (aurat, aktiivi). Kilpi kirjautuu
+## antajalle (Hero.take_damage -> prevented), joten tuen panos näkyy sekä
+## pelissä että telemetriassa. Voima tulee MAHDOLLISTAMISESTA (parannuksen ja
+## kilven vahvistus, puolustus, kontrolli), ei raakavahingosta — tuki ei saa
+## muuttua kantajaksi.
+##
+## heal_power = uusi statiavain: vahvistaa haltijan MUILLE antamia parannuksia
+## ja kilpiä (Hero.heal_hp / Hero.add_shield). Ei vaikuta omaan elämänimuun,
+## jottei tukitavaroista tule tankkien itsekestoa.
+##
+## Statien kultahinnat (johdettu commoneista) tuotosmallia varten:
+##   1 % attack/ap 44 g · 1 % cdr 60 g · 1 % ms 75 g · 1 HP 3.3 g ·
+##   1 panssari/taikavastus 30 g · 1 % mana_regen 12 g · 1 % heal_power 25 g.
+## 1 % heal_power tuottaa tuelle, joka antaa ~7000 parannusta+kilpeä ottelussa,
+## noin 70 tuotosta = 2.8 tuotosta per kulta — samaa luokkaa kuin 1 % attack
+## kantajalle (140 tuotosta / 44 g = 3.2). ap on tuelle heikko (pieni
+## vahinkopohja), joten sitä annetaan vain Hoivasydämelle.
 
 const ITEMS := {
 	# --- Common (~300-400 g) ---
@@ -135,12 +165,16 @@ const ITEMS := {
 		"passive": "", "active": "",
 		"desc": "+200 HP, +50 % elämän palautuminen", "role_hint": "tank",
 	},
+	# Airutlyhty oli 850 g:n kuollut osto: pelkkää jäähdytystä, manaa ja kultaa,
+	# eli nolla tuotosta. Nyt sama talousidentiteetti mutta mukana runko (HP) ja
+	# ensimmäinen hoivateho — tuen avausostosta tulee heti mitattavaa hyötyä.
 	"airutlyhty": {
 		"name": "Airutlyhty", "tier": "rare", "cost": 850,
 		"builds_from": ["kellojousi", "manahelmi"],
-		"stats": {"cdr": 0.08, "mana_regen": 0.4, "gold_per_sec": 0.5},
+		"stats": {"cdr": 0.06, "mana_regen": 0.3, "hp": 150.0,
+			"heal_power": 0.10, "gold_per_sec": 0.4},
 		"passive": "", "active": "",
-		"desc": "-8 % jäähdytykset, +40 % manan palautuminen, +0.5 kultaa/s",
+		"desc": "-6 % jäähdytykset, +30 % manan palautuminen, +150 HP, +10 % hoivateho, +0.4 kultaa/s",
 		"role_hint": "support",
 	},
 	"ajojahti": {
@@ -206,28 +240,38 @@ const ITEMS := {
 	},
 
 	# --- Epic: support ---
+	# Kolikkotalismaani säilyttää talousidentiteetin (kulta + avustuskulta),
+	# mutta palkkio-passiivi antaa nyt myös kilpiauran: 8 s välein kilpi
+	# lähiliittolaisille. Aura tuottaa vaimennusta = mitattavaa arvoa, ja se
+	# on tuen ainoa "taistele lähellä joukkuetta" -palkinto.
 	"kolikkotalismaani": {
 		"name": "Kolikkotalismaani", "tier": "epic", "cost": 2100,
 		"builds_from": ["airutlyhty", "kellojousi"],
-		"stats": {"cdr": 0.10, "gold_per_sec": 1.2, "assist_gold": 0.5},
+		"stats": {"cdr": 0.10, "hp": 240.0, "heal_power": 0.15,
+			"gold_per_sec": 1.0, "assist_gold": 0.5},
 		"passive": "palkkio", "active": "",
-		"desc": "Palkkio: lähellä kaatuva minioni antaa 2 kultaa vaikkei last hit osuisi",
+		"desc": "Palkkio: lähellä kaatuva minioni antaa 2 kultaa ilman last hitiä; 8 s välein 55 kilpeä lähiliittolaisille",
 		"role_hint": "support",
 	},
+	# Vartiolyhty oli 2100 g pelkästä minimap-vartijasta. Vartija on nyt myös
+	# taisteluväline: asetuspulssi kilpiää lähiliittolaiset ja lyhty itse
+	# kilpiää läheisiä liittolaisia koko 60 s elinaikansa (Ward._pulse).
 	"vartiolyhty": {
 		"name": "Vartiolyhty", "tier": "epic", "cost": 2100,
 		"builds_from": ["airutlyhty", "manahelmi"],
-		"stats": {"cdr": 0.10, "mana_regen": 0.6, "hp": 120.0},
+		"stats": {"cdr": 0.10, "mana_regen": 0.5, "hp": 260.0, "heal_power": 0.12},
 		"passive": "", "active": "vartija",
-		"desc": "Vartija: aseta vartija tähystämään aluetta",
+		"desc": "Vartija: aseta tähystäjä joka kilpiää liittolaisia — asetus antaa 80 kilpeä lähelle, lyhty 45 kilpeä 6 s välein",
 		"role_hint": "support",
 	},
+	# Hoivasydämen +20 % on nyt näkyvä statti (heal_power) eikä piilotettu
+	# erikoistapaus — sama kerroin, mutta se lukee kaupassa ja tietonäkymässä.
 	"hoivasydän": {
 		"name": "Hoivasydän", "tier": "epic", "cost": 2200,
 		"builds_from": ["virtakide", "rautahelmi"],
-		"stats": {"ap": 0.12, "mana_regen": 0.5, "hp": 150.0},
+		"stats": {"ap": 0.15, "mana_regen": 0.4, "hp": 220.0, "heal_power": 0.22},
 		"passive": "hoiva", "active": "",
-		"desc": "Hoiva: antamasi parannukset ja kilvet +20 %; avustus parantaa sinua 6 % max HP",
+		"desc": "Hoiva: avustus parantaa sinua 8 % max HP:sta; hoivateho vahvistaa kaikkia antamiasi parannuksia ja kilpiä",
 		"role_hint": "support",
 	},
 
@@ -303,7 +347,8 @@ const ITEMS := {
 	"aamunkoitto": {
 		"name": "Aamunkoiton kruunu", "tier": "legendary", "cost": 2400,
 		"builds_from": [], "require_artifact": true,
-		"stats": {"cdr": 0.15, "gold_per_sec": 1.5, "assist_gold": 0.75, "hp": 200.0},
+		"stats": {"cdr": 0.15, "gold_per_sec": 1.5, "assist_gold": 0.75, "hp": 200.0,
+			"heal_power": 0.20},
 		"passive": "koitto", "active": "",
 		"desc": "Koitto: parantamasi tai kilpesi saanut liittolainen saa +15 % vauhtia 2 s",
 		"role_hint": "support",

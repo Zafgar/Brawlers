@@ -264,6 +264,17 @@ const MAX_ITEMS := 6
 # kesto. Ensimmäinen omistettu aktiivi jonka jäähdytys on valmis laukeaa.
 const ITEM_ACTIVE_CD := {"vartiolyhty": 45.0, "varjoviitta": 60.0}
 const STEALTH_DURATION := 3.0
+# Kolikkotalismaanin kilpiaura: tuen tavara antaa kilven ilman kykyä, joten
+# tuki tuottaa vaimennusta myös jäähdytysten välissä. Kilpi kirjautuu
+# antajalle (prevented), eli tukitavaran arvo näkyy telemetriassa.
+const TALISMAN_AURA_CD := 8.0
+const TALISMAN_AURA_SHIELD := 55.0
+const TALISMAN_AURA_RANGE := 380.0
+const TALISMAN_AURA_DUR := 4.0
+# Vartiolyhdyn asetuspulssi: vartijan sytytys kilpiää lähiliittolaiset.
+const WARD_PLACE_SHIELD := 80.0
+const WARD_PLACE_RANGE := 420.0
+const WARD_PLACE_DUR := 4.0
 var items: Array = []               # omistetut item-id:t (enintään 6 paikkaa)
 var _item_stats := {}               # statiavain -> summa (välimuisti)
 var legendary_artifact := false     # Baron-artefakti hallussa
@@ -273,6 +284,7 @@ var _echo_hits := 0                 # kaiku: joka 3. kykyosuma
 var _spellshield_cd := 0.0          # loitsukilpi: 8 s sisäinen jäähdytys
 var _frost_cd := 0.0                # huurre: hidastus enintään 0.8 s välein
 var _root_burst_cd := 0.0           # juurakko: 60 s sisäinen jäähdytys
+var _talisman_cd := 0.0             # palkkio: kilpiauran pulssiväli
 var armor_shred_timer := 0.0        # panssarinmurskain: -20 % panssari tässä kohteessa
 var _alpha_slow_ready := false      # alfa: leirin kaadon lataama hidasteosuma
 var _item_proc_active := false      # estää itemiproccien ketjuuntumisen
@@ -949,6 +961,7 @@ func _physics_process(delta: float) -> void:
 	# ulti ansaitaan taistelusta, ei odottamalla. (Oli 2.2/s = täysi 45 s -> spam.)
 	add_ult(delta * 0.6)
 
+	_support_aura_tick(delta)
 	_passive_update(delta)
 	iframes = maxf(iframes - delta, 0.0)
 
@@ -1816,6 +1829,32 @@ func _handle_shop_frame(delta: float) -> void:
 		_close_shop()
 
 
+## Kolikkotalismaanin kilpiaura (passiivi "palkkio"): tasavälein kilpi
+## lähiliittolaisille. Ohittaa ne joilla on jo isompi kilpi — add_shield
+## ylikirjoittaa keston, joten pieni pulssi lyhentäisi kyvyn ison kilven.
+## record=false: kilpi ei kuulu millekään kykypaikalle (ei sotke kykytelemetriaa),
+## mutta imetty vahinko kirjautuu silti antajan vaimennukseksi.
+func _support_aura_tick(delta: float) -> void:
+	if is_unit or not alive or arena == null or not items.has("kolikkotalismaani"):
+		return
+	_talisman_cd -= delta
+	if _talisman_cd > 0.0:
+		return
+	_talisman_cd = TALISMAN_AURA_CD
+	# Vertailuarvo = kilpi hoivatehon JÄLKEEN (add_shield kertoo sen itse).
+	var amount: float = TALISMAN_AURA_SHIELD * (1.0 + item_stat("heal_power"))
+	var shielded := false
+	for ally in arena.heroes_in_circle(global_position, TALISMAN_AURA_RANGE, team, true, true):
+		if ally == self or ally.shield_hp >= amount:
+			continue
+		ally.add_shield(TALISMAN_AURA_SHIELD, TALISMAN_AURA_DUR, self, false)
+		shielded = true
+		Fx.ring(arena, ally.global_position,
+			Palette.with_alpha(Palette.GOLD, 0.55), ally.radius + 16.0, 0.3)
+	if not shielded:
+		_talisman_cd = TALISMAN_AURA_CD * 0.25   # kevyt uudelleenyritys, ei joka framen skannaus
+
+
 # --- Itemiaktiivit (vartija ja varjo) ---
 
 ## Ensimmäinen omistettu item jolla on aktiivi ("" = ei yhtään). HUD näyttää
@@ -1859,6 +1898,14 @@ func _use_item_active(id: String, active: String) -> void:
 			Fx.ring(arena, global_position, Palette.with_alpha(Palette.GOLD, 0.8),
 				radius + 26.0, 0.45, 4.0)
 			AudioMgr.play("ward_place", 0.05, -5.0, global_position)
+			# Sytytyspulssi: vartijan valo kilpiää lähiliittolaiset heti. Tämä
+			# tekee aktiivista taisteluvälineen eikä pelkkää karttatietoa.
+			for ally in arena.heroes_in_circle(global_position, WARD_PLACE_RANGE, team, true, true):
+				if ally == self:
+					continue
+				ally.add_shield(WARD_PLACE_SHIELD, WARD_PLACE_DUR, self, false)
+				Fx.ring(arena, ally.global_position,
+					Palette.with_alpha(Palette.SHIELD, 0.7), ally.radius + 18.0, 0.35)
 		"varjo":
 			# Varjoviitta: 3 s häive. Katkeaa hyökkäykseen (lataa varman kritin),
 			# castiin ja vahingon ottamiseen; tornit näkevät häiveen läpi.
@@ -2507,9 +2554,10 @@ func heal_hp(amount: float, source: Hero) -> float:
 	if source != null and is_instance_valid(source) and arena != null \
 			and arena._act_hero == source and arena._act_slot != "":
 		amount *= source.rank_power(arena._act_slot)
-		# Hoiva (hoivasydän): antajan parannukset muille +20 %.
-		if source != self and source.items.has("hoivasydän"):
-			amount *= 1.2
+	# Hoivateho (tukitavarat): antajan MUILLE antamat parannukset vahvistuvat.
+	# Oma paikkaus ei hyödy — muuten tukitavarasta tulisi tankin itsekestoa.
+	if source != null and is_instance_valid(source) and source != self:
+		amount *= 1.0 + source.item_stat("heal_power")
 	var healed := minf(amount, max_hp - hp)
 	hp += healed
 	if source != null and source != self:
@@ -2538,9 +2586,11 @@ func add_shield(amount: float, duration: float, source: Hero, record := true) ->
 	if record and source != null and is_instance_valid(source) \
 			and source._cast_context != "":
 		amount *= source.rank_power(source._cast_context)
-		# Hoiva (hoivasydän): antajan kilvet muille +20 %.
-		if source != self and source.items.has("hoivasydän"):
-			amount *= 1.2
+	# Hoivateho (tukitavarat): antajan MUILLE antamat kilvet vahvistuvat — myös
+	# kontekstittomat (aurat ja itemiaktiivit), joten tukitavaran kilpi kasvaa
+	# samalla kertoimella kuin kyvyn kilpi.
+	if source != null and is_instance_valid(source) and source != self:
+		amount *= 1.0 + source.item_stat("heal_power")
 	shield_hp = maxf(shield_hp, amount)
 	shield_timer = duration
 	shield_source = source
@@ -2878,9 +2928,9 @@ func _knockout(source: Hero) -> void:
 				if not Game.simulating and helper.profile.is_human():
 					arena.popup(helper.global_position + Vector2(0, -58),
 						"+%dG" % gain, Palette.GOLD, 14)
-				# Hoiva: avustus parantaa avustajaa 6 % max HP:sta.
+				# Hoiva: avustus parantaa avustajaa 8 % max HP:sta.
 				if helper.items.has("hoivasydän") and helper.alive:
-					helper.heal_hp(helper.max_hp * 0.06, helper)
+					helper.heal_hp(helper.max_hp * 0.08, helper)
 				# Tyhjyys: avustus palauttaa ult-latausta ja nollaa a1/a2.
 				if helper.items.has("tyhjyydenydin"):
 					helper.add_ult(40.0)

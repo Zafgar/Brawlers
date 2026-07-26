@@ -207,6 +207,8 @@ static func stat_lines(item: Dictionary) -> Array:
 				out.append("+%d %% elämän palautuminen" % pct)
 			"mana_regen":
 				out.append("+%d %% manan palautuminen" % pct)
+			"heal_power":
+				out.append("+%d %% hoivateho (parannukset ja kilvet muille)" % pct)
 			"gold_per_sec":
 				out.append("+%.1f kultaa/s" % v)
 			"assist_gold":
