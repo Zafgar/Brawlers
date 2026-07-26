@@ -442,7 +442,7 @@ func _setup_role(hero: Hero) -> void:
 			_basic_range = 690.0
 		"kaira":
 			_pref_range = 108.0
-			_basic_range = 154.0
+			_basic_range = 158.0
 		"vesper":
 			_pref_range = 500.0
 			_basic_range = 760.0
@@ -450,8 +450,8 @@ func _setup_role(hero: Hero) -> void:
 			_pref_range = 420.0
 			_basic_range = 680.0
 		"torq":
-			_pref_range = 92.0
-			_basic_range = 152.0
+			_pref_range = 96.0
+			_basic_range = 160.0
 
 
 func _ensure_moba_assignment(hero: Hero, arena) -> void:
@@ -2885,13 +2885,15 @@ func _select_ability_slot(hero: Hero, want_a1: bool, want_a2: bool, dist: float)
 		"rift":
 			return "a2"                 # pinoräjäytys on aina arvokkain kun valmis
 		"kaira":
-			return "a1" if dist > 175.0 else "a2"
+			# Sulasyöksy avaa kaukaa, Maanjyrä kun kohde on jo kiinni.
+			return "a1" if dist > 190.0 else "a2"
 		"vesper":
 			return "a1" if _target != null and _target.mark_timer <= 0.0 else "a2"
 		"myria":
 			return "a1" if dist > 260.0 else "a2"
 		"torq":
-			return "a1" if dist > 170.0 else "a2"
+			# Koukku raahaa kaukaa, Napalukko juurruttaa lähellä.
+			return "a1" if dist > 230.0 else "a2"
 		"luma", "prism", "hush":
 			return "a2"                 # kiireellinen suoja/hoito ennen vahinkoa
 	return "a2" if cooldown_discipline >= 0.7 else "a1"
@@ -3089,11 +3091,14 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 			return _target_is_hero() and dist > 220.0 and dist < 1200.0 \
 				and (target_cluster >= 2 or _target.hp < _target.max_hp * 0.72)
 		"kaira":
+			# Sulakita on 820 px viiva: se osuu kauas eikä vaadi rykelmää, mutta
+			# kohteen pitää olla suunnilleen tähtäyslinjalla.
 			if _target is Critter and (_target as Critter).is_major_objective():
 				var contested: bool = arena.heroes_in_circle(_target.global_position, 520.0,
 					1 - hero.team, true, true).size() >= 1
-				return contested or _target.hp < _target.max_hp * 0.68
-			return _target_is_hero() and dist < 620.0 and target_cluster >= 2
+				return contested or _target.hp < _target.max_hp * 0.7
+			return _target_is_hero() and dist < 780.0 \
+				and (target_cluster >= 2 or _target.hp < _target.max_hp * 0.6)
 		"vesper":
 			if _target is Critter and (_target as Critter).is_major_objective():
 				return arena.heroes_in_circle(_target.global_position, 620.0,
@@ -3107,13 +3112,14 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 						1 - hero.team, true, true).size() >= 1)
 			return _target_is_hero() and dist < 700.0 and target_cluster >= 2
 		"torq":
+			# Napakenttä on puhdas kontrolliulti: se kannattaa vain kun sisään jää
+			# useampi vihollinen TAI kun objective on kiistelty.
 			if _target is Critter and (_target as Critter).is_major_objective():
 				var foe_near: int = arena.heroes_in_circle(_target.global_position, 560.0,
 					1 - hero.team, true, true).size()
-				var ally_near: int = arena.heroes_in_circle(_target.global_position, 420.0,
-					hero.team, true, true).size()
-				return foe_near >= 1 and ally_near >= 1
-			return near_enemies >= 2 or (near_enemies >= 1 and hero.hp < hero.max_hp * 0.45)
+				return foe_near >= 1
+			return _target_is_hero() and dist < 640.0 \
+				and (target_cluster >= 2 or near_enemies >= 2)
 	return near_enemies >= 2
 
 
@@ -3189,13 +3195,15 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 			# Miina heitetään 210 px päähän: kylvä se oikeasti kulkureitille.
 			return dist > 105.0 and dist < 310.0
 		"kaira":
-			return dist > 115.0 and dist < 560.0
+			# Sulasyöksy on 440 px ryntäys: käytä kun kohde on oikeasti edessä.
+			return dist > 150.0 and dist < 470.0
 		"vesper":
 			return dist > 160.0 and dist < 760.0
 		"myria":
 			return dist < 680.0
 		"torq":
-			return dist < 500.0
+			# Magneettikoukku: pitkä yksittäiskohteen veto, ei lähitaistelussa.
+			return dist > 170.0 and dist < 620.0
 	return false
 
 
@@ -3258,13 +3266,15 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 			# nykyiseen kohteeseen oletuskantamalla kuten muut maamaalikyvyt.
 			return dist > 150.0 and dist < 780.0 and _target_is_hero()
 		"kaira":
-			return dist < 195.0 and hero.res >= 35.0
+			# Maanjyrä maksaa 35 raivoa ja osuu 218 px säteellä.
+			return dist < 205.0 and hero.res >= 35.0
 		"vesper":
 			return dist < 620.0
 		"myria":
 			return dist < 570.0 and hero.res >= 28.0
 		"torq":
-			return dist < 220.0 and hero.res >= 30.0
+			# Napalukko imee ja juurruttaa 232 px säteellä — se on aloitus.
+			return dist < 225.0 and hero.res >= 30.0
 	return false
 
 

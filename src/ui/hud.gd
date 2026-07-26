@@ -814,16 +814,46 @@ class PaneHud:
 			r: float, col: Color) -> void:
 		match hero_id:
 			"kaira":
-				if slot == "a1":
-					draw_line(center - Vector2.RIGHT * r, center + Vector2.RIGHT * r * 0.62, col, 2.8)
-					draw_polyline(PackedVector2Array([
-						center + Vector2(r, 0), center + Vector2(r * 0.45, -r * 0.38),
-						center + Vector2(r * 0.62, 0), center + Vector2(r * 0.45, r * 0.38)]), col, 2.8)
-				elif slot == "dodge":
-					draw_line(center + Vector2(0, -r), center + Vector2(0, r * 0.7), col, 4.0)
-					draw_line(center + Vector2(-r * 0.75, r * 0.7), center + Vector2(r * 0.75, r * 0.7), col, 3.0)
-				else:
-					_draw_rotor_glyph(center, r, col, 10 if slot == "ult" else 6)
+				match slot:
+					"a1":
+						# Sulasyöksy: nuoli eteen ja kolme laavalammikkoa vanaan.
+						draw_line(center + Vector2(-r, 0), center + Vector2(r * 0.55, 0), col, 3.0)
+						draw_colored_polygon(PackedVector2Array([
+							center + Vector2(r, 0), center + Vector2(r * 0.42, -r * 0.42),
+							center + Vector2(r * 0.42, r * 0.42)]), col)
+						for k in range(3):
+							draw_circle(center + Vector2(-r * 0.8 + k * r * 0.55, r * 0.62),
+								r * 0.16, col)
+					"a2":
+						# Maanjyrä: piikkirengas ulospäin.
+						for k in range(8):
+							var ray := Vector2.RIGHT.rotated(TAU * k / 8.0)
+							draw_line(center + ray * r * 0.3, center + ray * r, col, 2.6)
+						draw_arc(center, r * 0.3, 0.0, TAU, 12, col, 2.0)
+					"dodge":
+						# Kaivautuminen: kaari maan alle ja purkaus ulos.
+						draw_arc(center + Vector2(0, -r * 0.35), r * 0.8, PI * 0.1, PI * 0.9,
+							14, col, 2.8)
+						draw_line(center + Vector2(-r * 0.9, r * 0.7),
+							center + Vector2(r * 0.9, r * 0.7), col, 2.4)
+					"ult":
+						# Sulakita: pitkä repeämä + purkautuvat kielekkeet.
+						draw_line(center + Vector2(-r, r * 0.15), center + Vector2(r, -r * 0.15),
+							col, 4.0)
+						for k in range(3):
+							var x := -r * 0.6 + k * r * 0.6
+							draw_line(center + Vector2(x, 0), center + Vector2(x - r * 0.1, -r * 0.8),
+								col, 2.4)
+					_:
+						# Poranterä: sivulle osoittava kartio hammastuksella.
+						draw_colored_polygon(PackedVector2Array([
+							center + Vector2(r, 0), center + Vector2(-r * 0.5, -r * 0.62),
+							center + Vector2(-r * 0.5, r * 0.62)]), col)
+						for k in range(3):
+							var f := 0.25 + k * 0.25
+							draw_line(center + Vector2(lerpf(-r * 0.5, r, f), -r * 0.5 * (1.0 - f)),
+								center + Vector2(lerpf(-r * 0.5, r, f), r * 0.5 * (1.0 - f)),
+								Color(0.03, 0.04, 0.07, 0.75), 1.8)
 			"vesper":
 				if slot == "a2":
 					for i in range(-1, 2):
@@ -848,16 +878,50 @@ class PaneHud:
 					draw_line(center + d * r * 0.18, center + d * r * 0.55, col, 1.8)
 				draw_circle(center, r * 0.22, col)
 			"torq":
-				var hex := PackedVector2Array()
-				for i in range(7):
-					hex.append(center + Vector2.RIGHT.rotated(TAU * i / 6.0) * r * 0.72)
-				draw_polyline(hex, col, 3.0 if slot in ["dodge", "ult"] else 2.2)
-				if slot == "a2":
-					for i in range(4):
-						var d := Vector2.RIGHT.rotated(TAU * i / 4.0)
-						draw_line(center + d * r * 0.18, center + d * r, col, 2.3)
-				else:
-					draw_circle(center, r * 0.22, col)
+				match slot:
+					"a1":
+						# Magneettikoukku: ketju ja tarttuva kynsi.
+						draw_line(center + Vector2(-r, r * 0.4), center + Vector2(r * 0.3, -r * 0.2),
+							col, 2.6)
+						draw_arc(center + Vector2(r * 0.5, -r * 0.35), r * 0.42,
+							-PI * 0.85, PI * 0.35, 12, col, 3.0)
+					"a2":
+						# Napalukko: nuolet sisäänpäin keskustaan.
+						for i in range(4):
+							var d := Vector2.RIGHT.rotated(TAU * i / 4.0 + PI * 0.25)
+							draw_line(center + d * r, center + d * r * 0.32, col, 2.6)
+							draw_colored_polygon(PackedVector2Array([
+								center + d * r * 0.22,
+								center + d * r * 0.58 + d.orthogonal() * r * 0.2,
+								center + d * r * 0.58 - d.orthogonal() * r * 0.2]), col)
+						draw_circle(center, r * 0.16, col)
+					"dodge":
+						# Magneettiliuku: kaksi vauhtiviivaa sivuun.
+						for k in range(2):
+							var y := (float(k) - 0.5) * r * 0.8
+							draw_line(center + Vector2(-r, y), center + Vector2(r * 0.45, y),
+								col, 2.6)
+						draw_colored_polygon(PackedVector2Array([
+							center + Vector2(r, 0), center + Vector2(r * 0.35, -r * 0.5),
+							center + Vector2(r * 0.35, r * 0.5)]), col)
+					"ult":
+						# Napakenttä: sisäänpäin kaartuvat kenttäviivat.
+						for i in range(6):
+							var a := TAU * i / 6.0
+							var pts := PackedVector2Array()
+							for k in range(4):
+								var kf := float(k) / 3.0
+								pts.append(center + Vector2.RIGHT.rotated(a + kf * 1.0)
+									* lerpf(r, r * 0.14, kf))
+							draw_polyline(pts, col, 2.2)
+						draw_circle(center, r * 0.2, col)
+					_:
+						# Magneettivasara: hevosenkenkä kaksine napoineen.
+						draw_arc(center, r * 0.68, PI * 0.22, PI * 1.78, 18, col, 4.0)
+						draw_circle(center + Vector2.RIGHT.rotated(PI * 0.22) * r * 0.68,
+							r * 0.19, col)
+						draw_circle(center + Vector2.RIGHT.rotated(PI * 1.78) * r * 0.68,
+							r * 0.19, col)
 
 
 	func _draw_rotor_glyph(center: Vector2, r: float, col: Color, teeth: int) -> void:

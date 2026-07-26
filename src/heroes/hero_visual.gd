@@ -397,11 +397,15 @@ func _draw_ultimate_state(bob: float) -> void:
 				draw_arc(center, hero.radius + 13.0, -_time * 3.0, -_time * 3.0 + PI * 1.5, 28,
 					Palette.with_alpha(Palette.glow(hero.hero_color(), 1.5), 0.68), 4.0)
 		"kaira":
-			if float(hero.get("_anchor_glow")) > 0.0:
+			# Kuumuusaura: mitä täydempi raivo, sitä kirkkaammat sulasäteet.
+			var kheat := float(hero.call("heat")) if hero.has_method("heat") else 0.0
+			if kheat > 0.25:
 				for i in range(8):
 					var ray := Vector2.RIGHT.rotated(TAU * i / 8.0 + _time * 0.55)
-					draw_line(center + ray * 24.0, center + ray * (43.0 + pulse * 5.0),
-						Palette.glow(Color("ffd45a"), 1.5), 5.0)
+					draw_line(center + ray * (hero.radius + 4.0),
+						center + ray * (hero.radius + 12.0 + kheat * 12.0 + pulse * 4.0),
+						Palette.with_alpha(Palette.glow(Color("ff5f1f"), 1.5),
+							0.25 + kheat * 0.55), 5.0)
 		"vesper":
 			if float(hero.get("_drone_active")) > 0.0:
 				for i in range(3):
@@ -416,15 +420,19 @@ func _draw_ultimate_state(bob: float) -> void:
 				var p := center + Vector2(cos(a), sin(a) * 0.48) * (34.0 + pulse * 3.0)
 				draw_circle(p, 4.5, Palette.with_alpha(Palette.glow(ec, 1.5), 0.78))
 		"torq":
-			var anchored := float(hero.get("_anchor_time")) > 0.0
-			var fortress := float(hero.get("_fortress_time")) > 0.0
-			if anchored or fortress:
-				var rr := hero.radius + (19.0 if fortress else 13.0)
-				for i in range(6):
-					var a := TAU * i / 6.0 + _time * (0.25 if fortress else 0.0)
-					var p1 := center + Vector2.RIGHT.rotated(a) * rr
-					var p2 := center + Vector2.RIGHT.rotated(a + TAU / 6.0) * rr
-					draw_line(p1, p2, Palette.with_alpha(Palette.glow(hero.hero_color(), 1.5), 0.72), 5.0)
+			# Magneettiaura: kenttäviivat kiertyvät sisäänpäin kyvyn jälkeen.
+			var tglow := float(hero.call("field_glow")) if hero.has_method("field_glow") else 0.0
+			if tglow > 0.02:
+				var rr := hero.radius + 16.0 + tglow * 10.0
+				for i in range(8):
+					var a := TAU * i / 8.0 - _time * 2.2
+					var line := PackedVector2Array()
+					for k in range(5):
+						var kf := float(k) / 4.0
+						line.append(center + Vector2.RIGHT.rotated(a + kf * 0.85)
+							* lerpf(rr, hero.radius * 0.4, kf))
+					draw_polyline(line, Palette.with_alpha(
+						Palette.glow(Color("5ac8ff"), 1.5), 0.2 + tglow * 0.55), 2.5)
 
 	# Kykyvalmiuden pallerot ihmispelaajan hahmon alla (glance-info): R1, L1,
 	# väistö, ulti. Hehkuu kirkkaana kun valmis, muuten latauskaari.
@@ -1538,50 +1546,84 @@ func _paint_quill(c1: Color, c2: Color) -> void:
 			draw_circle(arrow_tip, 5.0 + sin(_time * 12.0) * 1.5, Palette.glow(Palette.GOLD, 2.0))
 
 
+## KAIRA — sulakuoriainen. Muotokieli: matala kuusikulmainen kuori, taakse
+## kaartuvat piikit ja YKSI valtava kartiopora. Kuoren railot hehkuvat
+## kuumuuden (raivon) mukaan, joten pelaaja näkee resurssinsa hahmosta.
 func _paint_kaira(c1: Color, c2: Color) -> void:
 	var d := hero.aim.normalized()
 	var p := d.orthogonal()
-	# Selän painekattila, kaksi liikkuvaa mäntää ja ulkoinen lämpömittari.
-	var back := -d * 16.0
-	draw_circle(back, 17.0, Palette.darker(c2, 0.75))
-	draw_circle(back, 13.0, Color("70411d"))
-	for side in [-1.0, 1.0]:
-		var piston: Vector2 = back + p * side * 11.0
-		draw_line(piston, piston - d * (15.0 + sin(_time * 9.0 + side) * 3.0),
-			Color("d79a42"), 6.0)
-		draw_circle(piston - d * 17.0, 5.0, Palette.darker(c2, 0.7))
-	draw_arc(back, 10.0, -PI * 0.85, -PI * 0.15, 14,
-		Palette.glow(Color("ff6b35"), 1.5), 3.0)
+	var heat := 0.0
+	if hero.has_method("heat"):
+		heat = float(hero.call("heat"))
+	if hero.has_method("hit_glow"):
+		heat = clampf(heat + float(hero.call("hit_glow")) * 0.45, 0.0, 1.0)
+	var molten := Color("ff5f1f")
+	var crack := Palette.glow(molten, 1.2 + heat * 0.9)
+	var burrow := hero.has_method("burrowing") and bool(hero.call("burrowing"))
 
-	# Panssaroitu porari: kulmikkaat olkalevyt ja suojavisiiri.
-	_body_base(Vector2.ZERO, 20.0, c1, c2)
+	# Kaivautunut kuoriainen on lähes maan alla: pelkkä pölykumpu ja railot.
+	if burrow:
+		draw_circle(Vector2(0, 6), 22.0, Palette.with_alpha(Palette.darker(c2, 0.4), 0.85))
+		for i in range(5):
+			var ray := Vector2.RIGHT.rotated(TAU * i / 5.0 + _time * 2.0)
+			draw_line(ray * 8.0, ray * 24.0, Palette.with_alpha(crack, 0.7), 3.0)
+		return
+
+	# Taakse kaartuvat lämpöpiikit (kuoriaisen "harja") — silhuetin selkäranka.
+	for i in range(5):
+		var t := float(i) / 4.0
+		var root := -d * (8.0 + t * 16.0) + p * (t - 0.5) * 34.0
+		var spike := root - d * (14.0 + sin(_time * 3.0 + i) * 3.0) + p * (t - 0.5) * 16.0
+		draw_line(root, spike, Palette.darker(c2, 0.55), 7.0)
+		draw_line(root, spike, Palette.with_alpha(crack, 0.35 + heat * 0.5), 3.0)
+
+	# Matala kuusikulmainen kuori: leveä sivuttain, kapea edestä.
+	var shell := PackedVector2Array()
+	for i in range(6):
+		var a := TAU * i / 6.0 + PI / 6.0
+		shell.append(d * cos(a) * 21.0 + p * sin(a) * 26.0)
+	draw_colored_polygon(shell, Palette.darker(c2, 0.5))
+	var inner := PackedVector2Array()
+	for i in range(6):
+		var a := TAU * i / 6.0 + PI / 6.0
+		inner.append(d * cos(a) * 16.0 + p * sin(a) * 20.0)
+	draw_colored_polygon(inner, c1)
+	# Kolme hehkuvaa railoa kuoren poikki: kuumuusmittari suoraan hahmossa.
+	for i in range(3):
+		var off := (float(i) - 1.0) * 9.0
+		draw_line(-d * 15.0 + p * off, d * 13.0 + p * off * 0.4,
+			Palette.with_alpha(crack, 0.35 + heat * 0.6), 3.0 + heat * 2.0)
+
+	# Kaksi raskasta kaivujalkaa eteen — kuoriainen nojaa eteenpäin.
 	for side in [-1.0, 1.0]:
-		var shoulder: Vector2 = p * side * 20.0 - d * 1.0
+		var hip: Vector2 = p * side * 19.0 + d * 4.0
+		var claw: Vector2 = hip + d * 16.0 + p * side * 8.0
+		draw_line(hip, claw, Palette.darker(c2, 0.62), 8.0)
 		draw_colored_polygon(PackedVector2Array([
-			shoulder - p * side * 7.0 - d * 7.0,
-			shoulder + p * side * 8.0 - d * 2.0,
-			shoulder + p * side * 5.0 + d * 9.0,
-			shoulder - p * side * 6.0 + d * 7.0]), Palette.darker(c2, 0.6))
-	# Hehkuvan meripihkainen kypärä ja leveä tumma visiiri.
-	draw_arc(Vector2(0, -9), 16.0, PI + 0.2, TAU - 0.2, 18, c1, 8.0)
-	draw_line(Vector2(0, -7) - p * 10.0 + d * 3.0,
-		Vector2(0, -7) + p * 10.0 + d * 3.0, Color("191d26"), 6.0)
-	draw_circle(Vector2(0, -7) + d * 5.0, 2.8, Color("fff0a8"))
+			claw + d * 9.0, claw + p * side * 7.0, claw - d * 5.0]),
+			Palette.darker(Color("c9d1d8"), 0.75))
 
-	# Pitkä kartiopora, jonka hampaat todella pyörivät hyökkäyksessä.
-	var base := d * 12.0
-	var tip := d * (54.0 + _attack_anim * 10.0)
-	_hold(base + p * 7.0, c1, 20.0, 6.0)
-	draw_line(base, tip - d * 8.0, Palette.darker(c2, 0.75), 13.0)
-	draw_line(base, tip - d * 8.0, Color("d79a42"), 7.0)
-	var cone := PackedVector2Array([tip, tip - d * 25.0 + p * 12.0, tip - d * 25.0 - p * 12.0])
-	draw_colored_polygon(cone, Color("c9d1d8"))
-	for i in range(4):
-		var f := float(i + 1) / 5.0
-		var c := tip - d * 25.0 * f
-		var w := 3.0 + 9.0 * f
-		draw_line(c - p * w, c + p * w, Palette.darker(Color("c9d1d8"), 0.55), 2.2)
-	draw_circle(tip, 4.0 + _attack_anim * 3.0, Palette.glow(Color("fff0a8"), 1.5))
+	# Kaksi hehkuvaa silmää visiirin alla.
+	for side in [-1.0, 1.0]:
+		draw_circle(d * 12.0 + p * side * 7.0, 3.0, Palette.glow(Color("fff0a8"), 1.6))
+
+	# YKSI valtava kartiopora: hahmon tunnistettavin muoto.
+	var base := d * 14.0
+	var tip := d * (62.0 + _attack_anim * 14.0)
+	draw_line(base, tip - d * 10.0, Palette.darker(c2, 0.7), 20.0)
+	draw_line(base, tip - d * 10.0, Palette.with_alpha(crack, 0.5 + heat * 0.4), 11.0)
+	draw_colored_polygon(PackedVector2Array([
+		tip, tip - d * 32.0 + p * 16.0, tip - d * 32.0 - p * 16.0]), Color("c9d1d8"))
+	# Kierteinen hammastus: viivat siirtyvät hyökkäyksessä -> pora pyörii.
+	for i in range(5):
+		var f := float(i + 1) / 6.0
+		var c := tip - d * 32.0 * f
+		var w := 2.5 + 13.5 * f
+		var skew := sin(_time * 14.0 + f * 6.0) * (2.0 + _attack_anim * 4.0)
+		draw_line(c - p * w + d * skew, c + p * w - d * skew,
+			Palette.darker(Color("c9d1d8"), 0.5), 2.4)
+	draw_circle(tip, 5.0 + _attack_anim * 4.0 + heat * 2.0,
+		Palette.glow(Color("fff0a8"), 1.6))
 
 
 func _paint_vesper(c1: Color, c2: Color) -> void:
@@ -1657,49 +1699,72 @@ func _paint_myria(c1: Color, c2: Color) -> void:
 	draw_circle(tip + d * 3.0, 5.0 + _cast_anim * 5.0, Palette.glow(ec, 1.55))
 
 
+## TORQ — magneettivartija. Muotokieli: valtava HEVOSENKENKÄ (U) hartioilla,
+## punainen ja sininen napa sen kärjissä, ja kenttäviivat jotka kaartuvat napojen
+## välillä. Siluetti kertoo yhdellä silmäyksellä: tämä hahmo vetää sinut luokseen.
 func _paint_torq(c1: Color, c2: Color) -> void:
 	var d := hero.aim.normalized()
 	var p := d.orthogonal()
-	var anchored := float(hero.get("_anchor_time")) > 0.0
-	# Leveät magneettiankkurit tekevät tankin siluetista täysin omanlaisensa.
-	for side in [-1.0, 1.0]:
-		var foot: Vector2 = p * side * (22.0 if anchored else 17.0) + Vector2(0, 13)
-		var plate := PackedVector2Array([
-			foot - p * side * 10.0 - Vector2(0, 8),
-			foot + p * side * 14.0 - Vector2(0, 4),
-			foot + p * side * 16.0 + Vector2(0, 8),
-			foot - p * side * 12.0 + Vector2(0, 8)])
-		draw_colored_polygon(plate, Palette.darker(c2, 0.7))
-		if anchored:
-			draw_line(foot, foot + p * side * 22.0, Palette.glow(c1, 1.4), 5.0)
+	var glow := 0.0
+	if hero.has_method("field_glow"):
+		glow = clampf(float(hero.call("field_glow")), 0.0, 1.0)
+	var north := Color("ff5470")
+	var south := Color("5ac8ff")
 
-	# Kuusikulmainen raskas runko ja reaktoriydin.
+	# Kenttäviivat napojen välillä: aina hiukan, kyvyn jälkeen voimakkaasti.
+	var pole_n: Vector2 = p * 26.0 - d * 4.0
+	var pole_s: Vector2 = -p * 26.0 - d * 4.0
+	for i in range(3):
+		var bulge := (float(i) - 1.0) * 13.0 - 20.0
+		var mid: Vector2 = (pole_n + pole_s) * 0.5 + d * bulge
+		var arc := PackedVector2Array()
+		for k in range(9):
+			var t := float(k) / 8.0
+			var a: Vector2 = pole_n.lerp(mid, t)
+			var b: Vector2 = mid.lerp(pole_s, t)
+			arc.append(a.lerp(b, t))
+		draw_polyline(arc, Palette.with_alpha(Palette.glow(c1, 1.45),
+			0.16 + glow * 0.5), 2.5 + glow * 2.0)
+
+	# Hevosenkenkä: paksu U-kaari hartioiden yli, kärjet eteenpäin.
+	var horseshoe := PackedVector2Array()
+	for i in range(15):
+		var a := PI * 0.16 + PI * 1.68 * float(i) / 14.0
+		horseshoe.append(d * cos(a) * -27.0 + p * sin(a) * 27.0)
+	draw_polyline(horseshoe, Palette.darker(c2, 0.6), 17.0)
+	draw_polyline(horseshoe, Palette.darker(Color("c3ccdf"), 0.9), 11.0)
+
+	# Kaksinapaiset kärjet: punainen ja sininen — magneetti tunnistuu heti.
+	draw_circle(pole_n, 9.5, Palette.darker(c2, 0.55))
+	draw_circle(pole_n, 6.5, Palette.glow(north, 1.3 + glow * 0.5))
+	draw_circle(pole_s, 9.5, Palette.darker(c2, 0.55))
+	draw_circle(pole_s, 6.5, Palette.glow(south, 1.3 + glow * 0.5))
+
+	# Raskas kuusikulmainen runko ja reaktoriydin kaaren sisällä.
 	var body := PackedVector2Array()
 	for i in range(6):
-		body.append(Vector2.RIGHT.rotated(PI / 6.0 + TAU * i / 6.0) * 23.0)
-	draw_colored_polygon(body, Palette.darker(c2, 0.65))
+		body.append(Vector2.RIGHT.rotated(PI / 6.0 + TAU * i / 6.0) * 21.0)
+	draw_colored_polygon(body, Palette.darker(c2, 0.68))
 	var inner := PackedVector2Array()
 	for i in range(6):
-		inner.append(Vector2.RIGHT.rotated(PI / 6.0 + TAU * i / 6.0) * 18.0)
+		inner.append(Vector2.RIGHT.rotated(PI / 6.0 + TAU * i / 6.0) * 16.0)
 	draw_colored_polygon(inner, c1)
-	draw_circle(Vector2.ZERO, 10.0, Color("10254a"))
-	draw_circle(Vector2.ZERO, 6.0 + sin(_time * 5.0) * 1.2, Palette.glow(Color("b8d2ff"), 1.55))
-	# Pään visiiri ja sivupanssarit.
-	draw_rect(Rect2(Vector2(-13, -19), Vector2(26, 11)), Palette.darker(c2, 0.55))
-	draw_line(Vector2(-9, -13), Vector2(9, -13), Color("9cc4ff"), 4.0)
-	for side in [-1.0, 1.0]:
-		var shoulder: Vector2 = p * side * 22.0 - d * 2.0
-		draw_circle(shoulder, 10.0, Palette.darker(c2, 0.72))
-		draw_circle(shoulder, 6.0, c1)
+	draw_circle(Vector2.ZERO, 9.0, Color("10254a"))
+	draw_circle(Vector2.ZERO, 5.5 + sin(_time * 5.0) * 1.2 + glow * 2.5,
+		Palette.glow(Color("d4e4ff"), 1.55))
+	# Kapea visiiri: yksi vaakaviiva, ei kasvoja — vartija on kone.
+	draw_line(d * 9.0 - p * 9.0, d * 9.0 + p * 9.0, Color("10254a"), 6.0)
+	draw_line(d * 10.0 - p * 6.0, d * 10.0 + p * 6.0, Palette.glow(south, 1.4), 2.6)
 
-	# Magneettivasara: pitkä varsi, kuusikulmainen kaksinapainen pää.
-	var hand := d * 11.0 + p * 7.0
-	var head := d * (43.0 + _attack_anim * 8.0)
-	_hold(hand, c1, 21.0, 6.0)
-	draw_line(hand, head, Color("a9b5c7"), 7.0)
-	var hammer := PackedVector2Array([
-		head - d * 7.0 - p * 14.0, head + d * 9.0 - p * 12.0,
-		head + d * 9.0 + p * 12.0, head - d * 7.0 + p * 14.0])
-	draw_colored_polygon(hammer, Palette.darker(c2, 0.62))
-	draw_line(head - p * 10.0, head + p * 10.0, Palette.glow(c1, 1.45), 5.0)
-	draw_circle(head, 4.0 + _cast_anim * 3.0, Color("d4e4ff"))
+	# Magneettivasara: varsi ja pieni kaksinapainen U-pää.
+	var hand := d * 12.0 + p * 9.0
+	var head := d * (46.0 + _attack_anim * 10.0) + p * 4.0
+	_hold(hand, c1, 20.0, 6.0)
+	draw_line(hand, head, Color("a9b5c7"), 8.0)
+	var prong := PackedVector2Array()
+	for i in range(9):
+		var a := PI * 0.3 + PI * 1.4 * float(i) / 8.0
+		prong.append(head + d * cos(a) * -12.0 + p * sin(a) * 12.0)
+	draw_polyline(prong, Palette.darker(c2, 0.6), 9.0)
+	draw_circle(head + p * 11.0, 4.0 + _cast_anim * 2.0, Palette.glow(north, 1.5))
+	draw_circle(head - p * 11.0, 4.0 + _cast_anim * 2.0, Palette.glow(south, 1.5))

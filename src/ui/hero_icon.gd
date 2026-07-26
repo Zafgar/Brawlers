@@ -67,17 +67,28 @@ static func _letter(ci: CanvasItem, hero_id: String, center: Vector2, r: float) 
 		int(r * 1.15), Color.WHITE, true, maxi(2, int(r * 0.1)))
 
 
+## Kaira: sulakuoriaisen matala kuusikulmainen kuori ja yksi valtava kartiopora.
 static func _kaira(ci: CanvasItem, center: Vector2, r: float) -> void:
-	# Pyörivä poranterä.
-	var tip := center + Vector2(r * 0.92, 0)
+	var shell := PackedVector2Array()
+	for i in range(6):
+		var a := TAU * i / 6.0 + PI / 6.0
+		shell.append(center + Vector2(cos(a) * r * 0.5 - r * 0.34, sin(a) * r * 0.72))
+	ci.draw_colored_polygon(shell, INK)
+	# Kolme hehkuvaa railoa kuoressa: kuumuus nakyy jo kuvakkeessa.
+	for i in range(3):
+		var y := center.y + (float(i) - 1.0) * r * 0.3
+		ci.draw_line(Vector2(center.x - r * 0.72, y), Vector2(center.x - r * 0.02, y),
+			SHADE, maxf(1.5, r * 0.08))
+	# Kartiopora hammastuksineen.
+	var tip := center + Vector2(r * 0.98, 0)
 	ci.draw_colored_polygon(PackedVector2Array([
-		tip, center + Vector2(-r * 0.42, -r * 0.66),
-		center + Vector2(-r * 0.42, r * 0.66)]), INK)
-	for i in range(4):
-		var x := lerpf(center.x - r * 0.28, center.x + r * 0.58, float(i) / 3.0)
-		var h := r * (0.48 - i * 0.08)
-		ci.draw_line(Vector2(x, center.y - h), Vector2(x, center.y + h), SHADE, maxf(2.0, r * 0.08))
-	ci.draw_circle(center + Vector2(-r * 0.55, 0), r * 0.27, INK)
+		tip, center + Vector2(r * 0.08, -r * 0.5),
+		center + Vector2(r * 0.08, r * 0.5)]), INK)
+	for i in range(3):
+		var x := lerpf(center.x + r * 0.2, center.x + r * 0.78, float(i) / 2.0)
+		var h := r * (0.38 - i * 0.11)
+		ci.draw_line(Vector2(x, center.y - h), Vector2(x, center.y + h),
+			SHADE, maxf(1.5, r * 0.07))
 
 
 static func _vesper(ci: CanvasItem, center: Vector2, r: float) -> void:
@@ -105,18 +116,21 @@ static func _myria(ci: CanvasItem, center: Vector2, r: float) -> void:
 	ci.draw_circle(center, r * 0.13, SHADE)
 
 
+## Torq: hevosenkenkamagneetti kahtine napoineen ja sisaanpain kaartuvine
+## kenttaviivoineen — sama muotokieli kuin hahmossa ja HUD-glyfeissa.
 static func _torq(ci: CanvasItem, center: Vector2, r: float) -> void:
-	# Linnoituksen kuusikulmio ja magneettivasara.
-	var hex := PackedVector2Array()
-	for i in range(6):
-		hex.append(center + Vector2.RIGHT.rotated(PI / 6.0 + TAU * i / 6.0) * r * 0.72)
-	ci.draw_colored_polygon(hex, INK)
-	ci.draw_polyline(hex + PackedVector2Array([hex[0]]), SHADE, maxf(2.0, r * 0.08))
-	ci.draw_circle(center, r * 0.23, SHADE)
-	ci.draw_line(center + Vector2(-r * 0.72, r * 0.68),
-		center + Vector2(r * 0.36, -r * 0.38), INK, maxf(3.0, r * 0.18))
-	ci.draw_rect(Rect2(center + Vector2(r * 0.18, -r * 0.67),
-		Vector2(r * 0.58, r * 0.34)), INK)
+	ci.draw_arc(center, r * 0.7, PI * 0.24, PI * 1.76, 24, INK, maxf(3.0, r * 0.26))
+	var pole_a := center + Vector2.RIGHT.rotated(PI * 0.24) * r * 0.7
+	var pole_b := center + Vector2.RIGHT.rotated(PI * 1.76) * r * 0.7
+	ci.draw_circle(pole_a, r * 0.2, INK)
+	ci.draw_circle(pole_b, r * 0.2, INK)
+	ci.draw_circle(pole_a, r * 0.1, SHADE)
+	ci.draw_circle(pole_b, r * 0.1, SHADE)
+	# Kaksi kenttaviivaa imee napojen valista sisaan.
+	for k in [-1.0, 1.0]:
+		ci.draw_arc(center + Vector2(r * 0.62, 0), r * 0.42,
+			PI * (0.55 if k > 0.0 else 1.05), PI * (0.95 if k > 0.0 else 1.45),
+			10, SHADE, maxf(1.5, r * 0.08))
 
 
 ## Prisma: kolmio, johon tulee säde vasemmalta ja josta hajoaa spektri oikealle.

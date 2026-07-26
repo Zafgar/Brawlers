@@ -109,6 +109,11 @@ static func ability_impact(parent: Node, pos: Vector2, visual_id: String, color:
 			flash(parent, pos, Palette.glow(Color("ffd45a"), 1.55), 32.0, 0.18)
 			ring(parent, pos, team_color, 42.0, 0.28, 3.5)
 			burst(parent, pos, Color("d79a42"), 11, 260.0, 0.36, 4.0)
+		"torq_hook":
+			# Magneettinen napsahdus: kaksi napavälähdystä ja teräskipinät.
+			flash(parent, pos, Palette.glow(Color("5ac8ff"), 1.6), 34.0, 0.2)
+			ring(parent, pos, Palette.glow(Color("ff5470"), 1.5), 46.0, 0.3, 3.5)
+			burst(parent, pos, Color("c3ccdf"), 12, 250.0, 0.34, 4.0)
 		"vesper_bolt":
 			burst(parent, pos, Palette.glow(color, 1.45), 6, 170.0, 0.22, 2.5)
 		"vesper_tracker":
@@ -596,14 +601,19 @@ class SignatureFx:
 						Palette.with_alpha(Palette.glow(main_color, 1.25), alpha), 6.0)
 					draw_circle(finish, 9.0, Palette.with_alpha(Color.WHITE, alpha * 0.55))
 			"kaira":
-				for j in range(12):
-					var ray := Vector2.RIGHT.rotated(TAU * j / 12.0 - f * 1.8)
-					var side := ray.orthogonal()
+				# Poran purenta: kolme eteenpäin osoittavaa sulakiilaa peräkkäin.
+				var kside := direction.orthogonal()
+				for j in range(3):
+					var depth := reach * (0.34 + j * 0.22)
+					var wide := reach * (0.30 - j * 0.06)
 					draw_colored_polygon(PackedVector2Array([
-						ray * reach * 0.22 - side * 5.0,
-						ray * reach * 0.68,
-						ray * reach * 0.22 + side * 5.0]),
-						Palette.with_alpha(Palette.glow(main_color, 1.45), alpha * 0.8))
+						direction * (depth + reach * 0.22),
+						direction * depth + kside * wide,
+						direction * depth - kside * wide]),
+						Palette.with_alpha(Palette.glow(main_color, 1.5 + j * 0.1),
+							alpha * (0.85 - j * 0.18)))
+				draw_circle(direction * reach * 0.2, reach * 0.14,
+					Palette.with_alpha(Color("fff0a8"), alpha * 0.8))
 			"vesper":
 				draw_arc(Vector2.ZERO, reach * 0.55, 0.0, TAU, 32,
 					Palette.with_alpha(Palette.glow(main_color, 1.5), alpha), 3.0)
@@ -618,14 +628,21 @@ class SignatureFx:
 					draw_circle(p, 7.0, Palette.with_alpha(Palette.glow(main_color, 1.6), alpha))
 					draw_line(Vector2.ZERO, p, Palette.with_alpha(main_color, alpha * 0.42), 2.0)
 			"torq":
-				var hex := PackedVector2Array()
-				for j in range(7):
-					hex.append(Vector2.RIGHT.rotated(TAU * j / 6.0 + f * 0.35) * reach * 0.62)
-				draw_polyline(hex, Palette.with_alpha(Palette.glow(main_color, 1.45), alpha), 6.0)
-				for j in range(6):
-					var ray := Vector2.RIGHT.rotated(TAU * j / 6.0)
-					draw_line(ray * reach * 0.2, ray * reach * 0.72,
-						Palette.with_alpha(team_color, alpha * 0.7), 3.0)
+				# Magneettinapa: hevosenkenkäkaari ja sisäänpäin kaartuvat kenttäviivat.
+				draw_arc(Vector2.ZERO, reach * 0.66, PI * 0.28, PI * 1.72, 26,
+					Palette.with_alpha(Palette.glow(main_color, 1.5), alpha), 9.0)
+				draw_circle(Vector2.RIGHT.rotated(PI * 0.28) * reach * 0.66, reach * 0.13,
+					Palette.with_alpha(Palette.glow(Color("ff5470"), 1.6), alpha))
+				draw_circle(Vector2.RIGHT.rotated(PI * 1.72) * reach * 0.66, reach * 0.13,
+					Palette.with_alpha(Palette.glow(Color("5ac8ff"), 1.6), alpha))
+				for j in range(8):
+					var a := TAU * j / 8.0 - f * 2.2
+					var pts := PackedVector2Array()
+					for k in range(5):
+						var kf := float(k) / 4.0
+						pts.append(Vector2.RIGHT.rotated(a + kf * 0.9)
+							* reach * lerpf(0.92, 0.14, kf))
+					draw_polyline(pts, Palette.with_alpha(team_color, alpha * 0.62), 2.5)
 			_:
 				for j in range(6):
 					var ray := Vector2.RIGHT.rotated(TAU * j / 6.0 + f * 0.35)
@@ -696,10 +713,20 @@ class UltimateTargetFx:
 					var p := Vector2(cos(a), sin(a) * 0.55) * radius * 0.55
 					draw_circle(p, 8.0, Palette.with_alpha(Palette.glow(color, 1.5), 0.7))
 			"torq":
-				var hex := PackedVector2Array()
-				for j in range(7):
-					hex.append(Vector2.RIGHT.rotated(TAU * j / 6.0) * radius * 0.72)
-				draw_polyline(hex, Palette.with_alpha(Palette.glow(color, 1.5), 0.65), 6.0)
+				# Napakenttä: sisäänpäin kiertyvät kenttäviivat ja kaksi napaa.
+				for j in range(8):
+					var a := TAU * j / 8.0 - _t * 2.0
+					var pts := PackedVector2Array()
+					for k in range(6):
+						var kf := float(k) / 5.0
+						pts.append(Vector2.RIGHT.rotated(a + kf * 1.05)
+							* radius * lerpf(0.95, 0.12, kf))
+					draw_polyline(pts, Palette.with_alpha(Palette.glow(color, 1.5),
+						0.4 + pulse * 0.28), 3.0)
+				for pole in [-1.0, 1.0]:
+					draw_circle(Vector2(pole * radius * 0.62, 0.0), 11.0,
+						Palette.with_alpha(Palette.glow(
+							Color("ff5470") if pole > 0.0 else Color("5ac8ff"), 1.6), 0.75))
 
 
 class UltimateFieldFx:
@@ -757,13 +784,21 @@ class UltimateFieldFx:
 					draw_circle(p, 8.0 + pulse * 2.0,
 						Palette.with_alpha(Palette.glow(color, 1.55), 0.58 * fade))
 			"torq":
-				for ring_i in range(2):
+				# Kenttäviivat imevät sisäänpäin koko keston ajan.
+				for j in range(10):
+					var a := TAU * j / 10.0 - _t * 1.4
 					var poly := PackedVector2Array()
-					for j in range(7):
-						poly.append(Vector2.RIGHT.rotated(TAU * j / 6.0 + _t * (0.1 if ring_i == 0 else -0.06))
-							* radius * (0.55 + ring_i * 0.25))
+					for k in range(6):
+						var kf := float(k) / 5.0
+						poly.append(Vector2.RIGHT.rotated(a + kf * 1.1)
+							* radius * lerpf(0.95, 0.12, kf))
 					draw_polyline(poly, Palette.with_alpha(Palette.glow(color, 1.45),
-						(0.32 + pulse * 0.14) * fade), 5.0)
+						(0.26 + pulse * 0.18) * fade), 3.0)
+				for pole in [-1.0, 1.0]:
+					draw_circle(Vector2(pole * radius * 0.62, 0.0), 10.0 + pulse * 4.0,
+						Palette.with_alpha(Palette.glow(
+							Color("ff5470") if pole > 0.0 else Color("5ac8ff"), 1.6),
+							0.7 * fade))
 
 
 class UltimateLineFx:

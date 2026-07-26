@@ -293,6 +293,26 @@ func _draw() -> void:
 				draw_colored_polygon(spikes, Palette.glow(color, 1.5))
 				draw_circle(Vector2.ZERO, hit_radius * 0.46, Color("25102f"))
 				draw_arc(Vector2.ZERO, hit_radius * 0.76, 0.0, TAU, 20, Color.WHITE, 2.0)
+		"torq_hook":
+			# Magneettikoukku: raskas ketju ja kaksinapainen ankkuripää.
+			if pts.size() > 1:
+				for i in range(1, pts.size()):
+					var link_a = pts[i - 1]
+					var link_b = pts[i]
+					draw_line(link_a, link_b, Palette.with_alpha(Color("6f7d99"), 0.8), 5.0)
+					if i % 2 == 0:
+						draw_circle(link_b, 3.4, Palette.glow(color, 1.3))
+			var claw := forward * hit_radius * 1.6
+			draw_colored_polygon(PackedVector2Array([
+				claw, -forward * hit_radius * 0.3 + side * hit_radius * 1.05,
+				-forward * hit_radius * 0.7,
+				-forward * hit_radius * 0.3 - side * hit_radius * 1.05]),
+				Palette.glow(Color("c3ccdf"), 1.35))
+			# Punainen ja sininen napa kärjessä: magneetti tunnistuu yhdellä silmäyksellä.
+			draw_circle(claw * 0.55 + side * hit_radius * 0.6, hit_radius * 0.34,
+				Palette.glow(Color("ff5470"), 1.6))
+			draw_circle(claw * 0.55 - side * hit_radius * 0.6, hit_radius * 0.34,
+				Palette.glow(Color("5ac8ff"), 1.6))
 		"kaira_harpoon":
 			# Poraharppuuna näyttää raskaalta ketjuaseelta, ei tavalliselta ammuspallolta.
 			if pts.size() > 1:

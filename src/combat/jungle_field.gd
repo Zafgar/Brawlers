@@ -85,6 +85,27 @@ func _physics_process(delta: float) -> void:
 		var ally: bool = actor.team == team
 		var neutral: bool = actor is Critter
 		match mode:
+			"magma":
+				# Kairan laava: polttaa vihollisia ja parantaa Kairaa itseään.
+				# Kestävän lähitaistelijan fantasia näkyy suoraan maassa.
+				if not ally:
+					actor.apply_slow(0.78, 0.32)
+					if do_tick:
+						source.deal_damage_to(actor,
+							dps * tick_interval * (1.35 if neutral else 1.0))
+				elif actor == source and do_tick:
+					actor.heal_hp(dps * tick_interval * 0.55, source)
+			"magnet":
+				# Torqin napakenttä: jatkuva imu keskustaan, raskas hidastus ja
+				# juurrutuspulssi joka kolmas tikki. Ulos ei kävellä.
+				if not ally:
+					actor.apply_slow(0.52, 0.34)
+					_pull(actor, 300.0 * delta)
+					if do_tick:
+						source.deal_damage_to(actor,
+							dps * tick_interval * (1.3 if neutral else 1.0))
+						if _pulse % 3 == 0:
+							actor.apply_root(0.55)
 			"bore":
 				if not ally:
 					actor.apply_slow(0.70, 0.32)
@@ -199,6 +220,38 @@ func _draw() -> void:
 		-PI * 0.5 + TAU * remain, 64,
 		Palette.with_alpha(Palette.glow(color, 1.5), 0.72 * fade), 3.0)
 	match mode:
+		"magma":
+			# Halkeillut sulakivi: epäsäännöllinen laavalammikko ja hehkuvat railot.
+			var pool := PackedVector2Array()
+			for i in range(11):
+				var a := TAU * i / 11.0
+				var rr := radius * (0.74 + 0.2 * sin(a * 3.0 + _age * 1.6))
+				pool.append(Vector2.RIGHT.rotated(a) * rr)
+			draw_colored_polygon(pool, Palette.with_alpha(Palette.glow(color, 1.3),
+				(0.3 + pulse * 0.14) * fade))
+			for i in range(5):
+				var ray := Vector2.RIGHT.rotated(TAU * i / 5.0 + _age * 0.25)
+				draw_line(ray * radius * 0.12, ray * radius * 0.7,
+					Palette.with_alpha(Color("fff0a8"), (0.4 + pulse * 0.3) * fade), 3.5)
+			draw_circle(Vector2.ZERO, 16.0 + pulse * 6.0,
+				Palette.with_alpha(Color("fff0a8"), 0.55 * fade))
+		"magnet":
+			# Magneettikaivo: sisäänpäin kiertyvät kenttäviivat ja kaksi napaa.
+			for i in range(10):
+				var a := TAU * i / 10.0 - _age * 1.3
+				var pts := PackedVector2Array()
+				for k in range(7):
+					var f := float(k) / 6.0
+					pts.append(Vector2.RIGHT.rotated(a + f * 1.15)
+						* radius * lerpf(1.0, 0.14, f))
+				draw_polyline(pts, Palette.with_alpha(Palette.glow(color, 1.45),
+					(0.24 + pulse * 0.2) * fade), 2.5)
+			for pole in [-1.0, 1.0]:
+				draw_circle(Vector2(pole * radius * 0.62, 0.0), 12.0 + pulse * 4.0,
+					Palette.with_alpha(Palette.glow(
+						Color("ff5470") if pole > 0.0 else Color("5ac8ff"), 1.6), 0.7 * fade))
+			draw_circle(Vector2.ZERO, 22.0 + pulse * 9.0,
+				Palette.with_alpha(Palette.glow(color, 1.7), 0.5 * fade))
 		"bore":
 			for i in range(16):
 				var a := TAU * i / 16.0 - _age * (0.9 if i % 2 == 0 else -0.55)

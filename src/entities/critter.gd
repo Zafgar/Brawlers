@@ -281,6 +281,14 @@ func apply_stun(duration: float) -> void:
 	super.apply_stun(duration)
 
 
+## Sama sääntö juurrutukselle kuin tainnutukselle: Torqin Napalukko ja
+## Napakenttä eivät saa pitää Baronia tai Lohikäärmettä pysyvästi kiinni.
+func apply_root(duration: float) -> void:
+	if is_major_objective():
+		duration *= 0.25
+	super.apply_root(duration)
+
+
 func apply_slow(factor: float, duration: float) -> void:
 	if is_major_objective():
 		factor = maxf(factor, 0.78)
