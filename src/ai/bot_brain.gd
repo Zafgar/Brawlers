@@ -128,6 +128,14 @@ var _aim_lock := Vector2.ZERO
 var _aim_lock_t := 0.0
 var _hold_seen_t := -1.0        # viimeisin päivityshetki (kuolema nollaa pidot)
 var _shop_trip_cd := 0.0        # kauppareissujen välinen jäähdytys (MOBA)
+# Leirin puhdistuksen kannattavuusseuranta. Sweep-data paljasti että tuki-
+# sankarit (maestro 0.17 puhdistusta/ottelu @ 124 s taistelua, hush 0.11,
+# luma 0.05) hakkasivat leiriä jota eivät pysty tappamaan — siitä tuli 30-38 %
+# niiden koko vahingosta. Mitataan edistyminen ja luovutetaan ajoissa.
+var _camp_id := 0               # nykyisen leirikohteen instanssi-id
+var _camp_t := 0.0              # aika nykyisen leirin kimpussa
+var _camp_hp0 := 0.0            # leirin HP kun taistelu alkoi
+var _camp_block := {}           # leirityyppi -> match_elapsed johon asti ohitetaan
 
 var _time := 0.0
 var _decision_timer := 0.0
@@ -537,6 +545,7 @@ func update(hero: Hero, delta: float) -> void:
 		_setup_role(hero)
 	_combo_timer = maxf(_combo_timer - delta, 0.0)
 	_shop_trip_cd = maxf(_shop_trip_cd - delta, 0.0)
+	_track_camp_progress(hero, delta)
 	if _combo_timer <= 0.0 or _combo_target == null or not is_instance_valid(_combo_target) \
 			or not _combo_target.alive:
 		_clear_combo()
@@ -1095,6 +1104,47 @@ func _maybe_use_item_active(hero: Hero, arena) -> void:
 ## botti hylkää linjaa. Pomo on iso palkinto (tiimibuffi) ja vaatii terveyden +
 ## ryhmän; leirit ovat opportunistisia lähibuffeja. jungle_focus (vaikeustaso)
 ## säätää sekä kantaman että sen uskaltaako pomon kimppuun.
+## Seuraa nykyisen leiritaistelun edistymistä ja luovuttaa jos leiri ei kaadu.
+## Ihminen ei hakkaa leiriä kahta minuuttia; botti teki juuri niin. 6 sekunnin
+## jälkeen vaaditaan 35 % HP:sta pois, muuten leirityyppi ohitetaan 45 s ajan.
+func _track_camp_progress(hero: Hero, delta: float) -> void:
+	var cr := _jungle_target as Critter
+	if cr == null or not is_instance_valid(cr) or not cr.alive:
+		_camp_id = 0
+		_camp_t = 0.0
+		return
+	if cr.is_major_objective():
+		return   # Baron/Dragon ovat ryhmäkohteita, ei soolokannattavuutta
+	var cid: int = cr.get_instance_id()
+	if cid != _camp_id:
+		_camp_id = cid
+		_camp_t = 0.0
+		_camp_hp0 = maxf(cr.hp, 1.0)
+		return
+	if hero.global_position.distance_to(cr.global_position) > 420.0:
+		return   # ei olla vielä kimpussa; matka ei kuluta kärsivällisyyttä
+	_camp_t += delta
+	if _camp_t < 6.0:
+		return
+	if cr.hp / _camp_hp0 > 0.65:
+		var until: float = float(hero.arena.match_elapsed) + 45.0
+		_camp_block[cr.kind] = until
+		_jungle_target = null
+		_camp_id = 0
+		_camp_t = 0.0
+
+
+## Onko leirityyppi hetkellisesti ohitettu kannattamattomana.
+func _camp_blocked(hero: Hero, kind: int) -> bool:
+	if not _camp_block.has(kind):
+		return false
+	var until: float = float(_camp_block[kind])
+	if float(hero.arena.match_elapsed) >= until:
+		_camp_block.erase(kind)
+		return false
+	return true
+
+
 func _pick_moba_objective(hero: Hero, arena) -> Hero:
 	if arena.critters.is_empty():
 		return null
@@ -1120,6 +1170,8 @@ func _pick_moba_objective(hero: Hero, arena) -> Hero:
 		if d > max_travel:
 			continue
 		var val: float = _moba_objective_value(hero, cr)
+		if not cr.is_major_objective():
+			val *= _camp_role_mult(hero)
 		if val <= 0.0:
 			continue
 		var score: float = val - d * (0.055 if _moba_job == "jungle" else 0.14)
@@ -1144,6 +1196,9 @@ func _lane_rotation_safe(hero: Hero, arena) -> bool:
 
 
 func _moba_objective_value(hero: Hero, cr: Critter) -> float:
+	# Kannattamattomaksi todettu leirityyppi ohitetaan (ks. _track_camp_progress).
+	if not cr.is_major_objective() and _camp_blocked(hero, cr.kind):
+		return 0.0
 	match cr.kind:
 		Critter.Kind.BOSS:
 			# TASOPORTTI: Baron on Gold+ (can_baron). Wood/Bronze/Silver eivät
@@ -1185,6 +1240,14 @@ func _moba_objective_value(hero: Hero, cr: Critter) -> float:
 		Critter.Kind.SMALL_CAMP:
 			return 105.0 if _moba_job == "jungle" else 0.0
 	return 0.0
+
+
+## Tukisankari viidakkovuorossa ei ole jungleri: se puhdistaa hitaasti ja kuolee
+## leireille. Painotetaan leirit alas, jolloin se roamaa ja auttaa linjoja.
+func _camp_role_mult(hero: Hero) -> float:
+	if _is_support and _moba_job == "jungle":
+		return 0.45 if hero.level < 5 else 0.7
+	return 1.0
 
 
 ## Vihollisen elossa oleva nexus-rakennus tai null.
