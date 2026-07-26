@@ -166,15 +166,17 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 			brain.leash = 700.0
 			cd_max.basic = 1.35
 		Kind.RED_CAMP:
-			gold_value = 110
-			xp_value = 170
+			# Palkkiot nostettu (auditointi 2026-07): viidakon vakaa tulo oli vain
+			# 42 % linjafarmista kullassa ja 33 % XP:ssa. Ks. BLUE_CAMP/SMALL_CAMP.
+			gold_value = 135
+			xp_value = 235
 			max_hp = 410.0
 			radius = 37.0
 			base_speed = 85.0
 			attack_reach = 360.0
 			attack_dmg = 18.0
 			attack_kb = 270.0
-			respawn_delay = 150.0
+			respawn_delay = 120.0
 			kb_resist = 0.88
 			_color = Color("df4938")
 			_windup_time = 0.27
@@ -182,15 +184,15 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 			brain.leash = 520.0
 			cd_max.basic = 1.18
 		Kind.BLUE_CAMP:
-			gold_value = 110
-			xp_value = 170
+			gold_value = 135
+			xp_value = 235
 			max_hp = 400.0
 			radius = 37.0
 			base_speed = 75.0
 			attack_reach = 440.0
 			attack_dmg = 15.0
 			attack_kb = 240.0
-			respawn_delay = 150.0
+			respawn_delay = 120.0
 			kb_resist = 0.88
 			_color = Color("4e8ee8")
 			_windup_time = 0.31
@@ -198,15 +200,17 @@ func setup_critter(p_arena, p_kind: int, p_home: Vector2) -> void:
 			brain.leash = 540.0
 			cd_max.basic = 1.25
 		Kind.SMALL_CAMP:
-			gold_value = 62
-			xp_value = 105
+			# Junglerin leipaleiri: kolme per puoli. Arvo ja respawn viritetty
+			# niin etta taysi kierros kilpailee linjafarmin kanssa (ks. RED_CAMP).
+			gold_value = 80
+			xp_value = 150
 			max_hp = 235.0
 			radius = 30.0
 			base_speed = 82.0
 			attack_reach = 76.0
 			attack_dmg = 12.0
 			attack_kb = 185.0
-			respawn_delay = 105.0
+			respawn_delay = 78.0
 			kb_resist = 0.78
 			_color = Color("79b45e")
 			_windup_time = 0.25

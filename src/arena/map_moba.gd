@@ -350,20 +350,35 @@ func jungle_paths() -> Array:
 			Vector2(sx * 1990, 140), Vector2(sx * 1990, 650)])
 		paths.append([Vector2(sx * 700, -650), Vector2(sx * 700, -140),
 			Vector2(sx * 700, 140), Vector2(sx * 700, 650)])
+		# Syvan risteyksen ita-lansikaytava taskuleirille. Ilman tata haaraa
+		# taskuleiri (sx*2300, 0) ei ollut MINKAAN reitin varrella: botit
+		# kiersivat sen ohi eivatka koskaan puhdistaneet sita.
+		paths.append([Vector2(sx * 1990, 0), Vector2(sx * 2150, 0),
+			Vector2(sx * 2300, 0)])
 	return paths
 
 
 func jungle_patrol(team: int, step: int) -> Vector2:
 	# Oma puolisko -> joki -> toinen oma leiri. Bottijungleri kiertää tätä, jos
 	# kaikki leirit ovat kuolleina eikä näkyvää gankkia ole.
+	#
+	# Reitin kaksi viimeista pistetta olivat aiemmin (sx*2700, +-650) eli oman
+	# basen takatasku seinan (x = +-2500) takana. Siella ei ole leireja, reitteja
+	# eika kohteita, joten jokainen kierros pysahtyi kahdeksi askeleeksi tyhjaan
+	# nurkkaan — juuri se "botit norkoilevat tyhjassa viidakossa" -ilmio.
+	# Uusi silmukka kayttaa ne askeleet taskuleiriin ja objectiven lahestymiseen.
 	var sx: float = -1.0 if team == 0 else 1.0
-	var route := [Vector2(sx * 2450, -650), Vector2(sx * 2220, -720),
-		Vector2(sx * 1960, -650), Vector2(sx * 1510, -720),
-		Vector2(sx * 1110, -650), Vector2(sx * 700, -140),
-		Vector2(sx * 700, 140), Vector2(sx * 1110, 650),
-		Vector2(sx * 1510, 720), Vector2(sx * 1960, 650),
-		Vector2(sx * 2220, 720), Vector2(sx * 2450, 650),
-		Vector2(sx * 2700, 650), Vector2(sx * 2700, -650)]
+	# Jokainen perakkainen pari on suoraan kavelykelpoinen (tarkistettu
+	# seinageometriaa vasten): taskuleirille ja sielta pois paastaan vain syvan
+	# risteyksen (sx*1990, 0) kautta, joten se kaydaan lapi molempiin suuntiin.
+	var route := [Vector2(sx * 2220, -720), Vector2(sx * 1960, -650),
+		Vector2(sx * 1510, -720), Vector2(sx * 1110, -650),
+		Vector2(sx * 700, -140), Vector2(sx * 700, 140),
+		Vector2(sx * 1110, 650), Vector2(sx * 1510, 720),
+		Vector2(sx * 1960, 650), Vector2(sx * 2220, 720),
+		Vector2(sx * 1990, 650), Vector2(sx * 1990, 0),
+		Vector2(sx * 2300, 0), Vector2(sx * 1990, 0),
+		Vector2(sx * 1990, -650)]
 	return route[step % route.size()]
 
 
@@ -552,6 +567,7 @@ func _draw() -> void:
 	for patch in _patches:
 		draw_circle(patch.pos, patch.r, Palette.with_alpha(FLOOR_ALT, 0.42))
 	_draw_jungle_routes()
+	_draw_camp_trails()
 	_draw_jungle_landmarks()
 	_draw_lane_alcoves()
 	_draw_river()
@@ -704,6 +720,32 @@ func _draw_jungle_routes() -> void:
 		draw_polyline(path, Color("76915d55"), 5.0, true)
 		for p in path:
 			draw_circle(p, 72.0, Color("315a3566"))
+
+
+## Tallatut polut leirien valilla: hienovarainen kuluma kertoo pelaajalle
+## puhdistuskierroksen jarjestyksen ilman UI-elementteja. Piirretaan jungle-
+## reittien paalle mutta kaiken muun alle, joten se ei peita mitaan.
+func _draw_camp_trails() -> void:
+	for sx in [-1.0, 1.0]:
+		var loop := PackedVector2Array([
+			Vector2(sx * 2450, -650), Vector2(sx * 2220, -720),
+			Vector2(sx * 1900, -700), Vector2(sx * 1510, -720),
+			Vector2(sx * 1180, -690), Vector2(sx * 900, -650)])
+		var loop_low := PackedVector2Array([
+			Vector2(sx * 2450, 650), Vector2(sx * 2220, 720),
+			Vector2(sx * 1900, 700), Vector2(sx * 1510, 720),
+			Vector2(sx * 1180, 690), Vector2(sx * 900, 650)])
+		# Taskuleirin haara: buffileirilta syvan risteyksen kautta taskuun.
+		# Kulkee samaa kavelykelpoista linjaa kuin jungle_patrol.
+		var pocket := PackedVector2Array([
+			Vector2(sx * 2220, -720), Vector2(sx * 1990, -650),
+			Vector2(sx * 1990, 0), Vector2(sx * 2300, 0)])
+		var pocket_low := PackedVector2Array([
+			Vector2(sx * 2220, 720), Vector2(sx * 1990, 650),
+			Vector2(sx * 1990, 0), Vector2(sx * 2300, 0)])
+		for track in [loop, loop_low, pocket, pocket_low]:
+			draw_polyline(track, Color("6f8a5322"), 46.0, true)
+			draw_polyline(track, Color("9db97a1e"), 16.0, true)
 
 
 func _draw_jungle_landmarks() -> void:
