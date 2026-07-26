@@ -42,6 +42,11 @@ const LADDER_ANCHOR_PAIRS := [
 	[2, 5],   # Silver vs Diamond
 	[0, 7],   # Wood vs Challenger
 ]
+# DIVISIOONAPARIT: saman tason alin (IV) vs ylin (I) — kolmen portaan ero
+# TASON SISÄLLÄ. Nämä todentavat että divisioonat eroavat oikeasti toisistaan
+# (mistake_chance + jatkuvat käyrät), koska tasoportit ovat parin molemmilla
+# puolilla identtiset. Edustajat matalasta, keskeltä ja huipulta.
+const LADDER_DIVISION_TIERS := [0, 2, 5]   # Wood, Silver, Diamond
 
 var _results: Array = []          # manuaali: [snap]; sweep/ladder: [{snap, ...}]
 var _queue: Array = []            # sweep: {bi, oi}; ladder: {lo, hi, hi_team, anchor}
@@ -165,7 +170,8 @@ func on_match_done() -> void:
 		if ladder:
 			var lq: Dictionary = _queue[_match_index]
 			_results.append({"snap": snap, "lo": int(lq["lo"]), "hi": int(lq["hi"]),
-				"hi_team": int(lq["hi_team"]), "anchor": bool(lq["anchor"])})
+				"hi_team": int(lq["hi_team"]), "anchor": bool(lq["anchor"]),
+				"division": bool(lq["division"])})
 		elif sweep:
 			_results.append({"snap": snap, "ba": _cur_ba, "oa": _cur_oa})
 		else:
@@ -205,10 +211,12 @@ func _finish() -> void:
 	if ladder:
 		var lintro := [
 			"=== LADDER-TESTI (RANK vs RANK) ===",
-			"%dv%d | %d vierekkäistä paria + %d ankkuria | %d ottelua/pari | Otteluita: %d | Nopeus: %dx" % [
+			"%dv%d | %d vierekkäistä paria + %d ankkuria + %d divisioonaparia | %d ottelua/pari | Otteluita: %d | Nopeus: %dx" % [
 				team_size, team_size, LADDER_ADJACENT_PAIRS.size(),
-				LADDER_ANCHOR_PAIRS.size(), ladder_matches, match_count, speed],
+				LADDER_ANCHOR_PAIRS.size(), LADDER_DIVISION_TIERS.size(),
+				ladder_matches, match_count, speed],
 			"Kokoonpanot satunnaisia (kiertopakka), puolet otteluista puolin vaihdettuna.",
+			"Tasoparit pelataan divisioonassa III; divisioonaparit ovat saman tason IV vs I.",
 		]
 		results.report_text = MatchReport.build_ladder(_results, lintro)
 	elif sweep:
@@ -249,8 +257,16 @@ func _build_ladder_queue() -> void:
 		var lo: int = BotRank.tier_default_rank(int(pair[0]))
 		var hi: int = BotRank.tier_default_rank(int(pair[1]))
 		for m in range(maxi(ladder_matches, 1)):
-			_queue.append({"lo": lo, "hi": hi,
-				"hi_team": m % 2, "anchor": bool(entry["anchor"])})
+			_queue.append({"lo": lo, "hi": hi, "hi_team": m % 2,
+				"anchor": bool(entry["anchor"]), "division": false})
+	# Divisioonaparit: tason IV vs saman tason I (esim. Wood IV vs Wood I).
+	for tier_v in LADDER_DIVISION_TIERS:
+		var tier: int = int(tier_v)
+		var dlo: int = tier * BotRank.DIVISIONS            # divisioona IV
+		var dhi: int = tier * BotRank.DIVISIONS + BotRank.DIVISIONS - 1   # divisioona I
+		for m in range(maxi(ladder_matches, 1)):
+			_queue.append({"lo": dlo, "hi": dhi, "hi_team": m % 2,
+				"anchor": false, "division": true})
 
 
 ## Ladder-ottelun roster: molemmille joukkueille satunnainen kokoonpano

@@ -9,9 +9,29 @@ class_name MatchReport
 ## Tilastot per sankari: K/D/A, vahinko, otettu, tornivahinko, viidakkovahinko,
 ## vaimennettu (kilvet/torjunnat), parannettu ja CS. Ihmiset merkitään *:llä.
 
-# Ladder-testin hyväksymisraja: ylemmän rankin on voitettava vähintään tämä
-# osuus parin otteluista, muuten pari merkitään varoitukseksi (ladder rikki).
+# Ladder-testin hyväksymisrajat. TASOPARIT (tier vs tier, divisioona III) ovat
+# eri kysymys kuin DIVISIOONAPARIT (saman tason IV vs I):
+#   tasopari      — alemman tason KUULUU hävitä selvästi (tasoportit avaavat
+#                   ylemmälle kykyjä joita alemmalla ei ole lainkaan)
+#   divisioonapari — kolmen portaan ero saman tason sisällä: ylemmän kuuluu
+#                   johtaa selvästi muttei murskata (portit ovat samat, ero
+#                   syntyy vain mistake_chancesta ja jatkuvista käyristä)
 const LADDER_OK_WINRATE := 0.8
+const LADDER_CLEAR_WINRATE := 0.9      # tasopari tästä ylöspäin = "SELKEÄ"
+const LADDER_DIVISION_WINRATE := 0.65  # divisioonaparin hyväksymisraja
+
+# Tasoporttien taulukko raporttiin (sama kuin BotBrain._apply_tier_gates).
+# Selittää MIKSI rankit eroavat — pelkät voitto-%:t eivät kerro sitä.
+const TIER_CAPABILITIES := [
+	"ei väistöä, ei kitetystä, ei suojautumista, ei keskitettyä tulta, ei komboja; farmi 30 %, ei perääntymistä, ei kauppareissuja, ei objektiiveja, ei makroa",
+	"AVAA: last hit + perääntyminen + kauppareissut (70 s). Väistö 25 %, ei kitetystä/suojaa, keskitetty tuli 30 %, ei Dragonia/Baronia",
+	"AVAA: väistö + Dragon. Kitetys 35 %, suoja 30 %, keskitetty tuli 60 %, ei Baronia",
+	"AVAA: kitetys + suojautuminen + Baron + linjarotaatiot. Suoja 70 %",
+	"AVAA: täysi keskitetty tuli ja kombot — ei enää leikkauksia, vain käyrät",
+	"vain käyrät: tarkempi tähtäys, nopeammat päätökset, vähemmän keskittymiskatkoja",
+	"vain käyrät + avoin huijausramppi alkaa (vahinko/kesto/jäähdytykset/vauhti)",
+	"käyrien katto: lähes virheetön tähtäys, ei keskittymiskatkoja, täysi huijausramppi",
+]
 
 
 static func build(snapshots: Array, intro: Array) -> String:
@@ -196,7 +216,8 @@ static func build_ladder(results: Array, intro: Array) -> String:
 		if not table.has(key):
 			table[key] = {"lo": lo, "hi": hi, "games": 0, "hi_wins": 0,
 				"hi_wins_blue": 0, "hi_wins_orange": 0, "draws": 0, "time": 0.0,
-				"anchor": bool(e["anchor"]), "nexus_ends": 0,
+				"anchor": bool(e["anchor"]),
+				"division": bool(e.get("division", false)), "nexus_ends": 0,
 				"hi_kills": 0.0, "lo_kills": 0.0, "hi_deaths": 0.0, "lo_deaths": 0.0,
 				"hi_assists": 0.0, "lo_assists": 0.0, "hi_cs": 0.0, "lo_cs": 0.0,
 				"hi_gold": 0.0, "lo_gold": 0.0, "hi_towers": 0.0, "lo_towers": 0.0,
@@ -246,24 +267,33 @@ static func build_ladder(results: Array, intro: Array) -> String:
 
 	lines.append("=== LADDER: PARIKOHTAISET TULOKSET (alempi vs ylempi rank) ===")
 	lines.append("  'ylempi voitti (sin+ora)' erittelee kummalla puolella ylempi pelasi -> puolibias näkyy.")
+	lines.append("  Rajat: tasopari %d %% (SELKEÄ %d %%), divisioonapari %d %%." % [
+		int(round(LADDER_OK_WINRATE * 100.0)),
+		int(round(LADDER_CLEAR_WINRATE * 100.0)),
+		int(round(LADDER_DIVISION_WINRATE * 100.0))])
 	lines.append("  pari                             | pelit | ylempi voitti | tasap | voitto% | keskikesto | tulos")
 	var broken: Array = []
 	for key in table:
 		var a: Dictionary = table[key]
 		var games: int = maxi(int(a["games"]), 1)
 		var wr: float = float(a["hi_wins"]) / float(games)
-		var ok: bool = wr >= LADDER_OK_WINRATE
-		var name := "%s vs %s" % [BotRank.rank_name(int(a["lo"])),
-			BotRank.rank_name(int(a["hi"]))]
-		if bool(a["anchor"]):
-			name += " (ankkuri)"
+		var limit: float = _ladder_limit(a)
+		var ok: bool = wr >= limit
+		var name := _ladder_pair_name(a)
 		if not ok:
-			broken.append("%s (%d %%)" % [name, int(round(wr * 100.0))])
+			broken.append("%s (%d %%, vaadittu %d %%)" % [
+				name, int(round(wr * 100.0)), int(round(limit * 100.0))])
+		var verdict := "VAROITUS"
+		if ok:
+			# "SELKEÄ" varataan tasopareille: siellä alemman KUULUU hävitä
+			# murskaavasti. Divisioonaparissa riittää selvä johto.
+			verdict = "OK"
+			if not bool(a["division"]) and wr >= LADDER_CLEAR_WINRATE:
+				verdict = "SELKEÄ"
 		lines.append("  %-32s | %5d | %6d (%d+%d)  | %5d | %5.1f %% | %10s | %s" % [
 			name, int(a["games"]), int(a["hi_wins"]),
 			int(a["hi_wins_blue"]), int(a["hi_wins_orange"]), int(a["draws"]),
-			wr * 100.0, _fmt(float(a["time"]) / float(games)),
-			"OK" if ok else "VAROITUS"])
+			wr * 100.0, _fmt(float(a["time"]) / float(games)), verdict])
 
 	# Tilastodominanssi: näyttää KUINKA paljon paremmin ylempi pelasi — myös
 	# silloin kun voitto ratkesi aikakatossa eikä nexuksessa.
@@ -276,10 +306,7 @@ static func build_ladder(results: Array, intro: Array) -> String:
 		var a: Dictionary = table[key]
 		var g := float(maxi(int(a["games"]), 1))
 		var mins: float = maxf(float(a["time"]) / 60.0, 0.1)
-		var name := "%s vs %s" % [BotRank.rank_name(int(a["lo"])),
-			BotRank.rank_name(int(a["hi"]))]
-		if bool(a["anchor"]):
-			name += " (ankkuri)"
+		var name := _ladder_pair_name(a)
 		lines.append("  %-32s | %5.1f/%4.1f/%4.1f | %5.1f/%4.1f/%4.1f | %3.0f/%3.0f  | %4.0f/%4.0f | %3.1f/%3.1f | %2.1f/%2.1f | %d/%d" % [
 			name,
 			float(a["hi_kills"]) / g, float(a["hi_deaths"]) / g, float(a["hi_assists"]) / g,
@@ -290,11 +317,22 @@ static func build_ladder(results: Array, intro: Array) -> String:
 			float(a["hi_obj"]) / g, float(a["lo_obj"]) / g,
 			int(a["nexus_ends"]), int(a["games"])])
 
+	# Tasoyhteenveto: MIKSI rankit eroavat. Voitto-%:t kertovat että eroavat,
+	# tämä taulukko kertoo mistä ero syntyy (tasoportit = kykylukitukset).
+	lines.append("")
+	lines.append("=== LADDER: TIER-YHTEENVETO (mitä kukin taso osaa) ===")
+	lines.append("  Kaksi kerrosta: TASOPORTIT avaavat kykyjä tason vaihtuessa,")
+	lines.append("  DIVISIOONAT eroavat keskittymiskatkoista (mistake_chance) ja käyristä.")
+	for ti in range(BotRank.TIER_NAMES.size()):
+		lines.append("  %-11s | %s" % [str(BotRank.TIER_NAMES[ti]),
+			str(TIER_CAPABILITIES[ti])])
+
 	lines.append("")
 	lines.append("=== LADDER-YHTEENVETO ===")
 	if broken.is_empty():
-		lines.append("LADDER TOIMII — ylempi rank voitti vähintään %d %% otteluista jokaisessa parissa." % [
-			int(round(LADDER_OK_WINRATE * 100.0))])
+		lines.append("LADDER TOIMII — jokainen pari ylitti rajansa (tasopari %d %%, divisioonapari %d %%)." % [
+			int(round(LADDER_OK_WINRATE * 100.0)),
+			int(round(LADDER_DIVISION_WINRATE * 100.0))])
 	else:
 		lines.append("LADDER RIKKI kohdassa: %s" % ", ".join(PackedStringArray(broken)))
 		lines.append("Tarkista BotRank-parametrikäyrien monotonisuus näiden rankien välillä")
@@ -305,10 +343,9 @@ static func build_ladder(results: Array, intro: Array) -> String:
 		var a: Dictionary = table[key]
 		var games2: int = maxi(int(a["games"]), 1)
 		var wr2: float = float(a["hi_wins"]) / float(games2)
-		if wr2 >= LADDER_OK_WINRATE:
+		if wr2 >= _ladder_limit(a):
 			continue
-		var name2 := "%s vs %s" % [BotRank.rank_name(int(a["lo"])),
-			BotRank.rank_name(int(a["hi"]))]
+		var name2 := _ladder_pair_name(a)
 		var lo_gold: float = maxf(float(a["lo_gold"]), 1.0)
 		var gold_lead: float = (float(a["hi_gold"]) - lo_gold) / lo_gold
 		if gold_lead >= 0.08:
@@ -322,6 +359,26 @@ static func build_ladder(results: Array, intro: Array) -> String:
 		for note in stat_notes:
 			lines.append(str(note))
 	return "\n".join(PackedStringArray(lines))
+
+
+# --- Ladder-apurit ---
+
+## Parin hyväksymisraja: divisioonaparilta vaaditaan vähemmän kuin tasoparilta
+## (saman tason IV ja I eroavat vain käyristä, eivät kykylukituksista).
+static func _ladder_limit(a: Dictionary) -> float:
+	return LADDER_DIVISION_WINRATE if bool(a.get("division", false)) \
+		else LADDER_OK_WINRATE
+
+
+## Parin nimi raporttiin, tyyppimerkinnällä.
+static func _ladder_pair_name(a: Dictionary) -> String:
+	var name := "%s vs %s" % [BotRank.rank_name(int(a["lo"])),
+		BotRank.rank_name(int(a["hi"]))]
+	if bool(a.get("division", false)):
+		name += " (divisioona)"
+	elif bool(a.get("anchor", false)):
+		name += " (ankkuri)"
+	return name
 
 
 # --- Jaetut apurit ---

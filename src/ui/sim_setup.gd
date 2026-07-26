@@ -35,7 +35,7 @@ const COUNTS := [1, 3, 5, 10, 24]
 const SPEEDS := [4, 8, 16, 32, 64]
 const REPEATS := [1, 2, 3]
 const LADDER_MATCHES := [2, 4, 6, 10]
-const LADDER_PAIRS := 10  # 7 vierekkäistä tier-paria + 3 hajautusankkuria
+const LADDER_PAIRS := 13  # 7 vierekkäistä tier-paria + 3 ankkuria + 3 divisioonaparia
 
 var _note: Label = null
 
@@ -112,7 +112,7 @@ func _update_note() -> void:
 		if _speed >= 64 else ""
 	if _ladder:
 		var ladder_total: int = LADDER_PAIRS * _ladder_matches
-		_note.text = ("Ladder: %d rank-paria (7 vierekkäistä + 3 ankkuria) × %d ottelua "
+		_note.text = ("Ladder: %d rank-paria (7 vierekkäistä + 3 ankkuria + 3 divisioonaparia) × %d ottelua "
 			+ "= %d ottelua %dv%d, %dx. Kokoonpanot satunnaisia, puolet puolin vaihdettuna. "
 			+ "%s. Raportti: LADDER TOIMII / RIKKI.%s") % [
 			LADDER_PAIRS, _ladder_matches, ladder_total, _team_size, _team_size,
