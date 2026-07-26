@@ -10,6 +10,15 @@ class_name ItemDef
 ##
 ## Legendat vaativat Baron-artefaktin (require_artifact) — Phase B toteuttaa
 ## poiminnan; osto kuluttaa artefaktin.
+##
+## TALOUS -> VOIMA (mitattu ongelma: ottelut päättyivät aikakattoon vaikka
+## voittava puoli johti kultaa 11-33 %): epicien ja legendojen HYÖKKÄYSrivit
+## (attack / ap / attack_speed / crit / armor_pen) nostettiin noin 15 %.
+## Puolustusrivejä (hp/armor/mr) EI kasvatettu — muuten meta muuttuisi
+## kestämiseksi ja pelit venyisivät entisestään. Commonit ja raret pidettiin
+## ennallaan, jotta alkupeli pysyy luettavana.
+## Sama hyökkäysvoima kertautuu rakennuksia vastaan (Structure.take_damage),
+## joten itemijohto näkyy suoraan piiritysnopeutena.
 
 const ITEMS := {
 	# --- Common (~300-400 g) ---
@@ -146,7 +155,7 @@ const ITEMS := {
 	"myrskynsilma": {
 		"name": "Myrskynsilmä", "tier": "epic", "cost": 2300,
 		"builds_from": ["myrskyterä", "veitsi"],
-		"stats": {"attack": 0.20, "attack_speed": 0.25},
+		"stats": {"attack": 0.23, "attack_speed": 0.29},
 		"passive": "ketjusalama", "active": "",
 		"desc": "Ketjusalama: joka 4. perusosuma sinkoaa 35 % vahingosta lähimpään toiseen viholliseen",
 		"role_hint": "carry",
@@ -154,7 +163,7 @@ const ITEMS := {
 	"verikuu": {
 		"name": "Verikuu", "tier": "epic", "cost": 2300,
 		"builds_from": ["verinuoli", "veripisara"],
-		"stats": {"attack": 0.18, "lifesteal": 0.12},
+		"stats": {"attack": 0.21, "lifesteal": 0.12},
 		"passive": "verikuu", "active": "",
 		"desc": "Verikuu: alle 35 % HP:llä elämänimu tuplaantuu",
 		"role_hint": "carry",
@@ -162,7 +171,7 @@ const ITEMS := {
 	"teräsarmä": {
 		"name": "Teräsärmä", "tier": "epic", "cost": 2400,
 		"builds_from": ["kaksoislinssi", "veitsi"],
-		"stats": {"attack": 0.15, "crit": 0.20},
+		"stats": {"attack": 0.17, "crit": 0.23},
 		"passive": "panssarinmurskain", "active": "",
 		"desc": "Panssarinmurskain: kritit repivät 20 % kohteen panssarista 3 s ajaksi",
 		"role_hint": "carry",
@@ -216,7 +225,7 @@ const ITEMS := {
 	"hoivasydän": {
 		"name": "Hoivasydän", "tier": "epic", "cost": 2200,
 		"builds_from": ["virtakide", "rautahelmi"],
-		"stats": {"ap": 0.10, "mana_regen": 0.5, "hp": 150.0},
+		"stats": {"ap": 0.12, "mana_regen": 0.5, "hp": 150.0},
 		"passive": "hoiva", "active": "",
 		"desc": "Hoiva: antamasi parannukset ja kilvet +20 %; avustus parantaa sinua 6 % max HP",
 		"role_hint": "support",
@@ -226,7 +235,7 @@ const ITEMS := {
 	"arkkisauva": {
 		"name": "Arkkisauva", "tier": "epic", "cost": 2400,
 		"builds_from": ["runosauva", "sirpalesauva"],
-		"stats": {"ap": 0.30},
+		"stats": {"ap": 0.35},
 		"passive": "momentum", "active": "",
 		"desc": "Momentum: kykyosuma sankariin +1 % kykyvahinko (max 10, nollautuu kuollessa)",
 		"role_hint": "ap",
@@ -234,7 +243,7 @@ const ITEMS := {
 	"kaikukide": {
 		"name": "Kaikukide", "tier": "epic", "cost": 2300,
 		"builds_from": ["runosauva", "kellojousi"],
-		"stats": {"ap": 0.18, "cdr": 0.12},
+		"stats": {"ap": 0.21, "cdr": 0.12},
 		"passive": "kaiku", "active": "",
 		"desc": "Kaiku: joka 3. kykyosuma toistaa 30 % vahingosta",
 		"role_hint": "ap",
@@ -242,7 +251,7 @@ const ITEMS := {
 	"manaydin": {
 		"name": "Manaydin", "tier": "epic", "cost": 2200,
 		"builds_from": ["virtakide", "manahelmi"],
-		"stats": {"ap": 0.15, "mana_regen": 1.0},
+		"stats": {"ap": 0.17, "mana_regen": 1.0},
 		"passive": "ylivuoto", "active": "",
 		"desc": "Ylivuoto: kyvyt maksavat 15 % vähemmän resurssia",
 		"role_hint": "ap",
@@ -252,7 +261,7 @@ const ITEMS := {
 	"riistanraatelija": {
 		"name": "Riistanraatelija", "tier": "epic", "cost": 2100,
 		"builds_from": ["ajojahti", "riistanveitsi"],
-		"stats": {"jungle_dmg": 0.5, "attack": 0.10},
+		"stats": {"jungle_dmg": 0.5, "attack": 0.12},
 		"passive": "saalistaja", "active": "",
 		"desc": "Saalistaja: leiribuffit kestävät +40 %; leirin kaato parantaa 8 % max HP",
 		"role_hint": "jungle",
@@ -260,7 +269,7 @@ const ITEMS := {
 	"varjoviitta": {
 		"name": "Varjoviitta", "tier": "epic", "cost": 2300,
 		"builds_from": ["ajojahti", "sulkasaappaat"],
-		"stats": {"ms": 0.07, "attack": 0.12},
+		"stats": {"ms": 0.07, "attack": 0.14},
 		"passive": "", "active": "varjo",
 		"desc": "Varjo: 3 sekunnin häive",
 		"role_hint": "jungle",
@@ -268,7 +277,7 @@ const ITEMS := {
 	"ansalanka": {
 		"name": "Ansalanka", "tier": "epic", "cost": 2300,
 		"builds_from": ["myrskyterä", "riistanveitsi"],
-		"stats": {"attack": 0.15, "jungle_dmg": 0.25},
+		"stats": {"attack": 0.17, "jungle_dmg": 0.25},
 		"passive": "ansa", "active": "",
 		"desc": "Ansa: hidastetut/juurrutetut kohteet ottavat sinulta +12 % vahinkoa",
 		"role_hint": "jungle",
@@ -278,7 +287,7 @@ const ITEMS := {
 	"kuninkaansurma": {
 		"name": "Kuninkaansurma", "tier": "legendary", "cost": 2400,
 		"builds_from": [], "require_artifact": true,
-		"stats": {"attack": 0.28, "attack_speed": 0.20, "crit": 0.15},
+		"stats": {"attack": 0.32, "attack_speed": 0.23, "crit": 0.17},
 		"passive": "giljotiini", "active": "",
 		"desc": "Giljotiini: perusosumat alle 25 % HP:n sankareihin +25 % vahinkoa",
 		"role_hint": "carry",
@@ -302,7 +311,7 @@ const ITEMS := {
 	"tyhjyydenydin": {
 		"name": "Tyhjyyden ydin", "tier": "legendary", "cost": 2400,
 		"builds_from": [], "require_artifact": true,
-		"stats": {"ap": 0.35, "cdr": 0.15, "mana_regen": 0.6},
+		"stats": {"ap": 0.40, "cdr": 0.15, "mana_regen": 0.6},
 		"passive": "tyhjyys", "active": "",
 		"desc": "Tyhjyys: sankaritappo/avustus palauttaa 40 ult-latausta ja nollaa kyvyt",
 		"role_hint": "ap",
@@ -310,7 +319,7 @@ const ITEMS := {
 	"alfaturkki": {
 		"name": "Alfapedon turkki", "tier": "legendary", "cost": 2400,
 		"builds_from": [], "require_artifact": true,
-		"stats": {"attack": 0.20, "ms": 0.10, "jungle_dmg": 0.6},
+		"stats": {"attack": 0.23, "ms": 0.10, "jungle_dmg": 0.6},
 		"passive": "alfa", "active": "",
 		"desc": "Alfa: +50 % vahinko Baroniin/Dragoniin; leirin kaato lataa hidasteosuman",
 		"role_hint": "jungle",

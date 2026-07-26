@@ -334,6 +334,28 @@ func _nearest_enemy_hero(rng: float) -> Hero:
 	return best
 
 
+## Kuinka paljon hyökkääjän HYÖKKÄYSITEMIT tehostavat vahinkoa rakennuksiin.
+## Nämä kertoimet tulevat combat_damage_multin PÄÄLLE, joten itemijohto näkyy
+## piiritysnopeutena eikä vain sankaritapoissa.
+##
+## Miksi: mitattu vika oli että johtava joukkue keräsi 11-33 % enemmän kultaa
+## muttei silti sulkenut peliä ennen 20 minuutin aikakattoa. Kulta muuttui
+## itemeiksi, mutta itemit eivät muuttuneet KAADETUIKSI TORNEIKSI.
+##
+## Laskuesimerkki (perusisku, kolme hyökkäysepiciä vs. yksi):
+##   3 epiciä: item_stat("attack") = 0.61
+##     -> combat_damage_mult 1.61 x rakennuskerroin (1 + 0.75*0.61 = 1.4575)
+##     = 2.35-kertainen vahinko rakennukseen
+##   1 epic:   item_stat("attack") = 0.23
+##     -> 1.23 x (1 + 0.75*0.23 = 1.1725) = 1.44
+##   suhde 1.63 -> syötetty carry kaataa tornin noin 61 %:ssa siitä ajasta
+##   jonka tasapeli vaatii.
+## Tankkiitemit (hp/armor/mr) eivät anna tästä mitään — piiritysvoima on
+## nimenomaan hyökkäystalouden palkinto.
+const STRUCT_ATTACK_SCALE := 0.75   # perusvahinkoitemien kerroin rakennuksiin
+const STRUCT_AP_SCALE := 0.5        # kykyvahinkoitemien kerroin rakennuksiin
+
+
 ## Suojattu rakennus torjuu kaiken vahingon: nexus kunnes tornit kaatuneet,
 ## sisätorni kunnes sitä suojaava uloompi torni on tuhottu.
 func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO) -> float:
@@ -346,6 +368,13 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 			AudioMgr.play("nexus_guard" if kind == Kind.NEXUS else "tower_guard",
 				0.025, -6.0, global_position)
 		return 0.0
+	# ITEMIEN PIIRITYSVOIMA: syötetty sankari repii rakennukset selvästi
+	# nopeammin. Vain oikeat sankarit (minioneilla ja olennoilla ei ole itemejä).
+	if source != null and is_instance_valid(source) and not source.is_unit:
+		var atk: float = source.item_stat("attack")
+		var ap: float = source.item_stat("ap")
+		if atk > 0.0 or ap > 0.0:
+			amount *= 1.0 + STRUCT_ATTACK_SCALE * atk + STRUCT_AP_SCALE * ap
 	var dealt := super.take_damage(amount, source, kb, kb_dir)
 	if alive and dealt > 0.0 and not Game.simulating:
 		var frac := hp / maxf(max_hp, 1.0)
