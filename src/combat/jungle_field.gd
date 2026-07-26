@@ -66,8 +66,14 @@ func _physics_process(delta: float) -> void:
 
 	var arena = source.arena
 	var acting := is_instance_valid(source)
+	# Viidakkokenttä on aluevahinkoa: merkitse lippu koko tikin ajaksi. Kenttä
+	# ohittaa rakennukset jo silmukassa, mutta lippu pitää säännön voimassa myös
+	# jos kohdesuodatus joskus löystyy (tallenna/palauta).
+	var prev_aoe: bool = false
 	if acting:
 		source._act(_slot)
+		prev_aoe = source.damage_is_aoe
+		source.damage_is_aoe = true
 	for actor in arena.heroes:
 		if not is_instance_valid(actor) or not actor.alive:
 			continue
@@ -138,6 +144,7 @@ func _physics_process(delta: float) -> void:
 					if neutral:
 						_pull(actor, 70.0 * delta)
 	if acting:
+		source.damage_is_aoe = prev_aoe
 		source._act_end()
 
 

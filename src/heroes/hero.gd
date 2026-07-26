@@ -117,6 +117,11 @@ var reflect_timer := 0.0            # kiviho: heijasta osa otetusta vahingosta t
 var reflect_factor := 0.0           # heijastettu osuus (0..1)
 var reflect_slot := ""              # heijastuksen kirjaava kykypaikka (telemetria)
 var _applying_reflect := false      # estää heijastuksen ketjuuntumisen (kaksi kiviho-sankaria)
+# Aluevahingon merkki: kentät, räjähdykset ja miinat nostavat tämän oman
+# vahinkokutsunsa ajaksi (tallenna/palauta, kuten _applying_reflect). RAKENNUKSET
+# EIVÄT OTA ALUEVAHINKOA — piiritys tehdään perusiskuilla, ei kentän päälle
+# heitetyillä loitsuilla. Ks. Structure.take_damage.
+var damage_is_aoe := false
 var cc_immune_timer := 0.0          # immuuni CC:lle (stun/root/slow/silence); esim. Lancen syöksy
 var mark_timer := 0.0               # merkitty kohde ottaa lisävahinkoa (Scout)
 var mark_amp := 1.25                # merkin vahinkokerroin (asetetaan apply_markissa)
@@ -2685,6 +2690,7 @@ func _knockout(source: Hero) -> void:
 	silence_timer = 0.0
 	reflect_timer = 0.0
 	_applying_reflect = false
+	damage_is_aoe = false
 	mark_timer = 0.0
 	_pending_dodge_shield = 0.0
 	_spend_locked.clear()
@@ -2843,6 +2849,7 @@ func reset_for_round(keep_ult_fraction := 0.5) -> void:
 	silence_timer = 0.0
 	reflect_timer = 0.0
 	_applying_reflect = false
+	damage_is_aoe = false
 	mark_timer = 0.0
 	guard_timer = 0.0
 	guard_radius = 0.0

@@ -84,6 +84,9 @@ func detonate() -> void:
 		Fx.burst(arena, global_position, Palette.glow(Color("ffd76d"), 1.5), 18, 340.0, 0.5, 6.0)
 	if source != null and is_instance_valid(source):
 		source._act(_slot)
+		# Miinan räjähdys on aluevahinkoa -> ei pure rakennuksiin.
+		var prev_aoe: bool = source.damage_is_aoe
+		source.damage_is_aoe = true
 		for h in arena.heroes:
 			if not _is_target(h):
 				continue
@@ -93,6 +96,7 @@ func detonate() -> void:
 				if away == Vector2.ZERO:
 					away = Vector2.UP
 				source.deal_damage_to(h, dmg, kb, away)
+		source.damage_is_aoe = prev_aoe
 		source._act_end()
 	queue_free()
 

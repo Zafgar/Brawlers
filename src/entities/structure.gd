@@ -51,6 +51,7 @@ var _anchor := Vector2.ZERO   # kiinnityspiste: rakennus ei liiku KOSKAAN täst�
 var show_range_visual := true # voidaan piilottaa galleriassa; pelissä aina näkyvä
 var _protected_audio_cd := 0.0
 var _damage_stage := 0        # 0 ehjä, 1 vaurioitunut, 2 kriittinen
+var _siege_hint_cd := 0.0     # piiritysesteen palautteen kuristus (popup/rengas)
 
 
 func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2,
@@ -165,6 +166,7 @@ func _passive_update(delta: float) -> void:
 	global_position = _anchor
 	velocity = Vector2.ZERO
 	_protected_audio_cd = maxf(_protected_audio_cd - delta, 0.0)
+	_siege_hint_cd = maxf(_siege_hint_cd - delta, 0.0)
 	if kind == Kind.CRYSTAL:
 		return   # kristalli ei hyökkää — se vain suojaa nexusta seisomalla
 	if kind == Kind.NEXUS:
@@ -356,6 +358,23 @@ const STRUCT_ATTACK_SCALE := 0.75   # perusvahinkoitemien kerroin rakennuksiin
 const STRUCT_AP_SCALE := 0.5        # kykyvahinkoitemien kerroin rakennuksiin
 
 
+## === PIIRITYSSÄÄNTÖ ===
+## Piiritys ei saa olla ilmaista. Aiemmin pitkän kantaman sankari (Scout 1050,
+## Quill 560+) pokettti tornin nurin tornin OMAN kantaman (440) ulkopuolelta,
+## otti nolla vahinkoa vastaan ja hölkkäsi seuraavalle. Kolme sääntöä korjaavat
+## sen — kaikki koskevat VAIN oikeita sankareita (minionit ja olennot kävelevät
+## kantamalle joka tapauksessa, eikä niitä saa tehdä hampaattomiksi):
+##   1) KANTAMAIMMUNITEETTI: rakennukseen sattuu vain sen omalta kantamalta.
+##      Astu kehän sisään -> torni ampuu takaisin. Riski on hinta.
+##   2) ALUEVAHINKO ei tee rakennukseen mitään (Hero.damage_is_aoe): kenttiä,
+##      räjähdyksiä ja miinoja ei voi käyttää tornin sulattamiseen.
+##   3) KYKYVAIMENNUS: kyvyt tekevät rakennukseen vain murto-osan. Perusisku on
+##      piiritysase; kyvyt ovat sankaritaistelua varten. Näin torninkaato vaatii
+##      paikallaan seisomista eikä yhtä loitsukombinaatiota ohilennossa.
+const ABILITY_SIEGE_MULT := 0.35    # a1/a2/ult rakennuksiin (perusisku = 1.0)
+const SIEGE_FEEDBACK_CD := 0.8      # palautteen kuristus (popup + rengas)
+
+
 ## Suojattu rakennus torjuu kaiken vahingon: nexus kunnes tornit kaatuneet,
 ## sisätorni kunnes sitä suojaava uloompi torni on tuhottu.
 func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO) -> float:
@@ -368,6 +387,22 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 			AudioMgr.play("nexus_guard" if kind == Kind.NEXUS else "tower_guard",
 				0.025, -6.0, global_position)
 		return 0.0
+	# PIIRITYSSÄÄNNÖT (ks. ABILITY_SIEGE_MULT yllä). Järjestys on tahallinen:
+	# immuniteetit ensin (halpoja ja lopullisia), sitten vaimennus, vasta sen
+	# jälkeen itemikertoimet ja varsinainen vahinkolaskenta.
+	if source != null and is_instance_valid(source) and not source.is_unit:
+		var siege_range: float = NEXUS_LASER_RANGE if kind == Kind.NEXUS else SHOT_RANGE
+		# 1) Kantaman ulkopuolelta ei satu. Piiritys vaatii riskin ottamista.
+		if source.global_position.distance_to(global_position) > siege_range + radius:
+			_siege_feedback("KANTAMAN ULKOPUOLELLA")
+			return 0.0
+		# 2) Aluevahinko ei kaada rakennuksia lainkaan.
+		if source.damage_is_aoe:
+			_siege_feedback("EI ALUEVAHINKOA")
+			return 0.0
+		# 3) Kyvyt tekevät vain murto-osan — perusisku on piiritysase.
+		if source._cast_context in ["a1", "a2", "ult"]:
+			amount *= ABILITY_SIEGE_MULT
 	# ITEMIEN PIIRITYSVOIMA: syötetty sankari repii rakennukset selvästi
 	# nopeammin. Vain oikeat sankarit (minioneilla ja olennoilla ei ole itemejä).
 	if source != null and is_instance_valid(source) and not source.is_unit:
@@ -384,6 +419,45 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 			AudioMgr.play("nexus_crack" if kind == Kind.NEXUS else "tower_crack",
 				0.06, -4.0 if kind == Kind.NEXUS else -7.0, global_position)
 	return dealt
+
+
+## Piiritysesteen palaute: lyhyt teksti + valkoinen rengaspulssi rakennuksen
+## reunalle, jotta "miksi tämä ei mene rikki" ei jää arvailun varaan. Kuristettu
+## (SIEGE_FEEDBACK_CD), koska jatkuva tuli kutsuisi tätä kymmeniä kertoja
+## sekunnissa. Ei piirretä eikä laskettu simulaatiossa.
+func _siege_feedback(text: String) -> void:
+	if Game.simulating or arena == null or _siege_hint_cd > 0.0:
+		return
+	_siege_hint_cd = SIEGE_FEEDBACK_CD
+	arena.popup(global_position + Vector2(0, -radius - 22.0), text, Palette.SHIELD, 15)
+	Fx.ring(arena, global_position, Palette.with_alpha(Color.WHITE, 0.75),
+		radius + 12.0, 0.32, 3.0)
+
+
+## Kuinka voimakkaasti "astu kehän sisään" -vihje piirretään: 0 = ei lainkaan,
+## 1 = paikallinen ihmispelaaja seisoo aivan kehän ulkopuolella. Vihje näkyy vain
+## kun oma sankari on kantaman ULKOPUOLELLA mutta jo lähistöllä (1.6x kantama) —
+## silloin piirityssääntö on juuri se asia jota pelaajan pitää katsoa.
+func siege_hint_strength() -> float:
+	if Game.simulating or arena == null or not show_range_visual or not alive:
+		return 0.0
+	var siege_range: float = NEXUS_LASER_RANGE if kind == Kind.NEXUS else SHOT_RANGE
+	var inner: float = siege_range + radius
+	var outer: float = siege_range * 1.6
+	if outer <= inner:
+		return 0.0
+	var best := 0.0
+	for h in arena.player_heroes:
+		var ph := h as Hero
+		if ph == null or not is_instance_valid(ph) or not ph.alive or ph.team == team:
+			continue
+		if ph.profile == null or ph.profile.is_bot:
+			continue   # vihje on paikalliselle ihmiselle, ei boteille
+		var d: float = ph.global_position.distance_to(global_position)
+		if d <= inner or d > outer:
+			continue
+		best = maxf(best, 1.0 - (d - inner) / (outer - inner))
+	return clampf(best, 0.0, 1.0)
 
 
 ## Tuho: ilmoita areenalle (voitto / nexuksen avautuminen). Ei herää henkiin.
@@ -431,6 +505,7 @@ func reset_for_round(_keep_ult_fraction := 0.5) -> void:
 	_ramp_target = null   # ei kanneta ramppausta erien yli
 	_ramp = 0
 	_protected_audio_cd = 0.0
+	_siege_hint_cd = 0.0
 	_damage_stage = 0
 	set_collision_layer_value(2, true)
 	set_collision_mask_value(2, true)
@@ -490,10 +565,26 @@ class StructureVisual:
 		var rng_fill: Color = col if s._target_lock == null \
 			else Palette.glow(Color("ff5a4a"), 1.2)
 		if s.show_range_visual:
+			# Kehä ei ole enää pelkkä varoitus vaan PIIRITYSSÄÄNTÖ: vahinko menee
+			# läpi vain sen sisältä. Kun paikallinen pelaaja seisoo juuri kehän
+			# ulkopuolella, reuna korostuu hyökkääjän värillä pyörivänä katko-
+			# viivana -> "astu sisään" näkyy ilman tekstiä. Ei simulaatiossa.
+			var hint: float = s.siege_hint_strength()
 			draw_circle(Vector2.ZERO, Structure.SHOT_RANGE,
-				Palette.with_alpha(rng_fill, 0.028 + 0.05 * chg))
+				Palette.with_alpha(rng_fill, 0.028 + 0.05 * chg + 0.030 * hint))
 			draw_arc(Vector2.ZERO, Structure.SHOT_RANGE, 0.0, TAU, 72,
-				Palette.with_alpha(Palette.glow(rng_fill, 1.3), 0.12 + 0.30 * chg), 2.5)
+				Palette.with_alpha(Palette.glow(rng_fill, 1.3),
+					0.12 + 0.30 * chg + 0.18 * hint), 2.5)
+			if hint > 0.0:
+				var hint_col: Color = Palette.glow(Palette.team(1 - s.team), 1.35)
+				var hint_pulse: float = 0.55 + 0.45 * sin(_time * 4.5)
+				var dashes := 44
+				for dash_i in range(dashes):
+					var da0: float = TAU * float(dash_i) / float(dashes) + _time * 0.22
+					var da1: float = da0 + TAU / float(dashes) * 0.52
+					draw_arc(Vector2.ZERO, Structure.SHOT_RANGE + 5.0, da0, da1, 4,
+						Palette.with_alpha(hint_col,
+							(0.16 + 0.26 * hint_pulse) * hint), 3.0)
 		# Kivijalka: leveä matala kuusikulmio.
 		var base_ring := PackedVector2Array()
 		for i in range(6):

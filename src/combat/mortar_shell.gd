@@ -86,6 +86,9 @@ func _impact() -> void:
 			26, 410.0, 0.58, 7.0)
 	if source != null and is_instance_valid(source):
 		source._act(_slot)
+		# Kranaatin osuma on aluevahinkoa -> ei pure rakennuksiin.
+		var prev_aoe: bool = source.damage_is_aoe
+		source.damage_is_aoe = true
 		for unit in arena.heroes:
 			if not _is_target(unit):
 				continue
@@ -94,6 +97,7 @@ func _impact() -> void:
 				if away == Vector2.ZERO:
 					away = Vector2.UP
 				source.deal_damage_to(unit, dmg, kb, away)
+		source.damage_is_aoe = prev_aoe
 		source._act_end()
 	queue_free()
 

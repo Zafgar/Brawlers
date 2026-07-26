@@ -142,6 +142,9 @@ func _detonate() -> void:
 			int(14 + 24 * power), 520.0, 0.72, 9.0)
 	if pilot != null and is_instance_valid(pilot):
 		pilot._act("ult")
+		# Raketin räjähdys on aluevahinkoa -> ei pure rakennuksiin.
+		var prev_aoe: bool = pilot.damage_is_aoe
+		pilot.damage_is_aoe = true
 		for h in arena.heroes:
 			if not _is_target(h):
 				continue
@@ -151,6 +154,7 @@ func _detonate() -> void:
 				if away == Vector2.ZERO:
 					away = Vector2.UP
 				pilot.deal_damage_to(h, dmg * power, kb * lerpf(0.4, 1.0, power), away)
+		pilot.damage_is_aoe = prev_aoe
 		pilot._act_end()
 		if pilot.has_method("surface"):
 			pilot.surface()

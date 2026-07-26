@@ -102,8 +102,14 @@ func _physics_process(delta: float) -> void:
 	# Aseta luoneen kyvyn konteksti alueen vaikutusten ajaksi (telemetria:
 	# alueen slow/vahinko/paranukset kirjautuvat oikealle kykypaikalle).
 	var acting: bool = source != null and is_instance_valid(source)
+	# Alue on määritelmällisesti aluevahinkoa: merkitse lippu koko tikin ajaksi
+	# (tallenna/palauta, ettei sisäkkäinen kutsu jätä sitä päälle) -> rakennukset
+	# eivät ota kentiltä vahinkoa lainkaan.
+	var prev_aoe: bool = false
 	if acting:
 		source._act(_slot)
+		prev_aoe = source.damage_is_aoe
+		source.damage_is_aoe = true
 	for hero in arena.heroes:
 		if not is_instance_valid(hero) or not hero.alive:
 			continue
@@ -146,6 +152,7 @@ func _physics_process(delta: float) -> void:
 			"dome":
 				pass  # kupolin torjunta hoidetaan Projectile-luokassa
 	if acting:
+		source.damage_is_aoe = prev_aoe
 		source._act_end()
 
 	queue_redraw()
