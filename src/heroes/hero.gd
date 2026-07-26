@@ -227,6 +227,20 @@ var _fountain_fx_t := 0.0
 var _fountain_popup_t := 0.0
 var _fountain_heal_accum := 0.0
 
+# Tilapopuppien kuristus. Alueet ja kentät uusivat statuksen JOKA fysiikkaruutu
+# (ks. apply_slow'n kommentti), joten suora arena.popup jokaisesta kutsusta
+# konekivääritti tekstiä sankarin päälle. Avain -> jäljellä oleva esto (s).
+var _status_popup_cd := {}
+const STATUS_POPUP_INTERVAL := 1.1   # sama tila enintään kerran ~sekunnissa
+const STATUS_POPUP_MIN_GAIN := 0.25  # popup vain jos vaikutus PIDENTYI näin paljon
+
+# Numeropopuppien (vahinko, parannus, kilpi-imu) kertymä. Kenttien tikit
+# tuottivat oman numeron per tikki -> summataan lyhyeen ikkunaan ja näytetään
+# yksi luettava luku. Iso kertaosuma menee läpi heti (ikkuna on jo umpeutunut).
+const NUMBER_POPUP_WINDOW := 0.25    # enintään 4 numeroa sekunnissa per laji
+var _num_accum := {"dmg": 0.0, "heal": 0.0, "soak": 0.0}
+var _num_cd := {"dmg": 0.0, "heal": 0.0, "soak": 0.0}
+
 # Paluukanavointi: 0 = ei kanavoida, muuten kulunut aika 0..RECALL_TIME.
 var _recall_t := 0.0
 var _recall_fx_t := 0.0
@@ -986,6 +1000,15 @@ func _tick_status(delta: float) -> void:
 	if duel_mark_timer <= 0.0 and duel_marks > 0:
 		duel_marks = 0
 		duel_marker = null
+	# Popup-kuristimet: tilatekstien esto ja numeroiden kertymäikkuna.
+	for pkey in _status_popup_cd:
+		_status_popup_cd[pkey] = maxf(float(_status_popup_cd[pkey]) - delta, 0.0)
+	for nkey in _num_cd:
+		var left: float = float(_num_cd[nkey]) - delta
+		_num_cd[nkey] = maxf(left, 0.0)
+		if left <= 0.0 and float(_num_accum[nkey]) >= 1.0:
+			_num_cd[nkey] = NUMBER_POPUP_WINDOW
+			_flush_number_popup(nkey)
 
 
 ## Lukee ohjaimen kykypainallukset puskuriin ja vanhentaa vanhat painallukset.
@@ -2330,7 +2353,7 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 			shield_source.profile.add_score(soak * 0.08)
 			if shield_slot != "":
 				shield_source._slot_rec(shield_slot)["shield"] += soak
-		arena.popup(global_position + Vector2(0, -46), str(int(soak)), Palette.SHIELD, 18)
+		_number_popup("soak", soak)
 		# Kilven imemä osuma kuuluu (aiemmin täysin vaimennettu osuma oli mykkä).
 		if soak > 0.0:
 			AudioMgr.play("shield", 0.1, -7.0, global_position)
@@ -2359,7 +2382,9 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 		apply_knockback(kb_dir, kb)
 
 	visual.flash()
-	arena.popup(global_position + Vector2(0, -46), str(int(amount)), Color.WHITE, 20)
+	# Tikkivahinko (kentät, palot) summataan lyhyeen ikkunaan; yksittäinen osuma
+	# näkyy silti heti omana lukunaan.
+	_number_popup("dmg", amount)
 	AudioMgr.play("hit", 0.08, -6.0, global_position)   # tiheä ääni -> hillitympi taso
 	# Tuntopalaute isosta osumasta (>12 % maksimista): voimakkuus vahingon mukaan.
 	if amount > max_hp * 0.12:
@@ -2460,7 +2485,9 @@ func heal_hp(amount: float, source: Hero) -> float:
 		if healed > 0.0 and is_instance_valid(source) and source.team == team \
 				and source.items.has("aamunkoitto"):
 			apply_haste(1.15, 2.0, false)
-	arena.popup(global_position + Vector2(0, -46), "+%d" % int(healed), Palette.HEAL, 18)
+	# Kenttien ja aurojen tikkiparannus summataan: "+3 +3 +3 ..." muuttui aiemmin
+	# tekstiryöpyksi sankarin päällä.
+	_number_popup("heal", healed)
 	Fx.heal_sparkle(arena, global_position)
 	return healed
 
@@ -2552,13 +2579,59 @@ func apply_haste(factor: float, duration: float, record := true) -> void:
 		_record_buff(haste_timer - before)   # buffi-hyöty kirjataan antajan kyvylle
 
 
+## Tilapopup kuristettuna: näyttää tekstin vain kun vaikutus oikeasti PIDENTYI
+## (gain) ja saman tilan edellisestä popupista on kulunut tarpeeksi aikaa.
+## Näin kentässä seisominen ei enää konekivääritä tekstiä sankarin päälle.
+func _status_popup(key: String, text: String, color: Color, size: int,
+		gain: float, interval := STATUS_POPUP_INTERVAL) -> bool:
+	if arena == null or gain < STATUS_POPUP_MIN_GAIN:
+		return false
+	if float(_status_popup_cd.get(key, 0.0)) > 0.0:
+		return false
+	_status_popup_cd[key] = interval
+	arena.popup(global_position + Vector2(0, -60), text, color, size)
+	return true
+
+
+## Numeropopuppien kertymä: pieni tikkivahinko summataan ikkunaan, iso
+## kertaosuma näkyy heti (ikkuna on umpeutunut edellisestä osumasta).
+func _number_popup(key: String, amount: float) -> void:
+	if arena == null or amount <= 0.0:
+		return
+	_num_accum[key] = float(_num_accum[key]) + amount
+	if float(_num_cd[key]) > 0.0:
+		return
+	_num_cd[key] = NUMBER_POPUP_WINDOW
+	_flush_number_popup(key)
+
+
+## Tyhjentää yhden numerolajin kertymän ruudulle luettavana lukuna.
+func _flush_number_popup(key: String) -> void:
+	var total: float = float(_num_accum[key])
+	if total < 1.0 or arena == null:
+		return
+	_num_accum[key] = 0.0
+	match key:
+		"heal":
+			arena.popup(global_position + Vector2(0, -46),
+				"+%d" % int(total), Palette.HEAL, 18)
+		"soak":
+			arena.popup(global_position + Vector2(0, -46),
+				str(int(total)), Palette.SHIELD, 18)
+		_:
+			arena.popup(global_position + Vector2(0, -46),
+				str(int(total)), Color.WHITE, 20)
+
+
 func apply_root(duration: float) -> void:
 	if cc_immune_timer > 0.0:
 		return
 	var before := root_timer
 	root_timer = maxf(root_timer, duration)
-	arena.popup(global_position + Vector2(0, -60), "JUURTUNUT", Palette.BAD, 16)
-	AudioMgr.play("root", 0.08, 0.0, global_position)
+	# Popup ja ääni vain merkittävästä uudesta juurrutuksesta: alueet uusivat
+	# rootin joka ruutu, jolloin suora popup/ääni jyskytti päälle jatkuvasti.
+	if _status_popup("root", "JUURTUNUT", Palette.BAD, 16, root_timer - before):
+		AudioMgr.play("root", 0.08, 0.0, global_position)
 	_record_cc("root", root_timer - before)
 	profile.stats.cc_suffered += root_timer - before
 
@@ -2581,8 +2654,8 @@ func apply_silence(duration: float) -> void:
 	if silence_timer - before > 0.0:
 		_record_cc("stun", silence_timer - before)   # vaimennus = kova CC, kirjataan stuniksi
 		profile.stats.cc_suffered += silence_timer - before
-		if arena != null:
-			arena.popup(global_position + Vector2(0, -60), "VAIMENNETTU", Color("b06aff"), 15)
+		_status_popup("silence", "VAIMENNETTU", Color("b06aff"), 15,
+			silence_timer - before)
 
 
 ## Kiviho: aseta heijastus (osa otetusta vahingosta takaisin hyökkääjälle) ja
@@ -2594,9 +2667,12 @@ func apply_reflect(duration: float, factor: float, slot: String) -> void:
 
 
 func apply_mark(duration: float, amp := 1.25) -> void:
+	var before := mark_timer
 	mark_timer = maxf(mark_timer, duration)
 	mark_amp = amp
-	arena.popup(global_position + Vector2(0, -60), "MERKITTY", Palette.GOLD, 14)
+	# Skannaavat kentät merkitsevät uudelleen joka ruutu -> popup vain kun merkki
+	# oikeasti uusiutui pidemmäksi, ja korkeintaan kerran sekunnissa.
+	_status_popup("mark", "MERKITTY", Palette.GOLD, 14, mark_timer - before)
 
 
 func start_guard(duration: float, absorb := 0.7, arc_deg := 80.0, radius := 0.0) -> void:
@@ -2694,6 +2770,12 @@ func _knockout(source: Hero) -> void:
 	mark_timer = 0.0
 	_pending_dodge_shield = 0.0
 	_spend_locked.clear()
+	# Popup-kuristimet nollataan, ettei kuoleman aikaan jäänyt kertymä pomppaa
+	# ruudulle vasta uudelleensyntymässä.
+	_status_popup_cd.clear()
+	for nkey in _num_accum:
+		_num_accum[nkey] = 0.0
+		_num_cd[nkey] = 0.0
 	# Itemipassiivien tila nollautuu kuollessa; itemit itsessään SÄILYVÄT
 	# (ottelun mittaisia, kuten rankit). Momentum menetetään kokonaan.
 	_ap_momentum = 0
