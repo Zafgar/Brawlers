@@ -268,8 +268,10 @@ static func build_sweep(results: Array, intro: Array) -> String:
 ## (iso rankiero, terveystarkistus). Tuomio: ylemmän on voitettava vähintään
 ## LADDER_OK_WINRATE otteluista, muuten "LADDER RIKKI kohdassa X".
 static func build_ladder(results: Array, intro: Array) -> String:
-	var lines: Array = intro.duplicate()
-	lines.append("")
+	# Runko kootaan omaan taulukkoonsa: YHTEENVETO-laatikko tarvitsee osioiden
+	# keräämät liput ja se ladotaan raportin kärkeen vasta lopuksi.
+	var lines: Array = []
+	var flags: Array = []
 	var table: Dictionary = {}   # "lo-hi" -> koonti (säilyttää lisäysjärjestyksen)
 	for e in results:
 		var snap: Dictionary = e["snap"]
@@ -390,6 +392,17 @@ static func build_ladder(results: Array, intro: Array) -> String:
 		lines.append("  %-11s | %s" % [str(BotRank.TIER_NAMES[ti]),
 			str(TIER_CAPABILITIES[ti])])
 
+	# Balanssikooste: rankkierotteluun kuuluva itemi- ja tasodata ensin
+	# tiereittäin, sitten koko otannan yhteiset osiot. LADDER-YHTEENVETO jää
+	# viimeiseksi, koska ladder-ajon tuomio on raportin lopputulos.
+	var opts: Dictionary = {"flags": flags, "pairs": table.size()}
+	_section_items_by_rank(lines, results, opts)
+	_section_levels_by_rank(lines, results, opts)
+	_section_items(lines, results, opts)
+	_section_power_curve(lines, results, opts)
+	_section_levels(lines, results, opts)
+	_section_ability_ranks(lines, results, opts)
+
 	lines.append("")
 	lines.append("=== LADDER-YHTEENVETO ===")
 	if broken.is_empty():
@@ -421,7 +434,12 @@ static func build_ladder(results: Array, intro: Array) -> String:
 		lines.append("Diagnoosi:")
 		for note in stat_notes:
 			lines.append(str(note))
-	return "\n".join(PackedStringArray(lines))
+	var head: Array = intro.duplicate()
+	head.append("")
+	_summary_box(head, results, opts)
+	head.append("")
+	head.append_array(lines)
+	return "\n".join(PackedStringArray(head))
 
 
 # --- Ladder-apurit ---
@@ -2143,6 +2161,159 @@ static func _section_heroes(lines: Array, results: Array, opts: Dictionary) -> v
 	lines.append("  Sankariosion tarkistuskohteita: %d." % (flags.size() - flag_start))
 
 
+## Ladderin sankariottelut tiereittain: kumpi rank pelasi kummallakin puolella.
+## Palauttaa tyhjän sanakirjan jos tulosjoukko ei ole ladder-muotoinen (sweep ja
+## vakiosimulaatio eivät kanna rank-tietoa) — kutsuja tulostaa silloin "ei dataa".
+static func _tier_rows(results: Array) -> Dictionary:
+	var out: Dictionary = {}
+	for e_v in results:
+		if not (e_v is Dictionary):
+			continue
+		var e: Dictionary = e_v
+		if not (e.has("snap") and e.has("lo") and e.has("hi") and e.has("hi_team")):
+			continue
+		var snap: Dictionary = e["snap"]
+		var hi_team: int = int(e["hi_team"])
+		for hv in snap.get("heroes", []):
+			var h: Dictionary = hv
+			var rank: int = int(e["hi"]) if int(h.get("team", -1)) == hi_team else int(e["lo"])
+			var tier: int = BotRank.tier_of(rank)
+			if not out.has(tier):
+				out[tier] = []
+			var bucket: Array = out[tier]
+			bucket.append(h)
+	return out
+
+
+## Tierikohtainen koonti: valmiit epicit, ensiepicin aika, käyttämätön kulta,
+## rakennetuimmat itemit sekä tasot (LV ka, L4- ja L12-ajat). Yksi kerays
+## palvelee molempia per rank -taulukoita, joten luvut eivät pääse erilleen.
+static func _tier_aggregate(rows: Dictionary) -> Dictionary:
+	var agg: Dictionary = {}
+	for tier_v in rows:
+		var tier: int = int(tier_v)
+		var bucket: Array = rows[tier]
+		if not agg.has(tier):
+			agg[tier] = {"n": 0, "epics": 0, "fe_sum": 0.0, "fe_n": 0, "unspent": 0.0,
+				"items": {}, "level_sum": 0.0, "l4": [], "l12": []}
+		var a: Dictionary = agg[tier]
+		for hv in bucket:
+			var h: Dictionary = hv
+			a["n"] = int(a["n"]) + 1
+			a["unspent"] = float(a["unspent"]) + maxf(
+				float(h.get("gold", 0.0)) - float(h.get("gold_spent", 0.0)), 0.0)
+			a["level_sum"] = float(a["level_sum"]) + float(h.get("level", 1))
+			var lt: Dictionary = h.get("level_times", {})
+			if lt.has("4"):
+				var l4: Array = a["l4"]
+				l4.append(float(lt["4"]))
+			if lt.has("12"):
+				var l12: Array = a["l12"]
+				l12.append(float(lt["12"]))
+			var seen: Dictionary = {}
+			var fe_t := -1.0
+			for ev_v in h.get("item_log", []):
+				var ev: Dictionary = ev_v
+				if bool(ev.get("sold", false)) or str(ev.get("tier", "")) != "epic":
+					continue
+				var iid: String = str(ev.get("id", "?"))
+				seen[iid] = true
+				var t_buy: float = float(ev.get("t", 0.0))
+				if fe_t < 0.0 or t_buy < fe_t:
+					fe_t = t_buy
+			a["epics"] = int(a["epics"]) + seen.size()
+			var items: Dictionary = a["items"]
+			for sid_v in seen:
+				var sid: String = str(sid_v)
+				items[sid] = int(items.get(sid, 0)) + 1
+			if fe_t >= 0.0:
+				a["fe_sum"] = float(a["fe_sum"]) + fe_t
+				a["fe_n"] = int(a["fe_n"]) + 1
+	return agg
+
+
+## Tierin nimi; tuntematon indeksi ei kaada raporttia.
+static func _tier_name(tier: int) -> String:
+	if tier < 0 or tier >= BotRank.TIER_NAMES.size():
+		return "?"
+	return str(BotRank.TIER_NAMES[tier])
+
+
+## ITEMIT PER RANK — itemoiko ylempi rank oikeasti paremmin. Tämä on ladderin
+## ydinkysymyksen (miksi ylempi voittaa) talouspuoli: valmiiden epicien määrä,
+## avauksen aika ja lompakkoon jäänyt kulta tiereittäin.
+static func _section_items_by_rank(lines: Array, results: Array, opts: Dictionary) -> void:
+	lines.append("")
+	lines.append(str(opts.get("rank_items_title", "=== ITEMIT PER RANK ===")))
+	lines.append("  Itemoiko ylempi rank paremmin: valmiit epicit, avauksen aika ja lompakkoon jäänyt kulta.")
+	lines.append("  tier        | sank.ott | epicejä/s | 1. epic ka | käyttämätön | rakennetuin epic")
+	var rows: Dictionary = _tier_rows(results)
+	if rows.is_empty():
+		lines.append("  Ei rank-tietoa otannassa (vain ladder-ajo tuottaa sen).")
+		return
+	var agg: Dictionary = _tier_aggregate(rows)
+	var keys: Array = agg.keys()
+	keys.sort()
+	for tier_v in keys:
+		var tier: int = int(tier_v)
+		var a: Dictionary = agg[tier]
+		var items: Dictionary = a["items"]
+		var ikeys: Array = items.keys()
+		ikeys.sort()
+		var best_id := ""
+		var best_n := 0
+		for iid_v in ikeys:
+			var iid: String = str(iid_v)
+			if int(items[iid]) > best_n:
+				best_id = iid
+				best_n = int(items[iid])
+		var best := "-"
+		if best_id != "":
+			best = "%s (%d)" % [str(ItemDef.get_item(best_id).get("name", best_id)), best_n]
+		var fe_text := "-"
+		if int(a["fe_n"]) > 0:
+			fe_text = _fmt(float(a["fe_sum"]) / float(a["fe_n"]))
+		lines.append("  %-11s | %8d | %9.2f | %10s | %11d | %s" % [
+			_tier_name(tier), int(a["n"]),
+			float(a["epics"]) / maxf(float(a["n"]), 1.0), fe_text,
+			int(float(a["unspent"]) / maxf(float(a["n"]), 1.0)), best])
+	if keys.size() >= 2:
+		var lo: Dictionary = agg[int(keys[0])]
+		var hi: Dictionary = agg[int(keys[keys.size() - 1])]
+		var d_epics: float = float(hi["epics"]) / maxf(float(hi["n"]), 1.0) \
+			- float(lo["epics"]) / maxf(float(lo["n"]), 1.0)
+		var note := "ylempi tier itemoi tehokkaammin"
+		if d_epics <= -0.05:
+			note = "TARKISTA: ylempi tier saa VÄHEMMÄN epicejä valmiiksi"
+		elif absf(d_epics) < 0.05:
+			note = "TARKISTA: tierien itemointi ei eroa"
+		lines.append("  %s -> %s: %+.2f epiciä/sankariottelu -> %s" % [
+			_tier_name(int(keys[0])), _tier_name(int(keys[keys.size() - 1])), d_epics, note])
+
+
+## TASOT PER RANK — pääseekö ylempi rank nopeammin ultille ja loppupelin
+## tasoille. Mediaani (ei keskiarvo): yksi venynyt ottelu ei vääristä lukua.
+static func _section_levels_by_rank(lines: Array, results: Array, opts: Dictionary) -> void:
+	lines.append("")
+	lines.append(str(opts.get("rank_levels_title", "=== TASOT PER RANK ===")))
+	lines.append("  Pääseekö ylempi rank nopeammin ultille (L4) ja loppupelin tasoille (L12).")
+	lines.append("  tier        | pelaajia | LV ka | mediaani L4 | mediaani L12")
+	var rows: Dictionary = _tier_rows(results)
+	if rows.is_empty():
+		lines.append("  Ei rank-tietoa otannassa (vain ladder-ajo tuottaa sen).")
+		return
+	var agg: Dictionary = _tier_aggregate(rows)
+	var keys: Array = agg.keys()
+	keys.sort()
+	for tier_v in keys:
+		var tier: int = int(tier_v)
+		var a: Dictionary = agg[tier]
+		lines.append("  %-11s | %8d | %5.1f | %11s | %12s" % [
+			_tier_name(tier), int(a["n"]),
+			float(a["level_sum"]) / maxf(float(a["n"]), 1.0),
+			_median_fmt(a["l4"]), _median_fmt(a["l12"])])
+
+
 ## Ottelutason systeeminen terveys: kestojakauma ja päättymistapa, lumipallo vs
 ## comeback (kultajohto 10:00 vs lopputulos), ensitapahtumien konversio voitoiksi,
 ## objektiivimäärät, talouden lähteet rooleittain sekä CC/vaimennus.
@@ -2408,6 +2579,10 @@ static func _summary_box(lines: Array, results: Array, opts: Dictionary) -> void
 			nexus += 1
 	var n: int = snapshots.size()
 	lines.append("=== YHTEENVETO ===")
+	# Ladder mittaa rankpareja, ei kokoonpanoja: parimäärä kertoo otannan laajuuden.
+	var pairs: int = int(opts.get("pairs", 0))
+	if pairs > 0:
+		lines.append("  Rankpareja %d (tasoparit, ankkurit ja divisioonaparit)" % pairs)
 	lines.append("  Otteluita %d | keskikesto %s | nexus-loppuja %d (%s)" % [
 		n, _fmt(total_time / maxf(float(n), 1.0)), nexus, _pct_text(nexus, n)])
 	lines.append("  Eniten liputetut itemit:   %s" % _top_flags(flags, "itemi"))
