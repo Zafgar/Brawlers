@@ -59,6 +59,15 @@ const SNOWBALL_LOW := 55.0         # iso johto voittaa alle tämän -> johdolla 
 const BARON_SKIP_SHARE := 30.0     # % otteluista joissa Baronia ei kaadettu lainkaan
 const BUILD_DOMINANT := 80.0       # yhden lopullisen buildin osuus %-yksikköinä
 
+# --- Sweepin ristiintaulukot: "mikä on itemin rooli tässä kaikessa" ---------
+# Nämä vastaavat kysymyksiin joita pelkät itemi- ja sankaritaulukot eivät
+# vastaa: mitä KUKIN ROOLI rakentaa, mitä KOVIMMAT/KEVEIMMÄT sankarit avaavat
+# ja muuttuuko AIKAINEN itemi oikeasti loppupelin voimaksi.
+const CROSS_TOP_ITEMS := 3         # montako epiciä listataan per rooli
+const CROSS_HERO_N := 6            # montako sankaria kummastakin vahinkopäästä
+const CROSS_EARLY_T := 480.0       # ensiepic ennen 8:00 = "aikainen avaus"
+const CROSS_LATE_DEV := 3.0        # loppuvaiheen osuuseron liputusraja (%-yks)
+
 static func build(snapshots: Array, intro: Array) -> String:
 	# Runko kootaan ensin omaan taulukkoonsa: YHTEENVETO-laatikko tarvitsee
 	# osioiden keräämät liput ja se ladotaan raportin kärkeen vasta lopuksi.
@@ -133,9 +142,14 @@ static func build(snapshots: Array, intro: Array) -> String:
 
 
 ## Laaja läpikäynti: kukin ottelu on {snap, ba, oa} (blue/orange-kokoonpanotyyppi).
+## Sweep on käyttäjän varsinainen sankaritasapainoajo, joten se saa kokoonpano-
+## analyysin lisäksi TÄYDEN balanssikoosteen: itemit, itemin rooli ristiin
+## roolien/sankarien/voimakäyrän kanssa, voimakäyrä, tasot ja kykyrankit.
 static func build_sweep(results: Array, intro: Array) -> String:
-	var lines: Array = intro.duplicate()
-	lines.append("")
+	# Runko kootaan omaan taulukkoonsa: YHTEENVETO-laatikko tarvitsee osioiden
+	# keräämät liput ja se ladotaan raportin kärkeen vasta lopuksi.
+	var lines: Array = []
+	var flags: Array = []
 	var arch: Dictionary = {}
 	var agg: Dictionary = {}
 	var comps: Dictionary = {}
@@ -232,7 +246,20 @@ static func build_sweep(results: Array, intro: Array) -> String:
 	_survivability_table(lines, agg)
 	_tanking_table(lines, agg)
 	_ability_table(lines, agg)
-	return "\n".join(PackedStringArray(lines))
+	# Balanssikooste: samat osiot kuin vakiosimulaatiossa + sweepin omat
+	# ristiintaulukot, jotka kertovat MITÄ itemi tekee roolille ja sankarille.
+	var opts: Dictionary = {"flags": flags}
+	_section_items(lines, results, opts)
+	_section_item_cross(lines, results, opts)
+	_section_power_curve(lines, results, opts)
+	_section_levels(lines, results, opts)
+	_section_ability_ranks(lines, results, opts)
+	var head: Array = intro.duplicate()
+	head.append("")
+	_summary_box(head, results, opts)
+	head.append("")
+	head.append_array(lines)
+	return "\n".join(PackedStringArray(head))
 
 
 ## Ladder-testin raportti. Kukin tulos on {snap, lo, hi, hi_team, anchor}:
@@ -1388,6 +1415,227 @@ static func _item_verdict(a: Dictionary, iname: String, mean_eff: float, flags: 
 	if parts.is_empty():
 		return ""
 	return " + ".join(PackedStringArray(parts))
+
+
+## Ajoitusryhmän tyhjä koonti (aikainen / myöhäinen ensiepic).
+static func _cross_group(name: String) -> Dictionary:
+	return {"name": name, "n": 0, "wins": 0, "decided": 0, "t_sum": 0.0,
+		"early_sum": 0.0, "early_n": 0, "late_sum": 0.0, "late_n": 0}
+
+
+## Lajittelu: suurin rakennusmäärä ensin, tasatilanne aakkosjärjestyksellä
+## (vakaa järjestys — sort_custom ei ole vakaa, joten sija ratkaistaan aina).
+static func _cross_before(x: Dictionary, y: Dictionary) -> bool:
+	if int(x["n"]) != int(y["n"]):
+		return int(x["n"]) > int(y["n"])
+	return str(x["id"]) < str(y["id"])
+
+
+## Lajittelu vahinko/peli laskevasti, tasatilanne aakkosjärjestyksellä.
+static func _cross_before_dpg(x: Dictionary, y: Dictionary) -> bool:
+	if absf(float(x["dpg"]) - float(y["dpg"])) > 0.0:
+		return float(x["dpg"]) > float(y["dpg"])
+	return str(x["id"]) < str(y["id"])
+
+
+## Sweepin ristiintaulukot — vastaus kysymykseen "mikä on itemin rooli tässä
+## kaikessa". Kolme näkökulmaa joita itemi- ja sankaritaulukot eivät anna:
+##   (a) itemi × rooli: mitä kukin rooli oikeasti rakentaa ja voittaako sillä
+##   (b) itemi × sankari: mitä kovimmat ja keveimmät vahingontekijät avaavat
+##   (c) voimakäyrä × ensiepicin ajoitus: muuttuuko aikainen itemi loppupelin
+##       voimaksi (vahinko-osuus 14-20 min) vai valuuko etu hukkaan
+## Kaikki kentät .get-oletuksilla: vanhat tilannekuvat tulostavat "ei dataa".
+static func _section_item_cross(lines: Array, results: Array, opts: Dictionary) -> void:
+	var snapshots: Array = _snapshots(results)
+	lines.append("")
+	lines.append(str(opts.get("cross_title", "=== ITEMIN ROOLI (ristiintaulukot) ===")))
+	lines.append("  Vastaa kysymykseen: mitä itemi tekee roolille, sankarille ja voimakäyrälle.")
+	var role_item: Dictionary = {}   # rooli -> itemi -> {n, wins, decided}
+	var hero_item: Dictionary = {}   # sankari -> {games, damage, fe}
+	var early_grp: Dictionary = _cross_group("ennen %s" % _fmt(CROSS_EARLY_T))
+	var late_grp: Dictionary = _cross_group("%s jälkeen" % _fmt(CROSS_EARLY_T))
+	for snap_v in snapshots:
+		var snap: Dictionary = snap_v
+		var winner: int = int(snap.get("winner", -1))
+		var decided: bool = winner == 0 or winner == 1
+		var heroes: Array = snap.get("heroes", [])
+		# Vaihekohtaiset joukkuesummat: (c) tarvitsee osuuden OMASTA joukkueesta.
+		var t_ph: Array = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+		for hv in heroes:
+			var hh: Dictionary = hv
+			var ht: int = int(hh.get("team", -1))
+			if ht != 0 and ht != 1:
+				continue
+			var ph: Array = hh.get("damage_phase", [])
+			var acc: Array = t_ph[ht]
+			for i in range(mini(ph.size(), 3)):
+				acc[i] = float(acc[i]) + float(ph[i])
+		for hv in heroes:
+			var h: Dictionary = hv
+			var id: String = str(h.get("hero_id", "?"))
+			var team: int = int(h.get("team", -1))
+			var won: bool = decided and team == winner
+			var role: String = str(h.get("progression_role", h.get("role", "unknown")))
+			if role == "":
+				role = "unknown"
+			if not hero_item.has(id):
+				hero_item[id] = {"id": id, "games": 0, "damage": 0.0, "fe": {}}
+			var ha: Dictionary = hero_item[id]
+			ha["games"] = int(ha["games"]) + 1
+			ha["damage"] = float(ha["damage"]) + float(h.get("damage", 0.0))
+			# Ottelun uniikit epicit + ensimmäisenä valmistunut.
+			var seen: Dictionary = {}
+			var fe_id := ""
+			var fe_t := -1.0
+			for ev_v in h.get("item_log", []):
+				var ev: Dictionary = ev_v
+				if bool(ev.get("sold", false)) or str(ev.get("tier", "")) != "epic":
+					continue
+				var iid: String = str(ev.get("id", "?"))
+				var t_buy: float = float(ev.get("t", 0.0))
+				seen[iid] = true
+				if fe_t < 0.0 or t_buy < fe_t:
+					fe_t = t_buy
+					fe_id = iid
+			if not role_item.has(role):
+				role_item[role] = {}
+			var rmap: Dictionary = role_item[role]
+			for iid_v in seen:
+				var rid: String = str(iid_v)
+				if not rmap.has(rid):
+					rmap[rid] = {"id": rid, "n": 0, "wins": 0, "decided": 0}
+				var ra: Dictionary = rmap[rid]
+				ra["n"] = int(ra["n"]) + 1
+				if decided:
+					ra["decided"] = int(ra["decided"]) + 1
+					if won:
+						ra["wins"] = int(ra["wins"]) + 1
+			if fe_id == "":
+				continue
+			var femap: Dictionary = ha["fe"]
+			if not femap.has(fe_id):
+				femap[fe_id] = {"id": fe_id, "n": 0, "wins": 0, "decided": 0}
+			var fa: Dictionary = femap[fe_id]
+			fa["n"] = int(fa["n"]) + 1
+			if decided:
+				fa["decided"] = int(fa["decided"]) + 1
+				if won:
+					fa["wins"] = int(fa["wins"]) + 1
+			var grp: Dictionary = early_grp if fe_t < CROSS_EARLY_T else late_grp
+			grp["n"] = int(grp["n"]) + 1
+			grp["t_sum"] = float(grp["t_sum"]) + fe_t
+			if decided:
+				grp["decided"] = int(grp["decided"]) + 1
+				if won:
+					grp["wins"] = int(grp["wins"]) + 1
+			if team == 0 or team == 1:
+				var ph2: Array = h.get("damage_phase", [])
+				var tot: Array = t_ph[team]
+				if ph2.size() >= 1 and float(tot[0]) > 0.0:
+					grp["early_sum"] = float(grp["early_sum"]) \
+						+ 100.0 * float(ph2[0]) / float(tot[0])
+					grp["early_n"] = int(grp["early_n"]) + 1
+				if ph2.size() >= 3 and float(tot[2]) > 0.0:
+					grp["late_sum"] = float(grp["late_sum"]) \
+						+ 100.0 * float(ph2[2]) / float(tot[2])
+					grp["late_n"] = int(grp["late_n"]) + 1
+
+	# --- (a) itemi x rooli ---
+	lines.append("")
+	lines.append("  -- (a) itemi × rooli: %d rakennetuinta epiciä per rooli --" % CROSS_TOP_ITEMS)
+	lines.append("  rooli   | epic                 |   n | osuus | haltijan voitto%")
+	var rkeys: Array = role_item.keys()
+	rkeys.sort_custom(func(x, y): return _role_rank(str(x)) < _role_rank(str(y)))
+	for role_v in rkeys:
+		var role: String = str(role_v)
+		var rmap: Dictionary = role_item[role]
+		var rows: Array = rmap.values()
+		rows.sort_custom(func(x, y): return _cross_before(x, y))
+		var total := 0
+		for r_v in rows:
+			var ra: Dictionary = r_v
+			total += int(ra["n"])
+		if rows.is_empty():
+			lines.append("  %-7s | ei epicejä otannassa" % role)
+			continue
+		for i in range(mini(rows.size(), CROSS_TOP_ITEMS)):
+			var rb: Dictionary = rows[i]
+			var iname: String = str(ItemDef.get_item(str(rb["id"])).get("name", str(rb["id"])))
+			lines.append("  %-7s | %-20s | %3d | %4.0f%% | %s" % [
+				(role if i == 0 else ""), iname, int(rb["n"]),
+				100.0 * float(rb["n"]) / maxf(float(total), 1.0),
+				_pct_text(int(rb["wins"]), int(rb["decided"]))])
+	if rkeys.is_empty():
+		lines.append("  Ei rooliaineistoa otannassa.")
+
+	# --- (b) itemi x sankari ---
+	lines.append("")
+	lines.append("  -- (b) itemi × sankari: %d kovinta ja %d kevyintä vahingontekijää --" % [
+		CROSS_HERO_N, CROSS_HERO_N])
+	lines.append("  ryhmä | sankari  | vah/peli | yleisin 1. epic      |   n | voitto%")
+	var hrows: Array = hero_item.values()
+	for a_v in hrows:
+		var a: Dictionary = a_v
+		a["dpg"] = float(a["damage"]) / maxf(float(a["games"]), 1.0)
+	hrows.sort_custom(func(x, y): return _cross_before_dpg(x, y))
+	var top_n: int = mini(hrows.size(), CROSS_HERO_N)
+	var low_start: int = maxi(hrows.size() - CROSS_HERO_N, top_n)
+	var low_rows: Array = []
+	for i in range(hrows.size() - 1, low_start - 1, -1):
+		low_rows.append(hrows[i])
+	var groups: Array = [["kova", hrows.slice(0, top_n)], ["kevyt", low_rows]]
+	for g_v in groups:
+		var g: Array = g_v
+		var gname: String = str(g[0])
+		var grows: Array = g[1]
+		for i in range(grows.size()):
+			var hb: Dictionary = grows[i]
+			var femap: Dictionary = hb["fe"]
+			var best: Dictionary = {}
+			for fid_v in femap:
+				var b: Dictionary = femap[fid_v]
+				if best.is_empty() or int(b["n"]) > int(best["n"]) \
+						or (int(b["n"]) == int(best["n"]) and str(b["id"]) < str(best["id"])):
+					best = b
+			var iname := "-"
+			var bn := 0
+			var wr_text := "-"
+			if not best.is_empty():
+				iname = str(ItemDef.get_item(str(best["id"])).get("name", str(best["id"])))
+				bn = int(best["n"])
+				wr_text = _pct_text(int(best["wins"]), int(best["decided"]))
+			lines.append("  %-5s | %-8s | %8d | %-20s | %3d | %s" % [
+				(gname if i == 0 else ""), str(hb["id"]), int(float(hb["dpg"])),
+				iname, bn, wr_text])
+	if hrows.is_empty():
+		lines.append("  Ei sankaridataa otannassa.")
+
+	# --- (c) voimakayra x ensiepicin ajoitus ---
+	lines.append("")
+	lines.append("  -- (c) voimakäyrä × ensiepicin ajoitus: muuttuuko aikainen itemi loppupelin voimaksi --")
+	lines.append("  ryhmä        | sank.ott | 1. epic ka | 0-7 min | 14-20 min | voitto%")
+	for grp_v in [early_grp, late_grp]:
+		var grp: Dictionary = grp_v
+		if int(grp["n"]) <= 0:
+			lines.append("  %-12s | ei dataa" % str(grp["name"]))
+			continue
+		lines.append("  %-12s | %8d | %10s | %6.1f%% | %8.1f%% | %s" % [
+			str(grp["name"]), int(grp["n"]),
+			_fmt(float(grp["t_sum"]) / maxf(float(grp["n"]), 1.0)),
+			float(grp["early_sum"]) / maxf(float(grp["early_n"]), 1.0),
+			float(grp["late_sum"]) / maxf(float(grp["late_n"]), 1.0),
+			_pct_text(int(grp["wins"]), int(grp["decided"]))])
+	if int(early_grp["late_n"]) > 0 and int(late_grp["late_n"]) > 0:
+		var diff: float = float(early_grp["late_sum"]) / float(early_grp["late_n"]) \
+			- float(late_grp["late_sum"]) / float(late_grp["late_n"])
+		var verdict := "ei eroa — ensiepicin ajoitus ei näy loppupelissä"
+		if diff >= CROSS_LATE_DEV:
+			verdict = "aikainen ensiepic muuttuu loppupelin voimaksi"
+		elif diff <= -CROSS_LATE_DEV:
+			verdict = "aikainen ensiepic EI kanna loppupeliin — myöhäinen avaus skaalaa paremmin"
+		lines.append("  Ero loppuvaiheessa (14-20 min): %+.1f %%-yks -> %s" % [diff, verdict])
+	else:
+		lines.append("  Ei riittävää vaihedataa ajoitusvertailuun (ei damage_phase-tietoa).")
 
 
 ## Tasot ja XP: muuntuuko talous- ja tasojohto voitoiksi. Voittaja- vs häviäjä-
