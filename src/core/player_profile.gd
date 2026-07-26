@@ -32,6 +32,10 @@ func reset_stats() -> void:
 		"assists": 0,         # avustukset
 		"deaths": 0,          # omat tyrmäytymiset
 		"damage": 0.0,        # aiheutettu vahinko (sankareihin/yksiköihin)
+		# Vahinko pelivaiheittain [0–7 min, 7–14 min, 14+ min]. Raportin
+		# voimakäyrä lukee tästä: onko sankari alku- vai loppupelin hahmo eli
+		# vastaako toteutunut teho _level_scaling-profiilin suunnitteluaikeita.
+		"damage_phase": [0.0, 0.0, 0.0],
 		"taken": 0.0,         # otettu vahinko (yhteensä)
 		# Otettu vahinko LÄHTEEN mukaan (näkee ottaako AI turhia torni-/mob-osumia):
 		"taken_hero": 0.0,    # vihollissankareilta
@@ -46,6 +50,7 @@ func reset_stats() -> void:
 		"jungle_damage": 0.0, # vahinko viidakko-olentoihin (leirit/pomo)
 		"minion_kills": 0,    # kaadetut minionit (CS)
 		"gold": 0,            # MOBA-talouden pohja (KUMULATIIVINEN, ei vähene ostoista)
+		"gold_at_10": -1.0,   # kumulatiivinen kulta 10:00 kohdalla; -1 = ei ehditty (lumipalloanalyysi)
 		"gold_spent": 0,      # itemeihin käytetty kulta (lompakko = gold - gold_spent)
 		"item_log": [],       # ostot/myynnit: {id, t, tier} (+ "sold": true myynnille)
 		"kill_gold": 0,       # tappopalkkioista saatu kulta

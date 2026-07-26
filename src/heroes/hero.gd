@@ -32,6 +32,9 @@ const RECALL_TIME := 3.5
 # Kumulatiivinen MOBA-XP-käyrä. Level 12 vaatii 12 000 XP:tä: nykyisellä
 # 18 sekunnin wave-rytmillä normaali farmaus osuu ottelun viimeiseen vaiheeseen.
 const MAX_LEVEL := 12
+# Vahingon vaiherajat sekunteina (voimakäyrä): alku 0–7 min, keski 7–14 min,
+# loppu 14 min ->. Sama jako raportin SANKARIBALANSSI-osiossa.
+const DAMAGE_PHASE_BOUNDS := [420.0, 840.0]
 const LEVEL_XP_THRESHOLDS := [
 	0.0, 450.0, 1050.0, 1800.0, 2650.0, 3600.0,
 	4650.0, 5800.0, 7050.0, 8400.0, 9850.0, 12000.0,
@@ -2186,6 +2189,7 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 	var dealt := target.take_damage(amount, self, kb, kb_dir)
 	if dealt > 0.0:
 		profile.stats.damage += dealt
+		_record_damage_phase(dealt)
 		_record_neutral_buff_damage(dealt, target is Structure)
 		if target is Structure:
 			profile.stats.structure_damage += dealt
@@ -2210,6 +2214,25 @@ func deal_damage_to(target: Hero, amount: float, kb := 0.0, kb_dir := Vector2.ZE
 		# Itemiproccit (ketjusalama, momentum, kaiku) sankariosumista.
 		_item_on_hit(target, dealt)
 	return dealt
+
+
+## Vaihekohtainen vahinko (0–7 / 7–14 / 14+ min) raportin voimakäyrää varten.
+## Kirjataan täsmälleen samasta kohdasta kuin kokonaisvahinko, joten vaiheiden
+## summa == stats.damage. Kertoo osuuksina onko sankari alku- vai loppupelin
+## hahmo — eli osuuko _level_scaling-profiili suunnitteluaikeeseen.
+func _record_damage_phase(dealt: float) -> void:
+	if profile == null or arena == null or dealt <= 0.0:
+		return
+	var phase: Array = profile.stats.get("damage_phase", [])
+	if phase.size() < 3:
+		return
+	var t: float = float(arena.match_elapsed)
+	var idx := 0
+	if t >= float(DAMAGE_PHASE_BOUNDS[1]):
+		idx = 2
+	elif t >= float(DAMAGE_PHASE_BOUNDS[0]):
+		idx = 1
+	phase[idx] = float(phase[idx]) + dealt
 
 
 ## Kirjaa kaiken buffin aikana syntyneen paineen erikseen. Sama teko saa kuulua

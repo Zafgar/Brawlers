@@ -50,6 +50,8 @@ var _last_point_team := -1
 # tornit ja nexus. Voitto = tuhoa vihollisen nexus (tornit ensin).
 const MOBA_TIME := 1200.0         # 20 minuutin 4v4-ottelu
 const SIM_MOBA_TIME := 1200.0
+# Lumipallonäytteen hetki sekunteina: kultajohto tässä kohdassa vs lopputulos.
+const SNOWBALL_SAMPLE_T := 600.0
 const WAVE_INTERVAL := 18.0       # lyhyempi tyhjä jakso edellisen aallon jälkeen
 const WAVE_FIRST := 1.5           # ensimmäinen aalto lähtee lähes heti
 const WAVE_SIZE := 5              # 3 melee + 2 ranged per linja per joukkue
@@ -1164,6 +1166,11 @@ func _update_economy_milestones(hero) -> void:
 		if float(hero.profile.stats.xp) >= threshold \
 				and not hero.profile.stats.xp_milestones.has(key):
 			hero.profile.stats.xp_milestones[key] = match_elapsed
+	# Kultanäyte 10:00 kohdalla: raportin lumipallo-/comeback-analyysi vertaa
+	# tässä hetkessä johtanutta joukkuetta lopputulokseen. -1 = ei ehditty.
+	if match_elapsed >= SNOWBALL_SAMPLE_T \
+			and float(hero.profile.stats.get("gold_at_10", -1.0)) < 0.0:
+		hero.profile.stats["gold_at_10"] = float(hero.profile.stats.gold)
 
 
 func on_minion_ko(minion: Minion, source: Hero) -> void:
@@ -1663,6 +1670,9 @@ func sim_snapshot() -> Dictionary:
 		# Ostoloki ja lopullinen skill build raportin balanssianalyysiin.
 		var item_log: Array = p.stats.get("item_log", [])
 		var skill_build: Dictionary = p.stats.get("skill_build", {})
+		# Vaihekohtainen vahinko (voimakäyrä) kopiona: raportti ei saa muokata
+		# elävää telemetriaa. Vanha profiili ilman kenttää -> nollat.
+		var damage_phase: Array = p.stats.get("damage_phase", [0.0, 0.0, 0.0])
 		var hd := {
 			"hero_id": h.hero_id, "team": h.team,
 			"level": h.level, "ai_level": ai_level,
@@ -1671,6 +1681,8 @@ func sim_snapshot() -> Dictionary:
 			"human": h.profile.is_human(),
 			"kos": int(p.stats.kos), "deaths": int(p.stats.deaths),
 			"assists": int(p.stats.assists), "damage": float(p.stats.damage),
+			"damage_phase": damage_phase.duplicate(),
+			"gold_at_10": float(p.stats.get("gold_at_10", -1.0)),
 			"taken": float(p.stats.taken),
 			"taken_hero": float(p.stats.taken_hero),
 			"taken_tower": float(p.stats.taken_tower),
