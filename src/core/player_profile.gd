@@ -13,6 +13,11 @@ var moba_position := ""    # lobbyn positiovalinta: "top"/"jungle"/"carry"/"supp
 var bot_level := -1        # -1 = käytä Game.bot_level; muuten oma taso (simulaatio)
 var bot_rank := -1         # -1 = johda tasosta/ottelusta; muuten oma rank 0..31 (ladder-testi)
 
+# --- Ranked ---
+var user_id := ""          # linkitetty RankedDB-käyttäjä ("" = ei kirjaa LP:tä)
+var ranked_rank := -1      # tämän paikan ladder-rank 0..31 (-1 = ei ranked-ottelu)
+var hero_pool: Array = []  # ranked-botin oma pieni sankarivalikoima (lobby suosii tätä)
+
 var stats := {}
 
 

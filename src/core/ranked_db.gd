@@ -21,6 +21,8 @@ const VERSION := 1
 const HISTORY_MAX := 40          # viimeisimmät ottelut säilytetään, vanhat karsitaan
 const NAME_MAX := 18
 const START_RANK := 0            # uusi pelaaja aloittaa Wood IV:stä
+const BOTS_PER_RANK := 10        # 10 bottia x 32 rankia = 320 nimettyä bottia
+const BOT_SEED := 20250726       # kiinteä siemen: sama populaatio joka koneella
 
 static var _db: Dictionary = {}
 static var _loaded := false
@@ -366,3 +368,117 @@ static func bots() -> Array:
 ## Tallentaa bottipopulaation muutokset (ladder-tikitys, uudet botit).
 static func save_bots() -> void:
 	save_db()
+
+
+## Varmistaa että populaatio on olemassa. Ensimmäisellä kerralla luodaan
+## BOTS_PER_RANK bottia jokaiselle 32 rankille = 320 nimettyä bottia, jotka
+## tallennetaan — sen jälkeen ne elävät omaa elämäänsä tikapuilla.
+static func ensure_bots() -> Array:
+	load_db()
+	var list: Array = bots()
+	if list.size() >= (BotRank.MAX_RANK + 1) * BOTS_PER_RANK:
+		return list
+	list = _generate_bots()
+	_db["bots"] = list
+	save_db()
+	return list
+
+
+## Luo populaation kiinteällä siemenellä: 10 bottia per rank, kullakin nimi,
+## LP, 2–3 sankarin oma pooli ja suosikkipositio.
+static func _generate_bots() -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = BOT_SEED
+	var total: int = (BotRank.MAX_RANK + 1) * BOTS_PER_RANK
+	var names: Array = BotNames.generate(total, BOT_SEED)
+	var positions := ["top", "jungle", "carry", "support"]
+	var list: Array = []
+	var index := 0
+	for rank in range(BotRank.MAX_RANK + 1):
+		for i in range(BOTS_PER_RANK):
+			var pool: Array = []
+			var wanted: int = rng.randi_range(2, 3)
+			var guard := 0
+			while pool.size() < wanted and guard < 40:
+				guard += 1
+				var hero_id: String = str(HeroDef.ORDER[rng.randi_range(0,
+					HeroDef.ORDER.size() - 1)])
+				if not pool.has(hero_id):
+					pool.append(hero_id)
+			var bot_name := "Botti %d" % (index + 1)
+			if index < names.size():
+				bot_name = str(names[index])
+			list.append({
+				"name": bot_name,
+				"rank": rank,
+				"lp": rng.randi_range(0, RankedRules.LP_MAX - 1),
+				"hero_pool": pool,
+				"pos": str(positions[rng.randi_range(0, positions.size() - 1)]),
+			})
+			index += 1
+	return list
+
+
+## Kevyt ladder-tikitys pelaajan ottelun jälkeen: otoksesta botteja pannaan
+## lähirankista vastustajaa vastaan ja voittaja ratkaistaan rank-erolla
+## (RankedRules.win_chance). Voittajan ja häviäjän LP päivitetään samoilla
+## peruskaavoilla ilman promo-sarjoja. Tämä EI simuloi oikeita otteluita —
+## tarkoitus on vain pitää tikapuut elossa: nimet nousevat ja putoavat
+## taustalla, joten sijoitus tuntuu ansaitulta.
+static func ladder_tick(sample := 40) -> void:
+	var list: Array = ensure_bots()
+	if list.size() < 2:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	for i in range(maxi(sample, 0)):
+		var index_a: int = rng.randi_range(0, list.size() - 1)
+		var index_b: int = _nearby_opponent(list, index_a, rng)
+		if index_b < 0:
+			continue
+		var bot_a: Dictionary = list[index_a]
+		var bot_b: Dictionary = list[index_b]
+		var rank_a: int = clampi(int(bot_a.get("rank", 0)), 0, BotRank.MAX_RANK)
+		var rank_b: int = clampi(int(bot_b.get("rank", 0)), 0, BotRank.MAX_RANK)
+		var a_wins: bool = rng.randf() < RankedRules.win_chance(rank_a, rank_b)
+		var step_a: Dictionary = RankedRules.simple_step(rank_a, int(bot_a.get("lp", 0)),
+			a_wins, rank_b)
+		var step_b: Dictionary = RankedRules.simple_step(rank_b, int(bot_b.get("lp", 0)),
+			not a_wins, rank_a)
+		bot_a["rank"] = int(step_a.get("rank", rank_a))
+		bot_a["lp"] = int(step_a.get("lp", 0))
+		bot_b["rank"] = int(step_b.get("rank", rank_b))
+		bot_b["lp"] = int(step_b.get("lp", 0))
+	save_db()
+
+
+## Satunnainen vastustaja enintään kahden rankin päästä. Jos lähistöltä ei
+## löydy ketään, otetaan naapuri listasta ettei tikitys jää tyhjäkäynnille.
+static func _nearby_opponent(list: Array, index: int, rng: RandomNumberGenerator) -> int:
+	if list.size() < 2:
+		return -1
+	var own: Dictionary = list[index]
+	var rank: int = int(own.get("rank", 0))
+	for attempt in range(12):
+		var pick: int = rng.randi_range(0, list.size() - 1)
+		if pick == index:
+			continue
+		var other: Dictionary = list[pick]
+		if absi(int(other.get("rank", 0)) - rank) <= 2:
+			return pick
+	return (index + 1) % list.size()
+
+
+## Bottipopulaation sijoituslista (korkein rank ensin) — Phase B voi piirtää
+## tästä ranked-hubin tikapuunäkymän.
+static func leaderboard(limit := 20) -> Array:
+	var list: Array = ensure_bots().duplicate()
+	list.sort_custom(func(a, b):
+		var rank_a: int = int(a.get("rank", 0))
+		var rank_b: int = int(b.get("rank", 0))
+		if rank_a == rank_b:
+			return int(a.get("lp", 0)) > int(b.get("lp", 0))
+		return rank_a > rank_b)
+	if list.size() > limit:
+		list = list.slice(0, limit)
+	return list

@@ -22,6 +22,20 @@ var map_id := "moba"
 var mode_id := "moba"
 var practice := false
 
+# --- Ranked ---
+# Ranked on pelin varsinainen pelimuoto: valittu käyttäjä kiipeää tikapuita
+# nimettyjä botteja vastaan. Muut polut (harjoittelu, simulaatio, oma lobby)
+# jättävät ranked_moden falseksi ja käyttäytyvät täsmälleen kuten ennenkin.
+var ranked_mode := false
+var ranked_user_id := ""
+# Ottelun jälkeen: RankedDB.record_matchin yhteenvedot per ihmispelaaja
+# (Phase B piirtää näistä LP-ruudun ja ylennysanimaatiot).
+var last_ranked_results: Array = []
+# Kummankin joukkueen VASTUSTAJAN keskirank ottelun alussa (indeksi = oma
+# joukkue). LP-laskenta lukee tästä, jottei ottelun aikana tehdyt muutokset
+# vaikuta jälkikäteen.
+var ranked_enemy_avg: Array = [0.0, 0.0]
+
 
 ## Ottelun bottien rank: valitun tierin divisioona III. Toimii myöhemmin
 ## pelaajan oman ranking-tason pohjana (save/load): pelaaja kohtaa oman
@@ -139,11 +153,14 @@ func go_menu() -> void:
 	# ja siivoaa etenemisnäytön) ettei peli jää jumiin nopeutettuun tilaan.
 	if sim_runner != null:
 		sim_runner.abort()
+	ranked_mode = false
+	last_ranked_results = []
 	_swap(MainMenu.new())
 
 
 func go_setup(practice_mode: bool) -> void:
 	practice = practice_mode
+	ranked_mode = false
 	_apply_moba_format()
 	if practice_mode:
 		bot_level = 0
@@ -166,6 +183,7 @@ func go_gallery() -> void:
 ## Muut seitsemän paikkaa täytetään helpoilla boteilla.
 func try_hero(hero_id: String) -> void:
 	practice = true
+	ranked_mode = false
 	_apply_moba_format()
 	bot_level = 0
 	bot_tier = 0
@@ -228,6 +246,8 @@ func _apply_moba_format() -> void:
 func start_match() -> void:
 	if not simulating:
 		_apply_moba_format()
+		if ranked_mode:
+			_prepare_ranked_match()
 	blue_rounds = 0
 	orange_rounds = 0
 	for profile in roster:
@@ -249,7 +269,42 @@ func match_finished() -> void:
 		return
 	# Pelaajien ottelu: tuota raportti, jonka pelaaja voi antaa kehittäjälle.
 	_capture_report()
+	_record_ranked_results()
 	_swap(Results.new())
+
+
+## Ranked-ottelun valmistelu: ihmisten rankit tallennuksesta, puuttuvat paikat
+## matchmakerin boteilla ja vastustajien keskirankit talteen LP-laskentaa
+## varten. Lobby on yleensä rakentanut kokoonpanon jo valmiiksi, joten tämä on
+## idempotentti varmistus myös suorille käynnistyspoluille.
+func _prepare_ranked_match() -> void:
+	last_ranked_results = []
+	if roster.is_empty():
+		return
+	roster = Matchmaker.prepare(roster, team_size)
+	ranked_enemy_avg = [
+		Matchmaker.team_avg_rank(roster, 1),   # sinisen vastustaja = oranssi
+		Matchmaker.team_avg_rank(roster, 0),   # oranssin vastustaja = sininen
+	]
+
+
+## Kirjaa LP-muutokset jokaiselle ihmispelaajalle, jolla on linkitetty
+## käyttäjätili. Lopuksi bottien tikapuut liikahtavat taustalla, jotta
+## populaatio elää pelaajan ottelujen välissä.
+func _record_ranked_results() -> void:
+	last_ranked_results = []
+	if not ranked_mode or practice:
+		return
+	for profile in roster:
+		if profile.is_bot or profile.user_id == "":
+			continue
+		var team: int = clampi(profile.team, 0, 1)
+		var enemy_avg: float = float(ranked_enemy_avg[team])
+		var won: bool = profile.team == last_winner_team
+		var summary: Dictionary = RankedDB.record_match(profile.user_id, won, enemy_avg)
+		if not summary.is_empty():
+			last_ranked_results.append(summary)
+	RankedDB.ladder_tick()
 
 
 ## Tallentaa juuri päättyneen ottelun raportin (luetaan areenasta ennen vaihtoa).
@@ -279,6 +334,12 @@ func go_report() -> void:
 
 
 func rematch() -> void:
+	# Ranked-ottelu haetaan aina uudelleen lobbyn kautta: uusi vastustajajoukkue
+	# tuoreilla rankeilla ja uudet sankarivalinnat. Muut tilat pelaavat saman
+	# kokoonpanon uusiksi kuten ennenkin.
+	if ranked_mode:
+		go_lobby()
+		return
 	start_match()
 
 
