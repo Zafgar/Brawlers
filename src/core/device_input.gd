@@ -10,7 +10,9 @@ extends RefCounted
 ## R1 = kyky 1, L1 = kyky 2, Risti = väistö, L2 = ultimate, Ympyrä = pudota,
 ## D-pad alas = paluu baseen (pidä pohjassa; näppäimistöllä B),
 ## D-pad ylös = kykypisteiden kehitystila (pidä pohjassa + kyvyn nappi;
-## näppäimistöllä T), D-pad vasen = itemiaktiivi (näppäimistöllä G).
+## näppäimistöllä T), D-pad vasen = itemiaktiivi (näppäimistöllä G),
+## D-pad oikea = tietonäkymä (pidä pohjassa: statit ja kykykortit;
+## näppäimistöllä C).
 ## Ulti on L2-liipaisimessa: helpompi pitää pohjassa ja tähdätä oikealla tatilla
 ## kuin kolmiolla. Kolmio toimii yhä vaihtoehtoisena ultinappina.
 
@@ -33,6 +35,7 @@ const PAD_BUTTONS := {
 	"recall": JOY_BUTTON_DPAD_DOWN,
 	"spend": JOY_BUTTON_DPAD_UP,
 	"item_active": JOY_BUTTON_DPAD_LEFT,
+	"inspect": JOY_BUTTON_DPAD_RIGHT,
 }
 
 var device := -1
@@ -88,6 +91,7 @@ func _update_keyboard_mouse(hero) -> void:
 		"recall": Input.is_physical_key_pressed(KEY_B),
 		"spend": Input.is_physical_key_pressed(KEY_T),
 		"item_active": Input.is_physical_key_pressed(KEY_G),
+		"inspect": Input.is_physical_key_pressed(KEY_C),
 	}
 
 
@@ -224,6 +228,13 @@ func recall_held() -> bool:
 ## nappia — painallus käyttää kykypisteen castin sijaan.
 func spend_held() -> bool:
 	return bool(_pressed.get("spend", false))
+
+
+## Tietonäkymä (D-pad oikea / C): pidetään pohjassa. Avaa oman ruudun
+## statipaneelin ja kykykortit. Pelkkä lukutila — ei vaikuta taisteluun,
+## joten HUD kysyy tätä suoraan ohjaimelta has_method-vartijan takaa.
+func inspect_held() -> bool:
+	return bool(_pressed.get("inspect", false))
 
 
 func is_bot() -> bool:

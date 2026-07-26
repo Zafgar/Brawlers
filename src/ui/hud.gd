@@ -59,6 +59,10 @@ func _process(_delta: float) -> void:
 				held = true
 				break
 	_scoreboard.visible = held and arena != null and not Game.simulating
+	# Tulostaulu on koko ruudun overlay ruutujen PÄÄLLÄ: kerrotaan tila
+	# paneeleille, jotta tietonäkymä väistyy eikä piirry sen alle.
+	for pane in _panes:
+		pane.scoreboard_open = held
 
 
 func _layout_single() -> void:
@@ -123,8 +127,13 @@ class PaneHud:
 	var bound_hero = null
 	var pane_index := 0
 	var pane_count := 1
+	var scoreboard_open := false     # HudLayer kertoo: tulostaulu pohjassa
 	var _time := 0.0
 	var _redraw_accum := 0.0
+	# Tietonäkymä (pidä D-pad oikea / C). Kapeassa ruudussa kykykortteja
+	# näytetään yksi kerrallaan, joten kierrätysajastin muistaa vuoron.
+	var _inspect_cycle := 0.0
+	var _hints: Array = []           # telakan ylle pinottavat vihjerivit
 
 	var _banner_big := ""
 	var _banner_small := ""
@@ -176,6 +185,12 @@ class PaneHud:
 
 	func _process(delta: float) -> void:
 		_time += delta
+		# Kykykorttien kierto kapeassa ruudussa käy vain kun nappi on pohjassa;
+		# vapautus nollaa vuoron, jotta luku alkaa aina perushyökkäyksestä.
+		if _inspect_active():
+			_inspect_cycle += delta
+		else:
+			_inspect_cycle = 0.0
 		for i in range(_feed.size() - 1, -1, -1):
 			if float(_feed[i]["until"]) <= _time:
 				_feed.remove_at(i)
@@ -201,6 +216,7 @@ class PaneHud:
 		if bound_hero != null and is_instance_valid(bound_hero):
 			_draw_ability_dock()
 			_draw_minimap()
+			_draw_inspect()
 			_draw_shop_prompt()
 			if bool(bound_hero.shop_open):
 				_draw_shop()
@@ -1237,6 +1253,391 @@ class PaneHud:
 			else "Q/E VÄLILEHTI    ENTER OSTA    T MYY    F SULJE"
 		UiKit.draw_text(self, Vector2(px + w / 2.0, hint_y), hint,
 			9 if compact else 13, Palette.TEXT_DIM, true, 2)
+
+
+	# --- Tietonäkymä: statipaneeli ja kykykortit (pidä D-pad oikea / C) ---
+
+	## Pitääkö TÄMÄN ruudun pelaaja tietonappia pohjassa? Luetaan suoraan
+	## ohjaimelta kuten kehitystila. Pelkkä UI-luku: taistelulogiikka ei tunne
+	## nappia lainkaan, ja has_method-vartija pitää botit ja vanhat ohjaimet
+	## ulkona (BotBrain ei toteuta inspect_held-metodia).
+	func _inspect_held() -> bool:
+		var hero = bound_hero
+		if hero == null or not is_instance_valid(hero) or hero.profile == null:
+			return false
+		if not bool(hero.profile.is_human()):
+			return false
+		var ctrl = hero.controller
+		if ctrl == null or not ctrl.has_method("inspect_held"):
+			return false
+		if ctrl.has_method("is_bot") and bool(ctrl.is_bot()):
+			return false
+		return bool(ctrl.inspect_held())
+
+
+	## Näytetäänkö tietonäkymä juuri nyt. Poissulkeva kaikkien muiden
+	## päällysten kanssa: simulaatio, kauppa ja tulostaulu voittavat aina.
+	func _inspect_active() -> bool:
+		if arena == null or Game.simulating or scoreboard_open:
+			return false
+		var hero = bound_hero
+		if hero == null or not is_instance_valid(hero) or hero.profile == null:
+			return false
+		if bool(hero.shop_open):
+			return false
+		return _inspect_held()
+
+
+	## Tietonäkymän näppäinvihje pelaajan oman laitteen mukaan.
+	func _inspect_key_hint() -> String:
+		if bound_hero != null and is_instance_valid(bound_hero) \
+				and bound_hero.profile != null and int(bound_hero.profile.device) >= 0:
+			return "PIDÄ D-PAD OIKEA"
+		return "PIDÄ C"
+
+
+	## Tietonäkymän vapaa alue: telakan yläpuolelta ylös, minikartan VASEMMALLE
+	## puolelle ja KO-syötteen alle. Näin paneeli ei koskaan peitä minikarttaa,
+	## tapahtumia eikä yläreunan mittareita missään ruutujaossa.
+	func _inspect_band() -> Rect2:
+		var dock := _dock_rect()
+		var mini := _minimap_rect()
+		var compact := _compact()
+		var left := _margin()
+		var right: float = minf(size.x - _margin(), mini.position.x - 10.0)
+		var top: float = _margin() + (96.0 if compact else 132.0)
+		var feed_w := 300.0 if compact else 360.0
+		if not _feed.is_empty() and right > size.x - _margin() - feed_w:
+			top = maxf(top, _margin() + (72.0 if compact else 90.0)
+				+ float(_feed.size()) * (27.0 if compact else 34.0) + 6.0)
+		var bottom := dock.position.y - 8.0
+		return Rect2(left, top, maxf(right - left, 20.0), maxf(bottom - top, 20.0))
+
+
+	## "itemit +18 %" -lähdemerkintä; tyhjä jos itemeistä ei tule mitään.
+	func _item_note(value: float) -> String:
+		if absf(value) < 0.005:
+			return ""
+		return "itemit +%d %%" % int(round(value * 100.0))
+
+
+	func _resource_name(type: String) -> String:
+		match type:
+			"mana":
+				return "Mana"
+			"energy":
+				return "Energia"
+			"rage":
+				return "Raivo"
+		return "Resurssi"
+
+
+	## Yksi statirivi: nimi, luku ja valinnainen lähde ("mistä tämä tulee").
+	func _stat_row(label: String, value: String, note := "",
+			color := Palette.TEXT_MAIN) -> Dictionary:
+		return {"kind": "row", "label": label, "value": value, "note": note,
+			"color": color}
+
+
+	## Kykypaikan rankkirivi: kolme pipsua + paikan voimakerroin.
+	func _rank_row(label: String, rank: int, value: String,
+			color := Palette.TEXT_MAIN) -> Dictionary:
+		return {"kind": "rank", "label": label, "value": value, "note": "",
+			"rank": rank, "color": color}
+
+
+	## Kaikki elävät statit sarakkeiksi. wide = mahtuuko neljäs sarake; kapeassa
+	## ruudussa YLLÄPITO putoaa omana sarakkeenaan ja sen rivit siirtyvät
+	## PUOLUSTUKSEN perään, jottei mikään luku katoa kokonaan.
+	func _stat_columns(hero, wide: bool) -> Array:
+		var attack: float = hero.item_stat("attack")
+		var ap: float = hero.item_stat("ap")
+		var crit: float = hero.item_stat("crit")
+		var pen: float = clampf(hero.item_stat("armor_pen"), 0.0, 1.0)
+		var armor: float = maxf(hero.item_stat("armor"), 0.0)
+		var mr: float = maxf(hero.item_stat("mr"), 0.0)
+		var cdr: float = minf(hero.item_stat("cdr"), 0.4)
+		var ms: float = hero.item_stat("ms")
+		var lifesteal: float = hero.item_stat("lifesteal")
+		var spellvamp: float = hero.item_stat("spellvamp")
+		var hp_regen: float = hero.item_stat("hp_regen")
+		var mana_regen: float = hero.item_stat("mana_regen")
+		var lvl_dmg: float = hero.level_damage_mult
+		var lvl_spell: float = hero.level_spell_mult
+		var lvl_melee: float = hero.level_melee_mult
+
+		# Yhteiskertoimet = se luku jolla sankari oikeasti lyö (Hero.combat_damage_mult):
+		# perus = tasokasvu * lähikasvu * (1 + itemien attack) * paikan ranki,
+		# kyky  = tasokasvu * loitsukasvu * (1 + itemien ap); paikan ranki on
+		# ETENEMINEN-sarakkeen omalla rivillä, koska se on paikkakohtainen.
+		var basic_mult: float = lvl_dmg * lvl_melee * (1.0 + attack) \
+			* float(hero.rank_power("basic"))
+		var spell_mult: float = lvl_dmg * lvl_spell * (1.0 + ap)
+
+		# Hyökkäysnopeus luetaan perusjäähdytyksen pohjan ja nykyarvon suhteesta
+		# (Hero._recompute_cooldowns jakaa pohjan attack_speedillä).
+		var basic_cd: float = float(hero.cd_max.get("basic", 0.0))
+		var base_cd := 0.0
+		var base_map = hero.get("_base_cd_max")
+		if base_map is Dictionary:
+			base_cd = float((base_map as Dictionary).get("basic", 0.0))
+		var as_mult := 1.0
+		if base_cd > 0.0 and basic_cd > 0.0:
+			as_mult = base_cd / basic_cd
+
+		var off: Array = [
+			_stat_row("Perusvahinko", "×%.2f" % basic_mult, _item_note(attack)),
+			_stat_row("Kykyvahinko", "×%.2f" % spell_mult, _item_note(ap)),
+			_stat_row("Hyökkäysnopeus", "×%.2f" % as_mult, "isku %.2f s" % basic_cd),
+			_stat_row("Kriittinen", "%d %%" % int(round(crit * 100.0)), "osuma ×1.7",
+				Palette.GOLD if crit > 0.0 else Palette.TEXT_MAIN),
+			_stat_row("Panssarin läpäisy", "%d %%" % int(round(pen * 100.0)), ""),
+			_stat_row("Jäähdytykset", "-%d %%" % int(round(cdr * 100.0)), "katto 40 %"),
+		]
+
+		# Panssari ja taikavastus vaimentavat kaavalla 100 / (100 + arvo).
+		var armor_cut: float = 100.0 * (1.0 - 100.0 / (100.0 + armor))
+		var mr_cut: float = 100.0 * (1.0 - 100.0 / (100.0 + mr))
+		var move_mult := 1.0
+		if hero.has_method("_move_speed_mult"):
+			move_mult = float(hero._move_speed_mult())
+		var speed_now: float = float(hero.base_speed) * float(hero.slow_factor) \
+			* float(hero.haste_factor) * move_mult * (1.0 + ms)
+		var deff: Array = [
+			_stat_row("Elämä", "%d / %d" % [int(hero.hp), int(hero.max_hp)], ""),
+			_stat_row("Panssari", str(int(round(armor))),
+				"vaimennus %d %%" % int(round(armor_cut))),
+			_stat_row("Taikavastus", str(int(round(mr))),
+				"vaimennus %d %%" % int(round(mr_cut))),
+			_stat_row("Liikenopeus", str(int(round(speed_now))), _item_note(ms)),
+		]
+		if float(hero.shield_hp) > 0.0:
+			deff.append(_stat_row("Kilpi", str(int(hero.shield_hp)),
+				"%.1f s jäljellä" % float(hero.shield_timer), Palette.SHIELD))
+		if float(hero.slow_timer) > 0.0:
+			deff.append(_stat_row("Hidastus",
+				"-%d %%" % int(round((1.0 - float(hero.slow_factor)) * 100.0)),
+				"", Palette.BAD))
+		elif float(hero.haste_timer) > 0.0:
+			deff.append(_stat_row("Kiihdytys",
+				"+%d %%" % int(round((float(hero.haste_factor) - 1.0) * 100.0)),
+				"", Palette.GOOD))
+
+		var sus: Array = []
+		if str(hero.res_type) != "" and float(hero.res_max) > 0.0:
+			var regen_lvl := 1.0
+			var regen_lvl_v = hero.get("_regen_level_mult")
+			if regen_lvl_v != null:
+				regen_lvl = float(regen_lvl_v)
+			var per_sec: float = float(hero.res_regen) * regen_lvl * (1.0 + mana_regen)
+			sus.append(_stat_row(_resource_name(str(hero.res_type)),
+				"%d / %d" % [int(hero.res), int(hero.res_max)],
+				"+%.1f /s" % per_sec if per_sec > 0.0 else "",
+				_resource_color(str(hero.res_type))))
+		sus.append(_stat_row("Elpyminen",
+			"%.1f /s" % (Hero.REGEN_PER_SEC * (1.0 + hp_regen)), _item_note(hp_regen)))
+		sus.append(_stat_row("Elämänimu", "%d %%" % int(round(lifesteal * 100.0)),
+			"perusosumista"))
+		sus.append(_stat_row("Loitsuimu", "%d %%" % int(round(spellvamp * 100.0)),
+			"kyvyistä"))
+		sus.append(_stat_row("Ultilataus", "%d %%" % int(round(float(hero.ult_charge))),
+			"", Palette.GOLD if float(hero.ult_charge) >= 100.0 else Palette.TEXT_MAIN))
+
+		var prog: Array = []
+		var lvl: int = int(hero.level)
+		var lvl_note := "täysi taso"
+		if lvl < Hero.MAX_LEVEL:
+			lvl_note = "XP %d / %d" % [int(hero.xp_in_current_level()),
+				int(hero.xp_needed_for_next_level())]
+		prog.append(_stat_row("Taso", "%d / %d" % [lvl, Hero.MAX_LEVEL], lvl_note,
+			Palette.GOLD))
+		prog.append(_stat_row("Tasokasvu", "×%.2f" % lvl_dmg,
+			"lähi ×%.2f · kyvyt ×%.2f" % [lvl_melee, lvl_spell]))
+		for slot_v in ["basic", "a1", "a2", "dodge", "ult"]:
+			var slot := str(slot_v)
+			var slot_rank: int = int(hero.ability_ranks.get(slot, 0))
+			var slot_value := "×%.2f" % float(hero.rank_power(slot))
+			var slot_color: Color = Palette.TEXT_MAIN
+			if slot == "ult" and slot_rank <= 0:
+				slot_value = "TASO %d" % int(Hero.ULT_RANK_LEVELS[0])
+				slot_color = Palette.TEXT_DIM
+			prog.append(_rank_row(str(Hero.SLOT_NAMES.get(slot, slot)), slot_rank,
+				slot_value, slot_color))
+		var points: int = int(hero.skill_points)
+		prog.append(_stat_row("Kykypisteitä", str(points), "",
+			Palette.GOLD if points > 0 else Palette.TEXT_MAIN))
+		var gps: float = hero.item_stat("gold_per_sec")
+		prog.append(_stat_row("Kulta", str(int(hero.profile.wallet())),
+			"+%.1f /s itemeistä" % gps if gps > 0.0 else "", Palette.GOLD))
+		var assist: float = hero.item_stat("assist_gold")
+		if assist > 0.0:
+			prog.append(_stat_row("Avustuskulta",
+				"+%d %%" % int(round(assist * 100.0)), ""))
+		var jungle: float = hero.item_stat("jungle_dmg")
+		if jungle > 0.0:
+			prog.append(_stat_row("Viidakkovahinko",
+				"+%d %%" % int(round(jungle * 100.0)), ""))
+
+		var cols: Array = [{"title": "HYÖKKÄYS", "rows": off}]
+		if wide:
+			cols.append({"title": "PUOLUSTUS", "rows": deff})
+			cols.append({"title": "YLLÄPITO", "rows": sus})
+		else:
+			deff.append_array(sus)
+			cols.append({"title": "PUOLUSTUS", "rows": deff})
+		cols.append({"title": "ETENEMINEN", "rows": prog})
+		return cols
+
+
+	## Oikeaan reunaan tasattu teksti (UiKit tarjoaa vain vasemman ja keskityksen).
+	func _draw_right_text(anchor: Vector2, text: String, font_size: int,
+			color: Color, outline := 1) -> void:
+		var font := ThemeDB.fallback_font
+		var text_w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT,
+			-1, font_size).x
+		UiKit.draw_text(self, Vector2(anchor.x - text_w, anchor.y), text, font_size,
+			color, false, outline)
+
+
+	## Tietonäkymän piirto. Kutsutaan vasta minikartan jälkeen, mutta alue on
+	## laskettu _inspect_bandissa niin ettei se osu siihen eikä syötteeseen.
+	func _draw_inspect() -> void:
+		if not _inspect_active():
+			return
+		var band := _inspect_band()
+		if band.size.x < 240.0 or band.size.y < 90.0:
+			return
+		var compact := _compact()
+		var wide: bool = band.size.x >= 720.0
+		var cols := _stat_columns(bound_hero, wide)
+		var max_rows := 1
+		for col_v in cols:
+			var col: Dictionary = col_v
+			max_rows = maxi(max_rows, (col["rows"] as Array).size())
+		var pad := 10.0 if compact else 14.0
+		var title_h := 16.0 if compact else 22.0
+		var head_h := 13.0 if compact else 18.0
+		var foot_h := 24.0 if compact else 34.0
+		var want_row := 15.0 if compact else 21.0
+		var want_h: float = pad * 2.0 + title_h + head_h + foot_h \
+			+ float(max_rows) * want_row
+		var panel_h: float = minf(want_h, band.size.y)
+		_draw_stats_panel(Rect2(band.position.x, band.end.y - panel_h,
+			band.size.x, panel_h), cols, max_rows)
+
+
+	## Statipaneeli: otsikko, 3-4 saraketta ja tavarapalkki. Rivikorkeus ja
+	## fontit skaalataan käytettävissä olevasta korkeudesta, joten sama paneeli
+	## on luettava sekä koko ruudussa että neljäsosaruudussa.
+	func _draw_stats_panel(rect: Rect2, cols: Array, max_rows: int) -> void:
+		var hero = bound_hero
+		var compact := _compact()
+		var hc: Color = hero.hero_color()
+		var pcol: Color = hero.profile.color()
+		_panel(Rect2(rect.position + Vector2(0, 5), rect.size), Color(0, 0, 0, 0.5),
+			Color(0, 0, 0, 0), 15.0, 0.0)
+		_panel(rect, Palette.with_alpha(Palette.UI_PANEL, 0.96),
+			Palette.with_alpha(hc, 0.72), 15.0, 2.0)
+		draw_rect(Rect2(rect.position + Vector2(12.0, 0.0),
+			Vector2(rect.size.x - 24.0, 3.0)), Palette.glow(hc, 1.25))
+
+		var pad := 10.0 if compact else 14.0
+		var title_h := 16.0 if compact else 22.0
+		var head_h := 13.0 if compact else 18.0
+		var foot_h := 24.0 if compact else 34.0
+		var inner := Rect2(rect.position + Vector2(pad, pad),
+			rect.size - Vector2(pad * 2.0, pad * 2.0))
+
+		var hdef: Dictionary = HeroDef.get_def(hero.hero_id)
+		UiKit.draw_text(self, Vector2(inner.position.x, inner.position.y + title_h * 0.6),
+			"TIEDOT  •  %s  •  P%d" % [str(hdef["name"]).to_upper(),
+			int(hero.profile.index) + 1], 11 if compact else 15,
+			Palette.glow(pcol, 1.1), false, 2)
+		_draw_right_text(Vector2(inner.end.x, inner.position.y + title_h * 0.6),
+			_inspect_key_hint(), 8 if compact else 11, Palette.TEXT_DIM, 1)
+
+		var grid_top: float = inner.position.y + title_h
+		var grid_h: float = maxf(inner.size.y - title_h - foot_h, 20.0)
+		var rows_h: float = maxf(grid_h - head_h, 12.0)
+		var row_h: float = clampf(rows_h / float(maxi(max_rows, 1)), 9.0, 24.0)
+		var label_size: int = clampi(int(row_h * 0.62), 8, 13)
+		var value_size: int = clampi(label_size + 1, 8, 15)
+		var note_size: int = clampi(label_size - 2, 7, 11)
+		var col_w: float = inner.size.x / float(maxi(cols.size(), 1))
+		var show_note: bool = col_w >= 190.0
+
+		for ci in range(cols.size()):
+			var col: Dictionary = cols[ci]
+			var cx: float = inner.position.x + col_w * float(ci)
+			if ci > 0:
+				draw_line(Vector2(cx - 5.0, grid_top + 2.0),
+					Vector2(cx - 5.0, grid_top + grid_h - 4.0),
+					Palette.with_alpha(Palette.UI_STROKE, 0.32), 1.0)
+			UiKit.draw_text(self, Vector2(cx + 5.0, grid_top + head_h * 0.62),
+				str(col["title"]), 9 if compact else 12,
+				Palette.with_alpha(Palette.glow(hc, 1.15), 0.95), false, 2)
+			var rows: Array = col["rows"]
+			for ri in range(rows.size()):
+				var ry: float = grid_top + head_h + row_h * (float(ri) + 0.5)
+				if ri % 2 == 1:
+					draw_rect(Rect2(cx + 1.0, ry - row_h * 0.5, col_w - 9.0, row_h),
+						Color(1, 1, 1, 0.03))
+				_draw_stat_row(rows[ri], cx, ry, col_w, row_h, label_size,
+					value_size, note_size, show_note)
+
+		# Tavarapalkki: kuusi lokeroa nimineen — kauppa ei ole auki, joten
+		# tämä on ainoa paikka jossa itemien nimet näkyvät kesken ottelun.
+		var foot_y: float = inner.end.y - foot_h * 0.5
+		draw_line(Vector2(inner.position.x, inner.end.y - foot_h),
+			Vector2(inner.end.x, inner.end.y - foot_h),
+			Palette.with_alpha(Palette.UI_STROKE, 0.3), 1.0)
+		UiKit.draw_text(self, Vector2(inner.position.x, foot_y + 4.0), "TAVARAT",
+			9 if compact else 12, Palette.TEXT_DIM, false, 2)
+		var items_x: float = inner.position.x + (56.0 if compact else 76.0)
+		var cell_w: float = maxf((inner.end.x - items_x) / float(Hero.MAX_ITEMS), 20.0)
+		var icon_r: float = minf(foot_h * 0.30, 11.0)
+		var name_chars: int = maxi(int((cell_w - icon_r * 2.0 - 12.0)
+			/ (4.6 if compact else 6.0)), 3)
+		var owned: Array = hero.items
+		for si in range(Hero.MAX_ITEMS):
+			var icon_c := Vector2(items_x + cell_w * float(si) + icon_r + 2.0, foot_y)
+			if si < owned.size():
+				var iid := str(owned[si])
+				ItemIcon.draw(self, iid, icon_c, icon_r)
+				UiKit.draw_text(self, Vector2(icon_c.x + icon_r + 5.0, foot_y + 4.0),
+					_short_name(str(ItemDef.get_item(iid).get("name", iid)), name_chars),
+					8 if compact else 11, Palette.TEXT_MAIN, false, 1)
+			else:
+				draw_arc(icon_c, icon_r * 0.8, 0.0, TAU, 14,
+					Palette.with_alpha(Palette.TEXT_DIM, 0.3), 1.0)
+				UiKit.draw_text(self, Vector2(icon_c.x + icon_r + 5.0, foot_y + 4.0),
+					"vapaa", 8 if compact else 11,
+					Palette.with_alpha(Palette.TEXT_DIM, 0.6), false, 1)
+
+
+	## Yksi rivi statiruudukkoon: nimi vasemmalle, luku oikealle ja lähde
+	## keskelle. Rankkirivi saa lähteen tilalle kolme pipsua.
+	func _draw_stat_row(row: Dictionary, cx: float, cy: float, col_w: float,
+			row_h: float, label_size: int, value_size: int, note_size: int,
+			show_note: bool) -> void:
+		var kind := str(row.get("kind", "row"))
+		var value_col: Color = row.get("color", Palette.TEXT_MAIN)
+		UiKit.draw_text(self, Vector2(cx + 5.0, cy + float(label_size) * 0.36),
+			str(row["label"]), label_size, Palette.TEXT_DIM, false, 1)
+		if kind == "rank":
+			var rank := int(row.get("rank", 0))
+			var pip_w: float = clampf(col_w * 0.05, 4.0, 8.0)
+			var pip_x: float = cx + col_w * 0.50
+			for p in range(3):
+				draw_rect(Rect2(pip_x + float(p) * (pip_w + 2.0),
+					cy - row_h * 0.13, pip_w, maxf(row_h * 0.26, 3.0)),
+					Palette.glow(Palette.GOLD, 1.2) if rank > p else Color(1, 1, 1, 0.13))
+		elif show_note and str(row.get("note", "")) != "":
+			UiKit.draw_text(self, Vector2(cx + col_w * 0.50,
+				cy + float(note_size) * 0.36), str(row["note"]), note_size,
+				Palette.with_alpha(Palette.TEXT_DIM, 0.78), false, 1)
+		_draw_right_text(Vector2(cx + col_w - 7.0, cy + float(value_size) * 0.36),
+			str(row["value"]), value_size, value_col, 2)
 
 
 	func _minimap_rect() -> Rect2:
