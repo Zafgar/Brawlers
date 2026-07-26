@@ -54,6 +54,23 @@ var defense_delay := 0.0        # sekunteja ennen kuin nimetty puolustaja reagoi
 var siege_focus := 1.0          # pysyykö botti rakennuskohteessa vai lähteekö puolustajan perään
 var cover_skill := 0.0          # ottaako melee suojaa minioniaallon takaa kaukopokea vastaan
 
+# DIVISIOONAKERROS: keskittymiskatkot. Jokainen päätöstikki arpoo virheen, ja
+# osuma vie botin lyhyeen katkokseen (_lapse_t): ei kykyjä, harva perusisku,
+# harhaileva liike. Tämä on ainoa säädin joka tekee KAIKISTA 32 portaasta eri
+# vahvoja — mekaaninen taito on jo lähes katossa Platinumissa, joten
+# divisioonaerot syntyvät nimenomaan käytettävyydestä (uptime/johdonmukaisuus).
+# Virheet KERTAANTUVAT ottelun mitassa: 0.34 vs 0.25 tarkoittaa satoja
+# menetettyjä sekunteja tehokasta peliaikaa 20 minuutissa.
+var mistake_chance := 0.0       # todennäköisyys/päätös ajautua keskittymiskatkoon
+
+# TASOPORTIT (tier gates): kyky-lukitukset joita _init soveltaa jatkuvien
+# käyrien PÄÄLLE. Nämä vain LEIKKAAVAT alempia tasoja, joten monotonisuus
+# säilyy — ylempi rank ei koskaan menetä mitään mitä alemmalla on.
+var can_dragon := true          # osallistuuko Dragoniin (Silver+)
+var can_baron := true           # osallistuuko Baroniin (Gold+)
+var shop_random_chance := 0.0   # todennäköisyys ostaa satunnainen item buildin sijaan
+var shop_trip_cooldown := 35.0  # kauppareissujen väli sekunteina (Wood = ei koskaan)
+
 # Huippupään huijaukset: poikkeavat 1.0:sta vasta rankista 24 (Champion IV)
 # ylöspäin, portaattomasti Challenger I:een. Hero lukee kertoimet setup()issa.
 var damage_mult := 1.0          # aiheutettu vahinko
@@ -117,6 +134,8 @@ var _avoid_turn := 0.0          # seinänseurannan kiertosuunta (-1 vasen, +1 oi
 var _avoid_time := 0.0          # kuinka kauan samaa seinää on seurattu (jumitunnistus)
 var _atk_phase := 0.0            # hyökkäyksen jaksotus (aggression-vaihtelu)
 var _atk_firing := true
+var _lapse_t := 0.0             # jäljellä oleva keskittymiskatko (mistake_chance)
+var _lapse_drift := 0.0         # katkoksen aikainen liikkeen harha (radiaaneja)
 var _lurk := false              # assassin väijyy (odottaa avausta) sen sijaan että syöksyy
 
 # Jumiutumisen tunnistus ja tyhjäkäyntivahti. Tarkoituksella RANK-NEUTRAALIT:
@@ -162,12 +181,16 @@ func _init(p_level: int, p_rank := -1) -> void:
 	# (hidas reagointi, huono tähtäys, harvat päätökset), Challenger I lähes
 	# virheetön. Eksponentit sovittavat käyrän keskikohdan vanhoihin tasoihin.
 	reaction = lerpf(1.1, 0.05, pow(t, 0.75))
-	aim_error_deg = lerpf(38.0, 1.0, pow(t, 0.8))
+	# TÄHTÄYSTARKKUUS: pohja nostettu 38 -> 46 astetta ja huippu terävöitetty
+	# 1.0 -> 0.6. Mitattu vika oli että kaksi vierekkäistä rankia molemmat
+	# HUTASIVAT (35.6 vs 29.5 astetta ei ratkaissut mitään); nyt matalat tasot
+	# ovat aidosti avuttomia ja huippupäässä ero on osuma vs. huti.
+	aim_error_deg = lerpf(46.0, 0.6, pow(t, 0.95))
 	decision_interval = lerpf(0.95, 0.14, pow(t, 0.85))
 	# Näkyvä tähtäysaika: skillshotit pidetään pohjassa ennen laukaisua kuten
 	# ihmisellä padilla. Wood telegrafoi yli sekunnin (viivan ehtii nähdä ja
 	# väistää), Challenger näpsäyttää lähes heti.
-	aim_time = lerpf(1.05, 0.14, pow(t, 0.85))
+	aim_time = lerpf(1.25, 0.12, pow(t, 0.9))
 	dodge_chance = lerpf(0.0, 0.95, pow(t, 1.35))
 	ability_chance = lerpf(0.15, 1.0, pow(t, 0.85))
 	prediction = pow(t, 1.5)
@@ -210,6 +233,12 @@ func _init(p_level: int, p_rank := -1) -> void:
 	# Ultimatet ovat arvokkaimpia — niitä käytetään kaikilla tasoilla,
 	# heikommilla vain hieman huonommalla ajoituksella.
 	ult_chance = clampf(ability_chance + 0.35, 0.0, 1.0)
+	# Keskittymiskatkot: Wood IV mokaa noin joka kolmannessa päätöksessä,
+	# Challenger I ei koskaan. Loiva eksponentti (0.85) pitää portaat erillään
+	# koko matkalla, myös tason sisäisten divisioonien välillä.
+	mistake_chance = lerpf(0.34, 0.0, pow(t, 0.85))
+
+	_apply_tier_gates(BotRank.tier_of(rank))
 
 	# Huippupää (Champion IV -> Challenger I) huijaa avoimesti ja PORTAITTAIN:
 	# kovempi vahinko, vähemmän otettua, nopeammat jäähdytykset/ultit ja vauhtia.
@@ -221,6 +250,101 @@ func _init(p_level: int, p_rank := -1) -> void:
 		cooldown_mult = 1.0 - 0.4 * cheat
 		ult_gain_mult = 1.0 + 0.6 * cheat
 		speed_mult = 1.0 + 0.1 * cheat
+
+
+## TASOPORTIT — kahden kerroksen taitomallin ISO askel. Jatkuvat käyrät antavat
+## divisioonaeron (määrä), tasoportit antavat tasoeron (LAATU): jokainen taso
+## AVAA kykyjä joita alempi taso ei osaa lainkaan. Näin Wood III häviää
+## Bronze III:lle selvästi eikä vain "hieman huonommilla luvuilla".
+##
+## Portit vain LEIKKAAVAT alempia tasoja (minf / *-kertoimet / nollaukset), eivät
+## koskaan nosta — monotonisuus rankin suhteen säilyy automaattisesti.
+##
+## Mitä kukin taso AVAA (sama taulukko tulostuu simraportin tier-yhteenvedossa):
+##   Wood      — ei mitään: ei väistöä, ei kitetystä, ei suojaa, ei keskitettyä
+##               tulta, ei komboja, tuskin last hittejä, ei perääntymistä, ei
+##               kauppareissuja, ei objektiiveja, ei makroa.
+##   Bronze    — LAST HIT + PERÄÄNTYMINEN + kauppareissut (70 s välein).
+##               Yhä: ei kitetystä, ei suojaa, tuskin keskitettyä tulta.
+##   Silver    — VÄISTÖ + DRAGON + kohtuullinen keskitetty tuli.
+##               Yhä: heikko kitetys/suoja, ei Baronia.
+##   Gold      — KITETYS + SUOJAUTUMINEN + BARON + linjarotaatiot.
+##   Platinum  — täysi keskitetty tuli ja kombot, ei leikkauksia.
+##   Diamond+  — vain käyrät (ja Champion IV:stä alkava huijausramppi).
+func _apply_tier_gates(tier: int) -> void:
+	match tier:
+		0:  # --- Wood: ei mekaniikkaa, ei taloutta, ei karttapeliä ---
+			dodge_chance = 0.0
+			kite_skill = 0.0
+			cover_skill = 0.0
+			focus_fire = 0.0
+			combo_skill = 0.0
+			farm_skill *= 0.3            # tuskin osuu last hitteihin
+			retreat_frac = minf(retreat_frac, 0.08)   # tappelee kuolemaansa asti
+			macro_obedience = minf(macro_obedience, 0.15)
+			jungle_focus *= 0.3          # ei objektiiveja
+			buff_focus = 0.0
+			siege_focus *= 0.5
+			can_dragon = false
+			can_baron = false
+			shop_random_chance = 0.40    # ostaa mitä sattuu, ei buildia
+			shop_trip_cooldown = 999.0   # ei koskaan lähde varta vasten ostoksille
+		1:  # --- Bronze: osaa farmata ja perääntyä, muu on yhä hukassa ---
+			dodge_chance *= 0.25
+			kite_skill = 0.0
+			cover_skill = 0.0
+			focus_fire *= 0.3
+			combo_skill *= 0.4
+			macro_obedience = minf(macro_obedience, 0.35)
+			jungle_focus *= 0.6
+			can_dragon = false
+			can_baron = false
+			shop_random_chance = 0.20
+			shop_trip_cooldown = 70.0
+		2:  # --- Silver: väistö, välit ja Dragon; Baron on yhä liian iso pala ---
+			kite_skill *= 0.35
+			cover_skill *= 0.3
+			focus_fire *= 0.6
+			can_dragon = true
+			can_baron = false
+			shop_random_chance = 0.05
+			shop_trip_cooldown = 50.0
+		3:  # --- Gold: kitetys, suojautuminen ja Baron (hitaammin kuin Platinum) ---
+			cover_skill *= 0.7
+			can_dragon = true
+			can_baron = true
+			shop_random_chance = 0.0
+			shop_trip_cooldown = 35.0
+		_:  # --- Platinum ja ylöspäin: ei leikkauksia, vain käyrät ---
+			can_dragon = true
+			can_baron = true
+			shop_random_chance = 0.0
+			shop_trip_cooldown = 35.0
+
+
+## Onko botti juuri nyt keskittymiskatkossa (divisioonakerros).
+func in_lapse() -> bool:
+	return _lapse_t > 0.0
+
+
+## Keskittymiskatkon tikitys ja arvonta. Katko EI koskaan ala kun botti on
+## pakenemassa matalalla HP:llä, kanavoimassa paluuta tai pyhäkössä: siellä
+## katko olisi epäreilun tappava (kuolema ilman peliteknistä syytä) eikä mittaa
+## taitoa. decided = tämä ruutu oli päätöstikki (arvonta vain silloin).
+func _tick_lapse(hero: Hero, arena, delta: float, decided: bool) -> void:
+	_lapse_t = maxf(_lapse_t - delta, 0.0)
+	if not decided or mistake_chance <= 0.0 or _lapse_t > 0.0:
+		return
+	if _recall or _mode == Mode.RETREAT:
+		return
+	if hero.hp < hero.max_hp * 0.35:
+		return
+	var mm := arena.map as MapMoba
+	if mm != null and mm.is_in_own_sanctuary(hero.global_position, hero.team):
+		return
+	if randf() < mistake_chance:
+		_lapse_t = randf_range(0.35, 0.9)
+		_lapse_drift = deg_to_rad(randf_range(-35.0, 35.0))
 
 
 func _setup_role(hero: Hero) -> void:
@@ -428,6 +552,9 @@ func update(hero: Hero, delta: float) -> void:
 		decided = true
 
 	_update_target(hero, arena, bb)
+	# Keskittymiskatko arvotaan päätöstikissä ja tikitetään joka ruudulla.
+	# Ajetaan ennen liikettä/hyökkäystä/kykyjä, joten katko puree samalla tikillä.
+	_tick_lapse(hero, arena, delta, decided)
 	if decided:
 		_update_lurk(hero, arena)
 		_update_cover(hero, arena)
@@ -656,6 +783,9 @@ func _jungle_value(hero: Hero, cr: Critter) -> float:
 		Critter.Kind.SMALL_CAMP:
 			return 95.0
 		Critter.Kind.BOSS:
+			# TASOPORTTI: Wood/Bronze ei ymmärrä pomoa lainkaan (can_baron).
+			if not can_baron:
+				return 0.0
 			# Pomo on iso palkinto mutta vaarallinen: mene vain terveenä ja
 			# mieluiten ryhmässä; korkein taso uskaltaa yksinkin.
 			var strong: bool = hero.hp > hero.max_hp * 0.55 and jungle_focus >= 0.4
@@ -704,7 +834,7 @@ func _update_recall_decision(hero: Hero, arena, bb: TeamBlackboard,
 	# kanavoinnin käynnissä; jäähdytys ja rank-arvonta vain aloitukseen.
 	if _shop_trip_ready(hero, bb, was_recalling):
 		if not was_recalling:
-			_shop_trip_cd = 35.0
+			_shop_trip_cd = shop_trip_cooldown
 		_recall = true
 
 
@@ -713,6 +843,11 @@ func _update_recall_decision(hero: Hero, arena, bb: TeamBlackboard,
 ## lompakko pursuaa). Ripeys skaalautuu rankilla — paremmat pelaajat hakevat
 ## iteminsä aiemmin, mutta jokainen käy lopulta.
 func _shop_trip_ready(hero: Hero, bb: TeamBlackboard, was_recalling: bool) -> bool:
+	# TASOPORTTI (itemien osto): Wood ei koskaan lähde varta vasten ostoksille —
+	# se ostaa vain sattumalta kotona/kuolleena ollessaan. Bronze/Silver reissaavat
+	# harvemmin (shop_trip_cooldown). Talousetu vaatii ostamisen, ei vain kullan.
+	if shop_trip_cooldown >= 900.0:
+		return false
 	if hero.items.size() >= 6:
 		return false
 	if not was_recalling and _shop_trip_cd > 0.0:
@@ -813,6 +948,11 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 			# Matala rank ei kokoonnu Baronille/ryhmätyöntöön luotettavasti ->
 			# kutsut jäävät vajaiksi eikä peli sulkeudu yhtä usein.
 			_macro_obey = randf() < macro_obedience
+			# TASOPORTTI: Baron-kutsu ei koske tasoja jotka eivät osaa Baronia
+			# (Wood/Bronze/Silver) — ne eivät yksinkertaisesti tule paikalle,
+			# jolloin joukkueen Baron-kutsu jää vajaaksi.
+			if bb.macro_call == "baron" and not can_baron:
+				_macro_obey = false
 		if _macro_obey:
 			_jungle_target = bb.macro_target
 			_moba_goal = bb.macro_pos
@@ -1000,6 +1140,11 @@ func _lane_rotation_safe(hero: Hero, arena) -> bool:
 func _moba_objective_value(hero: Hero, cr: Critter) -> float:
 	match cr.kind:
 		Critter.Kind.BOSS:
+			# TASOPORTTI: Baron on Gold+ (can_baron). Wood/Bronze/Silver eivät
+			# osallistu lainkaan -> ne menettävät Baron-buffin ja artefaktin,
+			# mikä on iso osa tason vs. tason erosta loppupelissä.
+			if not can_baron:
+				return 0.0
 			# Iso tiimibuffi -> korkein prioriteetti, mutta vaarallinen: vain
 			# terveenä ja mieluiten ryhmässä (vain korkein taso uskaltaa yksin).
 			var strong: bool = hero.hp > hero.max_hp * 0.55 and jungle_focus >= 0.4
@@ -1008,6 +1153,9 @@ func _moba_objective_value(hero: Hero, cr: Critter) -> float:
 				return 300.0
 			return 0.0
 		Critter.Kind.DRAGON:
+			# TASOPORTTI: Dragon on Silver+ (can_dragon).
+			if not can_dragon:
+				return 0.0
 			var strong: bool = hero.hp > hero.max_hp * 0.5
 			var grouped: bool = _allies_near(hero, cr.global_position, 460.0) >= 1
 			var solo_ready := _moba_job == "jungle" and jungle_focus >= 0.72 \
@@ -1595,6 +1743,12 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, delta: float) -> vo
 		var diff: Vector2 = pos - ally.global_position
 		if diff.length() < 70.0 and diff.length() > 0.01:
 			desired += diff.normalized() * 0.6
+
+	# KESKITTYMISKATKO: liikesuunta harhautuu (+-35 astetta) katkon ajan — botti
+	# ei mene sinne minne aikoi. Tehdään ennen esteenväistöä, jotta seinänseuranta
+	# korjaa harhan silti kelvolliseksi suunnaksi (ei uusia jumeja).
+	if _lapse_t > 0.0 and desired.length() > 0.1:
+		desired = desired.rotated(_lapse_drift)
 
 	# Esteenväistö VIIMEISENÄ: seinänseuranta viuhkasäteillä (osaa liukua pitkää
 	# seinää pitkin lähimmälle aukolle, esim. MOBA-kartan gank-aukoista).
@@ -2457,6 +2611,10 @@ func _update_attack(hero: Hero, delta: float) -> void:
 		return
 	if _lurk:
 		return                          # väijyvä assassin ei tulita, odottaa avausta
+	# Keskittymiskatko: perusisku jää puolet ruuduista väliin (tehollinen
+	# vahinko puolittuu katkon ajaksi) — kykyjä ei käytetä lainkaan.
+	if _lapse_t > 0.0 and randf() < 0.5:
+		return
 	if hero.arena.mode == "moba":
 		# Älä jatka perusiskua aggron vaihduttua, äläkä aktivoi puolustusaggroa
 		# vihollissankariin ilman hyväksyttyä execute-divenä.
@@ -2554,6 +2712,11 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 	if not decided:
 		return
 	if arena == null or not is_instance_valid(arena):
+		return
+	# Keskittymiskatko: ei kykyjä eikä ulttia (ei _request_cast, ei _flags).
+	# Juuri tämä tekee katkosta kalliin — hukatut kykyikkunat ovat se ero jonka
+	# ylempi divisioona voittaa.
+	if _lapse_t > 0.0:
 		return
 	# Ottelun/objektiivin vaihtuessa vanha kohde voi vapautua saman fysiikkaruudun
 	# Clear it before the typed hero-specific utility callback.

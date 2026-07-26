@@ -1931,6 +1931,13 @@ func _bot_shop() -> void:
 	var guard := 0
 	while guard < 12:
 		guard += 1
+		# ITEMIOSTOTAITO (rank): matalat tasot ostavat välillä umpimähkään
+		# katalogista buildin sijaan. Ostos on aina LAILLINEN (varaa riittää,
+		# paikat kunnossa) — se on vain huono valinta, ja juuri se on taitoeroa:
+		# Woodin kuusi itemiä eivät tue sen roolia, Goldin tukevat.
+		var rnd_chance: float = float(controller.shop_random_chance)
+		if rnd_chance > 0.0 and randf() < rnd_chance and _bot_buy_random():
+			continue
 		var goal := ""
 		for g in goals:
 			if not items.has(str(g)):
@@ -1941,6 +1948,26 @@ func _bot_shop() -> void:
 		var pick := ItemDef.next_purchase(goal, items, profile.wallet())
 		if pick == "" or not buy_item(pick):
 			return
+
+
+## Umpimähkäinen mutta laillinen ostos: satunnainen katalogin item johon on
+## varaa juuri nyt. Palauttaa true jos jokin ostettiin.
+func _bot_buy_random() -> bool:
+	var wallet: int = int(profile.wallet())
+	var affordable: Array = []
+	for id_v in ItemDef.all_ids():
+		var id: String = str(id_v)
+		if items.has(id):
+			continue
+		var item: Dictionary = ItemDef.get_item(id)
+		if bool(item.get("require_artifact", false)) and not legendary_artifact:
+			continue
+		if ItemDef.combine_cost(id, items) > wallet:
+			continue
+		affordable.append(id)
+	if affordable.is_empty():
+		return false
+	return buy_item(str(affordable[randi() % affordable.size()]))
 
 
 ## Itemien puolustusstatit kohteessa (self): kyvyt vaimentaa taikavastus,
