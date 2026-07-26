@@ -416,6 +416,24 @@ func _draw_ultimate_state(bob: float) -> void:
 					var ray := Vector2.RIGHT.rotated(TAU * i / 4.0 - _time * 5.0)
 					draw_line(center + ray * 22.0, center + ray * (39.0 + pulse * 6.0),
 						Palette.with_alpha(Palette.glow(hero.hero_color(), 1.5), 0.72), 4.0)
+			# Varjopisteet (selkäänisku) ja varjon jäljellä oleva paluuikkuna.
+			var scharge: int = int(hero.call("charge_count")) \
+				if hero.has_method("charge_count") else 0
+			var sshadow: float = float(hero.call("shadow_fraction")) \
+				if hero.has_method("shadow_fraction") else 0.0
+			for i in range(3):
+				var spip := center + Vector2(-14.0 + float(i) * 14.0, -hero.radius - 18.0)
+				if i < scharge:
+					draw_circle(spip, 3.6, Palette.glow(hero.hero_color(), 1.8))
+				else:
+					draw_circle(spip, 2.6, Color(0, 0, 0, 0.45))
+			if sshadow > 0.01:
+				var shome: Vector2 = hero.to_local(hero.call("shadow_position"))
+				draw_line(center, shome, Palette.with_alpha(
+					Palette.glow(hero.hero_color(), 1.35), 0.18 + sshadow * 0.32), 2.5)
+				draw_arc(shome, 15.0 + (1.0 - sshadow) * 11.0, -PI * 0.5,
+					-PI * 0.5 + TAU * sshadow, 24,
+					Palette.with_alpha(Palette.glow(hero.hero_color(), 1.5), 0.75), 3.0)
 		"scout":
 			if bool(hero.get("_turret")):
 				draw_arc(center, hero.radius + 15.0, _time * 1.8, _time * 1.8 + PI * 1.45, 30,
