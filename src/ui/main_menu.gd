@@ -178,13 +178,15 @@ func _open_settings() -> void:
 	audio_panel.add_child(audio_box)
 	audio_box.add_child(UiKit.label("ÄÄNI", 27, Palette.GOLD))
 	audio_box.add_child(UiKit.dim_label("Erota musiikki, taisteluäänet ja kokonaisvoimakkuus.", 15))
-	_settings_slider(audio_box, "Kokonaisvoimakkuus", float(Game.options.volume), func(v):
+	# Kolme miksausväylää: pääväylä, musiikkiväylä ja tehosteväylät
+	# (SFX + panorointiväylät + UI + hälytykset + ympäristö).
+	_settings_slider(audio_box, "PÄÄÄÄNI", float(Game.options.volume), func(v):
 		Game.options.volume = v
 		AudioMgr.set_master_volume(v))
-	_settings_slider(audio_box, "Musiikki", float(Game.options.music_volume), func(v):
+	_settings_slider(audio_box, "MUSIIKKI", float(Game.options.music_volume), func(v):
 		Game.options.music_volume = v
 		AudioMgr.set_music_volume(v))
-	_settings_slider(audio_box, "Ääniefektit + valikot", float(Game.options.sfx_volume), func(v):
+	_settings_slider(audio_box, "TEHOSTEET", float(Game.options.sfx_volume), func(v):
 		Game.options.sfx_volume = v
 		AudioMgr.set_sfx_volume(v))
 	var music_toggle := _settings_toggle("Musiikki käytössä", bool(Game.options.music), func(on):
