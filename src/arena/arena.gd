@@ -84,6 +84,12 @@ const JUNGLE_XP_ASSIST_RADIUS := 720.0
 const JUNGLE_XP_ASSIST_SHARE := 0.35
 const MAJOR_XP_ASSIST_SHARE := 0.55
 const TOWER_XP_ASSIST_RADIUS := 1050.0
+# Piiritys on ryhmätyötä, ei last hit -kilpailu: viimeistelijä pitää rakennuksen
+# täyden kulta-arvon, ja jokainen MUU elossa oleva liittolaissankari samalla
+# säteellä saa tämän osuuden. Ilman tätä tornin kulta (160/210/260, kristalli
+# 150) meni kokonaan sille joka sattui lyömään viimeisen osuman — usein
+# minionille tai ohi juosseelle sankarille, vaikka piirityksen teki toinen.
+const TOWER_GOLD_ASSIST_SHARE := 0.45
 const HERO_KO_XP_BASE := 120.0
 # Tappopalkkio: 150 + 12 * uhrin taso kultaa tappajalle; avustajat jakavat
 # 40 % palkkiosta (jako hoidetaan Hero._knockoutissa avustuslistan kanssa).
@@ -1116,6 +1122,24 @@ func _grant_moba_xp(hero: Hero, raw_amount: float, source_kind: String,
 	return awarded
 
 
+## Piiritysavun kulta: muu kuin viimeistelijä saa TOWER_GOLD_ASSIST_SHARE osuuden
+## rakennuksen arvosta. Kirjautuu täsmälleen kuten viimeistelijän kulta (gold +
+## tower_gold + buffitalous + virstanpylväät), jotta raportit pysyvät ehjinä.
+func _share_siege_gold(ally, gold_value: int) -> void:
+	if ally == null or not is_instance_valid(ally) or ally.profile == null:
+		return
+	var share: int = int(round(float(gold_value) * TOWER_GOLD_ASSIST_SHARE))
+	if share <= 0:
+		return
+	ally.profile.stats.gold += share
+	ally.profile.stats.tower_gold += share
+	_record_buff_economy(ally, float(share), 0.0)
+	_update_economy_milestones(ally)
+	if not ally.profile.is_bot:
+		popup(ally.global_position + Vector2(0, -74),
+			"+%d PIIRITYSAPU" % share, Palette.GOLD, 16)
+
+
 func _record_buff_economy(hero, gold_gain: float, xp_gain: float) -> void:
 	if hero == null or not is_instance_valid(hero) or hero.profile == null:
 		return
@@ -1318,6 +1342,8 @@ func on_structure_destroyed(structure, source) -> void:
 			_update_economy_milestones(source)
 		# Tornin XP palkitsee myös lähellä piirityksessä olleet. Viimeistelijä saa
 		# täyden osuuden; muut 55 %, eikä minionin viimeinen osuma kadota palkintoa.
+		# Sama koskee nyt KULTAA: viimeistelijä sai jo täyden arvon yllä, muut
+		# saman säteen piirittäjät saavat TOWER_GOLD_ASSIST_SHARE osuuden.
 		for ally in heroes:
 			if not is_instance_valid(ally) or not ally.alive or ally.is_unit \
 					or ally is Structure or ally.team != attacker_team:
@@ -1326,6 +1352,8 @@ func on_structure_destroyed(structure, source) -> void:
 				continue
 			var tower_share := 1.0 if ally == source else 0.55
 			_grant_moba_xp(ally, float(s.xp_value) * tower_share, "tower", ally != source)
+			if ally != source:
+				_share_siege_gold(ally, s.gold_value)
 		popup(structure.global_position + Vector2(0, -90), "TORNI TUHOTTU!",
 			Palette.glow(Palette.team(1 - s.team), 1.4), 20)
 		hud.ko_feed("%s menetti %s-linjan tornin" % [Game.team_name(s.team), s.lane_id])
@@ -1359,6 +1387,16 @@ func on_structure_destroyed(structure, source) -> void:
 			_grant_moba_xp(source, float(s.xp_value), "tower")
 			_record_buff_economy(source, s.gold_value, 0.0)
 			_update_economy_milestones(source)
+		# Kristallin kulta jaetaan kuten tornin: viimeistelijä pitää täyden arvon,
+		# muut samalla säteellä olleet saavat piiritysosuuden. XP pysyy ennallaan
+		# (vain viimeistelijä) — tämä muutos koskee vain taloutta.
+		for ally in heroes:
+			if not is_instance_valid(ally) or not ally.alive or ally.is_unit \
+					or ally is Structure or ally.team != attacker_team or ally == source:
+				continue
+			if ally.global_position.distance_to(s.global_position) > TOWER_XP_ASSIST_RADIUS:
+				continue
+			_share_siege_gold(ally, s.gold_value)
 		# Sykli jatkuu: sama solmu kierrätetään respawnissa 45 s kuluttua.
 		var entry_v = _crystal_lanes.get("%d:%s" % [s.team, s.lane_id])
 		if entry_v != null:

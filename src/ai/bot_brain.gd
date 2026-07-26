@@ -23,6 +23,12 @@ const BACKLINE_ROLES := ["Tuki", "Ranger", "Mage"]
 # Loppupelin raja sekunteina — sama kuin Arena.LATE_WAVE_TIME (pidä synkassa):
 # aallot kasvavat ja jungler liittyy piiritykseen gank-partioinnin sijaan.
 const LATE_PUSH_TIME := 840.0
+# PIIRITYSSÄÄNTÖ (Structure.take_damage): rakennukseen sattuu vain sen OMAN
+# kantaman sisältä. Botin on siis astuttava kehän sisään — muuten pitkän
+# kantaman sankari (Scout 1050, Quill 560+) asemoituisi omalle kantamalleen ja
+# plinkkaisi tyhjää loputtomiin. Piiritysasemointi leikataan tällä marginaalilla
+# kehän sisäpuolelle, jotta pieni liike ei työnnä ulos vahinkoalueelta.
+const SIEGE_STANDOFF := 40.0
 
 var level := 1                  # vanha 6-portainen taso (telemetria: ai_level)
 var rank := 13                  # ranking-porras 0..31 (BotRank: Wood IV .. Challenger I)
@@ -1447,10 +1453,12 @@ func _moba_push_target(hero: Hero, arena) -> Hero:
 	# rank antaa kohteen syöttiytyä — torniturva (_tower_emergency) suojaa yhä.
 	if enemy_hero != null:
 		var siege_st := _jungle_target as Structure
+		# HUOM: iskuetäisyys leikataan piiritysrajaan — muuten Scout luulisi
+		# "olevansa jo lyömässä tornia" 1000 px päästä, jossa vahinko on nolla.
 		if siege_st != null and siege_st.alive \
 				and siege_st.kind != Structure.Kind.NEXUS \
 				and hero.global_position.distance_to(siege_st.global_position) \
-					< maxf(_basic_range, 320.0) + siege_st.radius \
+					< maxf(_siege_clamped(_basic_range, siege_st), 320.0) + siege_st.radius \
 				and randf() < siege_focus:
 			return siege_st
 		return enemy_hero
@@ -1463,6 +1471,16 @@ func _moba_push_target(hero: Hero, arena) -> Hero:
 	if minion != null:
 		return minion
 	return _jungle_target
+
+
+## Leikkaa halutun etäisyyden rakennuskohteille piirityskehän sisään. Sankari-
+## ja minionikohteille palauttaa arvon sellaisenaan (sääntö koskee vain
+## rakennuksia). Rank-neutraali korjaus: ilman tätä kaukotaistelijabotti seisoisi
+## kantamaimmuniteetin ulkopuolella ja "piirittäisi" nollavahingolla.
+func _siege_clamped(range_v: float, target) -> float:
+	if target is Structure:
+		return minf(range_v, Structure.SHOT_RANGE - SIEGE_STANDOFF)
+	return range_v
 
 
 func _allies_near(hero: Hero, pos: Vector2, r: float) -> int:
@@ -1907,11 +1925,13 @@ func _update_cover(hero: Hero, arena) -> void:
 
 
 ## Kohteen todellinen iskuetäisyys tälle botille (rakennuksilla runko mukaan).
+## Rakennuksella "todellinen" tarkoittaa piirityssäännön jälkeen sitä etäisyyttä
+## jolta vahinko oikeasti menee läpi — ei sankarin nimellistä kantamaa.
 func _cover_reach() -> float:
 	var reach: float = _basic_range
 	var st := _target as Structure
 	if st != null:
-		reach += st.radius
+		reach = _siege_clamped(reach, st) + st.radius
 	return reach
 
 
@@ -2458,7 +2478,7 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 			# tasalle. Kun aalto on jo tornilla (crash), normaali piiritys
 			# jatkaa — muuten melee ei koskaan etenisi lyömään tornia.
 			if structure.kind == Structure.Kind.TOWER and lane_objective \
-					and dist > _basic_range + structure.radius:
+					and dist > _siege_clamped(_basic_range, structure) + structure.radius:
 				var wave_goal := _lane_wave_goal(hero, arena)
 				if is_finite(wave_goal.x) \
 						and wave_goal.distance_to(structure.global_position) \
@@ -2471,6 +2491,10 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 			return _moba_lane_route_goal(hero, arena, pos)
 	var to_target: Vector2 = (_target.global_position - pos).normalized()
 	var goal: Vector2 = pos
+	# PIIRITYSASEMOINTI: rakennuskohteelle haluttu etäisyys leikataan kehän
+	# sisään. Ilman leikkausta kaukotaistelija (Scout _pref_range 500, Quill 500)
+	# jäisi kantamaimmuniteetin ulkopuolelle eikä tekisi tornille yhtään mitään.
+	var want_range: float = _siege_clamped(_pref_range, _target)
 	if _lurk:
 		# Väijy keskietäisyydeltä: älä syöksy sisään ennen avausta (assassin).
 		var lurk_range := 360.0
@@ -2480,9 +2504,9 @@ func _combat_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vector
 			goal = _target.global_position - to_target * lurk_range
 		else:
 			goal = pos
-	elif dist > _pref_range + 40.0:
-		goal = _target.global_position - to_target * _pref_range
-	elif dist < _pref_range - 60.0:
+	elif dist > want_range + 40.0:
+		goal = _target.global_position - to_target * want_range
+	elif dist < want_range - 60.0:
 		# Liian lähellä (etenkin kaukotaistelijat): peräänny. Askel on >= 140,
 		# jotta seinään pinnautunut pakitus näkyy jumintunnistimelle.
 		goal = pos - to_target * 160.0
@@ -2626,7 +2650,15 @@ func _update_attack(hero: Hero, delta: float) -> void:
 	# HUOM: vetäytyessä botti saa puolustautua (ampua takaa-ajajaa), liike vie
 	# silti poispäin — ei enää avutonta seisoskelua.
 	var dist: float = hero.global_position.distance_to(_target.global_position)
-	if dist > _basic_range:
+	# Rakennukselle katto on TODELLINEN vahinkoetäisyys (kantama + kohteen säde),
+	# ei sankarin oma kantama: kauempaa ammuttu osuma ei tee mitään, ja esim.
+	# Scoutin lipas valuisi tyhjäksi matkalla. Katto on tarkoituksella löysempi
+	# kuin asemointietäisyys (_siege_clamped), jottei niiden väliin jää kuollutta
+	# vyöhykettä jossa botti ei liikkuisi eikä ampuisi.
+	var reach: float = _basic_range
+	if _target is Structure:
+		reach = minf(reach, Structure.SHOT_RANGE + _target.radius)
+	if dist > reach:
 		_hold_timer = 0.0
 		return
 
@@ -2733,10 +2765,23 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 	# jahdaten -> bait-kuolemat loppuvat). Liike hoidetaan _moba_tower_safella.
 	var diving: bool = _tower_diving(hero, arena)
 
+	# PIIRITYS EI OLE KYKYJEN PAIKKA: rakennus ottaa kyvyiltä vain murto-osan
+	# (Structure.ABILITY_SIEGE_MULT) eikä aluevahingosta yhtään mitään, joten
+	# jäähdytyksen polttaminen torniin on lähes puhdasta hukkaa — perusisku on
+	# piiritysase. Sääntö on TAITOILMAISU eikä kova esto: matala combo_skill
+	# heittää kyvyt silti joskus seinään (sama akseli joka hoitaa kombot ja
+	# kykyvalinnan), korkea rank säästää ne saapuvalle puolustajalle.
+	# Yksi arvonta per päätöstahti kattaa sekä ultin että a1/a2:n.
+	var structure_target: bool = _target != null and is_instance_valid(_target) \
+		and _target is Structure
+	var siege_ability_ok: bool = not structure_target \
+		or randf() < 0.15 * (1.0 - combo_skill)
+
 	# Ultimate — arvokkain, käytetään herkemmin kaikilla vaikeustasoilla.
 	# Lukittua ulttia (ranki 0, aukeaa tasolla 4) ei edes harkita.
 	if hero.ult_charge >= 100.0 and hero.ult_unlocked():
-		if not diving and _want_ult(hero, arena, bb, dist, near_enemies) and randf() < ult_chance:
+		if not diving and siege_ability_ok \
+				and _want_ult(hero, arena, bb, dist, near_enemies) and randf() < ult_chance:
 			_flags.ult = true
 			_begin_ult_combo(hero)
 			return
@@ -2764,6 +2809,12 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 			and bool(hero.call("bot_wants_utility")) \
 			and randf() < 0.35 + combo_skill * 0.6:
 		_flags.dodge = true
+		return
+
+	# Rakennuskohteen kykyesto vasta TÄSSÄ: itsesuojelu ja junglerin utility
+	# (yllä) saavat yhä laueta, koska piirittäjä joutuu nyt seisomaan tornin
+	# kantamalla ja tarvitsee pakokykynsä.
+	if not siege_ability_ok:
 		return
 
 	if _lurk:
