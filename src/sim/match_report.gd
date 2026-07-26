@@ -119,9 +119,12 @@ static func build(snapshots: Array, intro: Array) -> String:
 	_ability_table(lines, agg)
 	_item_balance_section(lines, snapshots, flags)
 	_hero_balance_section(lines, snapshots, flags)
+	_match_health_section(lines, snapshots, flags)
 	_level_xp_table(lines, snapshots)
 	_skill_rank_table(lines, snapshots)
 	var head: Array = intro.duplicate()
+	head.append("")
+	_summary_box(head, snapshots, flags)
 	head.append("")
 	head.append_array(lines)
 	return "\n".join(PackedStringArray(head))
@@ -1490,6 +1493,7 @@ static func _skill_rank_table(lines: Array, snapshots: Array) -> void:
 			n3, wr3_text, nlow, wrlow_text, gap_text, note])
 	if not any_data:
 		lines.append("  Ei skill build -dataa otannassa (vanhat snapshotit?).")
+	_common_build_table(lines, snapshots)
 
 
 ## Mediaaniaika muotoiltuna (m:ss); "-" jos havaintoja ei ole.
@@ -1830,3 +1834,366 @@ static func _hero_balance_section(lines: Array, snapshots: Array, flags: Array) 
 	if role_rows.is_empty():
 		lines.append("  Ei rooliaineistoa otannassa.")
 	lines.append("  Sankariosion tarkistuskohteita: %d." % (flags.size() - flag_start))
+
+
+## Ottelutason systeeminen terveys: kestojakauma ja päättymistapa, lumipallo vs
+## comeback (kultajohto 10:00 vs lopputulos), ensitapahtumien konversio voitoiksi,
+## objektiivimäärät, talouden lähteet rooleittain sekä CC/vaimennus.
+## Tämä osio vastaa kysymykseen "onko itse peli terve", ei "onko itemi vahva".
+static func _match_health_section(lines: Array, snapshots: Array, flags: Array) -> void:
+	var flag_start: int = flags.size()
+	lines.append("")
+	lines.append("=== OTTELUIDEN TERVEYS ===")
+	if snapshots.is_empty():
+		lines.append("  Ei otteluita otannassa.")
+		return
+	var times: Array = []
+	var nexus_n := 0
+	var cap_n := 0
+	var other_n := 0
+	# Lumipallokauhat: johto 10:00 kohdalla suhteessa jäljessä olevan kultaan.
+	var bucket_n: Array = [0, 0, 0]
+	var bucket_w: Array = [0, 0, 0]
+	var snow_n := 0
+	var comeback_n := 0
+	var no_snow_data := 0
+	var fb_n := 0
+	var fb_w := 0
+	var ft_n := 0
+	var ft_w := 0
+	var fd_n := 0
+	var fd_w := 0
+	var fbar_n := 0
+	var fbar_w := 0
+	var dragons := 0
+	var barons := 0
+	var crystals := 0
+	var supers := 0
+	var no_baron_matches := 0
+	var econ: Dictionary = {}
+	var cc_sum := 0.0
+	var mit_sum := 0.0
+	var taken_sum := 0.0
+	var hero_obs := 0
+	for snap_v in snapshots:
+		var snap: Dictionary = snap_v
+		var winner: int = int(snap.get("winner", -1))
+		var decided: bool = winner == 0 or winner == 1
+		var elapsed: float = float(snap.get("elapsed", 0.0))
+		times.append(elapsed)
+		var reason: String = str(snap.get("reason", ""))
+		if reason.find("nexus") >= 0:
+			nexus_n += 1
+		elif reason.find("aikakatto") >= 0:
+			cap_n += 1
+		else:
+			other_n += 1
+		var heroes: Array = snap.get("heroes", [])
+		# Kultajohto 10:00: joukkueen summa niistä sankareista jotka ehtivät näytteeseen.
+		var g10: Array = [0.0, 0.0]
+		var g10_n: Array = [0, 0]
+		for hv in heroes:
+			var hh: Dictionary = hv
+			hero_obs += 1
+			var ht: int = int(hh.get("team", -1))
+			cc_sum += float(hh.get("cc_suffered", 0.0))
+			mit_sum += float(hh.get("mitigated", 0.0))
+			taken_sum += float(hh.get("taken", 0.0))
+			var v10: float = float(hh.get("gold_at_10", -1.0))
+			if v10 >= 0.0 and (ht == 0 or ht == 1):
+				g10[ht] = float(g10[ht]) + v10
+				g10_n[ht] = int(g10_n[ht]) + 1
+			# Talouden lähteet rooleittain.
+			var role: String = str(hh.get("progression_role", hh.get("role", "unknown")))
+			if role == "":
+				role = "unknown"
+			if not econ.has(role):
+				econ[role] = {"role": role, "n": 0, "gold": 0.0, "passive": 0.0,
+					"cs": 0.0, "prox": 0.0, "kills": 0.0, "tower": 0.0, "jungle": 0.0}
+			var e: Dictionary = econ[role]
+			e["n"] = int(e["n"]) + 1
+			e["gold"] = float(e["gold"]) + float(hh.get("gold", 0.0))
+			e["passive"] = float(e["passive"]) + float(hh.get("passive_gold", 0.0))
+			e["cs"] = float(e["cs"]) + float(hh.get("last_hit_gold", 0.0))
+			e["prox"] = float(e["prox"]) + float(hh.get("proximity_gold", 0.0))
+			e["kills"] = float(e["kills"]) + float(hh.get("kill_gold", 0.0)) \
+				+ float(hh.get("assist_gold_earned", 0.0))
+			e["tower"] = float(e["tower"]) + float(hh.get("tower_gold", 0.0))
+			e["jungle"] = float(e["jungle"]) + float(hh.get("jungle_gold", 0.0))
+		if decided and int(g10_n[0]) > 0 and int(g10_n[1]) > 0:
+			var hi: int = 0 if float(g10[0]) >= float(g10[1]) else 1
+			var lead: float = 100.0 * (float(g10[hi]) - float(g10[1 - hi])) \
+				/ maxf(float(g10[1 - hi]), 1.0)
+			var bi := 0
+			if lead >= 15.0:
+				bi = 2
+			elif lead >= 5.0:
+				bi = 1
+			bucket_n[bi] = int(bucket_n[bi]) + 1
+			snow_n += 1
+			if hi == winner:
+				bucket_w[bi] = int(bucket_w[bi]) + 1
+			else:
+				comeback_n += 1
+		elif decided:
+			no_snow_data += 1
+		# Ensitapahtumat: ensiveri (tapahtumaloki), ensitorni, ensidragon, ensibaron.
+		if decided:
+			var fb_team := -1
+			for ev_v in snap.get("events", []):
+				var ev: Dictionary = ev_v
+				var txt: String = str(ev.get("text", ""))
+				if txt.begins_with("Ensiveri: SININEN"):
+					fb_team = 0
+					break
+				if txt.begins_with("Ensiveri: ORANSSI"):
+					fb_team = 1
+					break
+			if fb_team >= 0:
+				fb_n += 1
+				if fb_team == winner:
+					fb_w += 1
+			var tev: Array = snap.get("tower_events", [])
+			if not tev.is_empty():
+				var t0: Dictionary = tev[0]
+				var tt: int = int(t0.get("attacker_team", -1))
+				if tt == 0 or tt == 1:
+					ft_n += 1
+					if tt == winner:
+						ft_w += 1
+		var m_dragons := 0
+		var m_barons := 0
+		var first_dragon := -1
+		var first_baron := -1
+		for ev_v in snap.get("objective_events", []):
+			var oev: Dictionary = ev_v
+			var kind: String = str(oev.get("kind", ""))
+			var ot: int = int(oev.get("team", -1))
+			if kind == "dragon":
+				m_dragons += 1
+				if first_dragon < 0:
+					first_dragon = ot
+			elif kind == "baron":
+				m_barons += 1
+				if first_baron < 0:
+					first_baron = ot
+		dragons += m_dragons
+		barons += m_barons
+		if m_barons <= 0:
+			no_baron_matches += 1
+		if decided:
+			if first_dragon == 0 or first_dragon == 1:
+				fd_n += 1
+				if first_dragon == winner:
+					fd_w += 1
+			if first_baron == 0 or first_baron == 1:
+				fbar_n += 1
+				if first_baron == winner:
+					fbar_w += 1
+		for cv in snap.get("crystals_broken", []):
+			crystals += int(cv)
+		for sv in snap.get("super_minions", []):
+			supers += int(sv)
+
+	# --- kesto ja päättymistapa ---
+	var mcount: int = snapshots.size()
+	times.sort()
+	lines.append("  -- kesto ja päättymistapa --")
+	lines.append("  Kesto: lyhin %s | mediaani %s | pisin %s" % [
+		_fmt(float(times[0])), _median_fmt(times), _fmt(float(times[times.size() - 1]))])
+	var cap_share: float = 100.0 * float(cap_n) / float(mcount)
+	lines.append("  Päättyminen: nexus %d (%s) | aikakatto %d (%s) | muu %d (%s)" % [
+		nexus_n, _pct_text(nexus_n, mcount), cap_n, _pct_text(cap_n, mcount),
+		other_n, _pct_text(other_n, mcount)])
+	if cap_share > TIMECAP_SHARE:
+		lines.append("  " + _flag(flags, "järjestelmä", "aikakatto",
+			"TARKISTA: yli %d %% otteluista päättyi aikakattoon — piiritys ei etene" % int(TIMECAP_SHARE)))
+
+	# --- lumipallo ja comeback ---
+	lines.append("")
+	lines.append("  -- lumipallo ja comeback (kultajohto 10:00 = johtajan yliote jäljessä olevaan) --")
+	lines.append("  johto          |   n | johtaja voitti | tuomio")
+	var labels: Array = ["alle 5 %", "5-15 %", "yli 15 %"]
+	for i in range(3):
+		var bn: int = int(bucket_n[i])
+		var bw: int = int(bucket_w[i])
+		var note := ""
+		if i == 2 and bn >= SNOWBALL_MIN_N:
+			var bwr: float = 100.0 * float(bw) / float(bn)
+			if bwr > SNOWBALL_HIGH:
+				note = _flag(flags, "järjestelmä", "lumipallo",
+					"TARKISTA: yli 15 %% johto voittaa %.0f %% — lumipallo liian vahva" % bwr)
+			elif bwr < SNOWBALL_LOW:
+				note = _flag(flags, "järjestelmä", "lumipallo",
+					"TARKISTA: yli 15 %% johto voittaa vain %.0f %% — johdolla ei ole merkitystä" % bwr)
+		lines.append("  %-14s | %3d | %-14s | %s" % [str(labels[i]), bn, _pct_text(bw, bn), note])
+	lines.append("  Comeback: %d/%d (%s) ottelua voitti se joukkue joka oli 10:00 jäljessä." % [
+		comeback_n, snow_n, _pct_text(comeback_n, snow_n)])
+	if no_snow_data > 0:
+		lines.append("  (%d ratkennutta ottelua päättyi ennen 10:00 -> ei lumipallonäytettä)" % no_snow_data)
+
+	# --- ensitapahtumat ---
+	lines.append("")
+	lines.append("  -- ensitapahtuman tehnyt joukkue -> voitto% --")
+	lines.append("  ensiveri %s (n=%d) | ensitorni %s (n=%d) | ensidragon %s (n=%d) | ensibaron %s (n=%d)" % [
+		_pct_text(fb_w, fb_n), fb_n, _pct_text(ft_w, ft_n), ft_n,
+		_pct_text(fd_w, fd_n), fd_n, _pct_text(fbar_w, fbar_n), fbar_n])
+
+	# --- objektiivit ---
+	lines.append("")
+	lines.append("  -- objektiivit per ottelu --")
+	var mf: float = float(mcount)
+	lines.append("  dragoneja %.2f | baroneja %.2f | kristalleja %.2f | superminioneja %.2f" % [
+		float(dragons) / mf, float(barons) / mf, float(crystals) / mf, float(supers) / mf])
+	var no_baron_share: float = 100.0 * float(no_baron_matches) / mf
+	lines.append("  Otteluita joissa Baronia ei kaadettu kertaakaan: %d/%d (%.1f %%)" % [
+		no_baron_matches, mcount, no_baron_share])
+	if no_baron_share > BARON_SKIP_SHARE:
+		lines.append("  " + _flag(flags, "järjestelmä", "baron",
+			"TARKISTA: yli %d %% otteluista ilman Baronia — objektiivi ei houkuttele" % int(BARON_SKIP_SHARE)))
+
+	# --- talouden lähteet rooleittain ---
+	lines.append("")
+	lines.append("  -- talouden lähteet rooleittain (%-osuus roolin kokonaiskullasta) --")
+	lines.append("  rooli   | kulta/peli | passi  | CS     | lähi   | tapot  | tornit | jungle | muu")
+	var erows: Array = econ.values()
+	erows.sort_custom(func(x, y): return _role_rank(str(x["role"])) < _role_rank(str(y["role"])))
+	for e_v in erows:
+		var e: Dictionary = e_v
+		var total: float = maxf(float(e["gold"]), 1.0)
+		var passive: float = 100.0 * float(e["passive"]) / total
+		var cs: float = 100.0 * float(e["cs"]) / total
+		var prox: float = 100.0 * float(e["prox"]) / total
+		var kills: float = 100.0 * float(e["kills"]) / total
+		var tower: float = 100.0 * float(e["tower"]) / total
+		var jungle: float = 100.0 * float(e["jungle"]) / total
+		var rest: float = maxf(100.0 - passive - cs - prox - kills - tower - jungle, 0.0)
+		lines.append("  %-7s | %10d | %5.0f%% | %5.0f%% | %5.0f%% | %5.0f%% | %5.0f%% | %5.0f%% | %5.0f%%" % [
+			str(e["role"]), int(float(e["gold"]) / maxf(float(e["n"]), 1.0)),
+			passive, cs, prox, kills, tower, jungle, rest])
+	if erows.is_empty():
+		lines.append("  Ei talousaineistoa otannassa.")
+
+	# --- CC ja vaimennus ---
+	lines.append("")
+	lines.append("  -- CC ja vaimennus (per sankari per ottelu; tankki-itemien järkitarkistus) --")
+	var ho: float = maxf(float(hero_obs), 1.0)
+	lines.append("  kärsitty CC %.1f s | vaimennettu %d | otettu %d | vaimennus/otettu %.0f %%" % [
+		cc_sum / ho, int(mit_sum / ho), int(taken_sum / ho),
+		100.0 * mit_sum / maxf(taken_sum, 1.0)])
+	lines.append("  Ottelu-osion tarkistuskohteita: %d." % (flags.size() - flag_start))
+
+
+## Raportin kärkilaatikko: ensimmäinen asia jonka lukija näkee. Kokoaa otannan
+## koon, keskikeston, nexus-loppujen osuuden, eniten liputetut itemit ja
+## sankarit sekä yhden rivin tuomion.
+static func _summary_box(lines: Array, snapshots: Array, flags: Array) -> void:
+	var total_time := 0.0
+	var nexus := 0
+	for snap_v in snapshots:
+		var snap: Dictionary = snap_v
+		total_time += float(snap.get("elapsed", 0.0))
+		if str(snap.get("reason", "")).find("nexus") >= 0:
+			nexus += 1
+	var n: int = snapshots.size()
+	lines.append("=== YHTEENVETO ===")
+	lines.append("  Otteluita %d | keskikesto %s | nexus-loppuja %d (%s)" % [
+		n, _fmt(total_time / maxf(float(n), 1.0)), nexus, _pct_text(nexus, n)])
+	lines.append("  Eniten liputetut itemit:   %s" % _top_flags(flags, "itemi"))
+	lines.append("  Eniten liputetut sankarit: %s" % _top_flags(flags, "sankari"))
+	lines.append("  Järjestelmähuomioita (talous/objektiivit/roolit): %d" % _count_kind(flags, "järjestelmä"))
+	if flags.is_empty():
+		lines.append("  TUOMIO: TASAPAINO OK — yksikään mittari ei ylittänyt hälytysrajaa.")
+	else:
+		lines.append("  TUOMIO: %d TARKISTUSKOHDETTA — yksityiskohdat osioissa alla." % flags.size())
+
+
+## Kolme eniten liputettua nimeä annetusta liputusluokasta, muodossa "nimi (n)".
+static func _top_flags(flags: Array, kind: String) -> String:
+	var counts: Dictionary = {}
+	for f_v in flags:
+		var f: Dictionary = f_v
+		if str(f.get("kind", "")) != kind:
+			continue
+		var name: String = str(f.get("name", "?"))
+		counts[name] = int(counts.get(name, 0)) + 1
+	var rows: Array = []
+	for name_v in counts:
+		rows.append({"name": str(name_v), "n": int(counts[name_v])})
+	if rows.is_empty():
+		return "-"
+	rows.sort_custom(func(x, y): return int(x["n"]) > int(y["n"]))
+	var parts: Array = []
+	for i in range(mini(rows.size(), 3)):
+		var r: Dictionary = rows[i]
+		parts.append("%s (%d)" % [str(r["name"]), int(r["n"])])
+	return ", ".join(PackedStringArray(parts))
+
+
+## Liputusten lukumäärä luokassa.
+static func _count_kind(flags: Array, kind: String) -> int:
+	var n := 0
+	for f_v in flags:
+		var f: Dictionary = f_v
+		if str(f.get("kind", "")) == kind:
+			n += 1
+	return n
+
+
+## Yleisin lopullinen kykybuild per sankari: näyttää dominoivan maksautuskuvion
+## ja sen voitto%:n. Rankit merkkijonona "a1:3 a2:2 ult:3 basic:2 dodge:0".
+static func _common_build_table(lines: Array, snapshots: Array) -> void:
+	var order: Array = ["a1", "a2", "ult", "basic", "dodge"]
+	var per_hero: Dictionary = {}
+	for snap_v in snapshots:
+		var snap: Dictionary = snap_v
+		var winner: int = int(snap.get("winner", -1))
+		var decided: bool = winner == 0 or winner == 1
+		for hv in snap.get("heroes", []):
+			var h: Dictionary = hv
+			var build: Dictionary = h.get("skill_build", {})
+			if build.is_empty():
+				continue
+			var id: String = str(h.get("hero_id", "?"))
+			var parts: Array = []
+			for sname in order:
+				parts.append("%s:%d" % [str(sname), int(build.get(sname, 0))])
+			var key: String = " ".join(PackedStringArray(parts))
+			if not per_hero.has(id):
+				per_hero[id] = {"id": id, "total": 0, "builds": {}}
+			var ph: Dictionary = per_hero[id]
+			ph["total"] = int(ph["total"]) + 1
+			var builds: Dictionary = ph["builds"]
+			if not builds.has(key):
+				builds[key] = {"key": key, "n": 0, "wins": 0, "decided": 0}
+			var b: Dictionary = builds[key]
+			b["n"] = int(b["n"]) + 1
+			if decided:
+				b["decided"] = int(b["decided"]) + 1
+				if int(h.get("team", -1)) == winner:
+					b["wins"] = int(b["wins"]) + 1
+	lines.append("")
+	lines.append("  -- yleisin lopullinen build per sankari (osuus = kuinka usein sama kuvio) --")
+	lines.append("  sankari  | build                            |   n | osuus | voitto% | huomio")
+	var ids: Array = per_hero.keys()
+	ids.sort()
+	for id_v in ids:
+		var phd: Dictionary = per_hero[id_v]
+		var builds: Dictionary = phd["builds"]
+		var best: Dictionary = {}
+		for key_v in builds:
+			var b: Dictionary = builds[key_v]
+			if best.is_empty() or int(b["n"]) > int(best["n"]):
+				best = b
+		if best.is_empty():
+			continue
+		var total: int = maxi(int(phd["total"]), 1)
+		var share: float = 100.0 * float(best["n"]) / float(total)
+		var note := ""
+		if int(best["n"]) >= ITEM_MIN_N and share >= BUILD_DOMINANT:
+			note = "yksi kuvio dominoi"
+		lines.append("  %-8s | %-32s | %3d | %4.0f%% | %-7s | %s" % [
+			str(id_v), str(best["key"]), int(best["n"]), share,
+			_pct_text(int(best["wins"]), int(best["decided"])), note])
+	if ids.is_empty():
+		lines.append("  Ei skill build -dataa otannassa.")
