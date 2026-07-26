@@ -293,6 +293,14 @@ func match_finished() -> void:
 	# Pelaajien ottelu: tuota raportti, jonka pelaaja voi antaa kehittäjälle.
 	_capture_report()
 	_record_ranked_results()
+	# Ranked-virstanpylväät (ylennys, promootiosarja, pudotus, suoja) näytetään
+	# omana kohtauksenaan ENNEN tulosruutua. Useampi paikallinen pelaaja saa
+	# jokainen oman kohtauksensa peräkkäin, minkä jälkeen jatketaan tulostauluun.
+	if not RankPromoScene.build_queue(last_ranked_results).is_empty():
+		var promo := RankPromoScene.new()
+		promo.setup(last_ranked_results, func(): _swap(Results.new()))
+		_swap(promo)
+		return
 	_swap(Results.new())
 
 
