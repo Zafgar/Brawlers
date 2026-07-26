@@ -91,29 +91,35 @@ static func _kaira(ci: CanvasItem, center: Vector2, r: float) -> void:
 			SHADE, maxf(1.5, r * 0.07))
 
 
+## Vesper: teloittajan sirppi (kiskojousi) ja sen lapi lentava fosforipultti.
 static func _vesper(ci: CanvasItem, center: Vector2, r: float) -> void:
-	# Tracker-ristikko ja ratakiskopultti.
-	ci.draw_arc(center, r * 0.68, 0.0, TAU, 28, INK, maxf(2.0, r * 0.09))
-	for i in range(4):
-		var d := Vector2.RIGHT.rotated(TAU * i / 4.0)
-		ci.draw_line(center + d * r * 0.28, center + d * r * 0.98, INK, maxf(2.0, r * 0.08))
-	ci.draw_line(center - Vector2.RIGHT * r * 0.72, center + Vector2.RIGHT * r * 0.72,
-		SHADE, maxf(2.0, r * 0.12))
+	# Sirppi: paksu kaari, joka avautuu oikealle.
+	ci.draw_arc(center + Vector2(-r * 0.16, 0), r * 0.78, -1.25, 1.25, 22,
+		INK, maxf(3.0, r * 0.2))
+	# Janne kaaren karkien valissa, vedettyna taakse.
+	var tip_a := center + Vector2(-r * 0.16, 0) + Vector2(cos(-1.25), sin(-1.25)) * r * 0.78
+	var tip_b := center + Vector2(-r * 0.16, 0) + Vector2(cos(1.25), sin(1.25)) * r * 0.78
+	var pull := center + Vector2(-r * 0.5, 0)
+	ci.draw_line(tip_a, pull, SHADE, maxf(1.5, r * 0.08))
+	ci.draw_line(pull, tip_b, SHADE, maxf(1.5, r * 0.08))
+	# Pultti lahdossa: varsi ja karki oikealle.
+	ci.draw_line(pull, center + Vector2(r * 0.58, 0), INK, maxf(2.0, r * 0.1))
 	ci.draw_colored_polygon(PackedVector2Array([
-		center + Vector2(r * 0.94, 0), center + Vector2(r * 0.52, -r * 0.22),
-		center + Vector2(r * 0.52, r * 0.22)]), INK)
+		center + Vector2(r * 0.98, 0), center + Vector2(r * 0.5, -r * 0.28),
+		center + Vector2(r * 0.5, r * 0.28)]), INK)
 
 
+## Myria: kuuden teralehden orkidea ja hehkuva mesikeskus.
 static func _myria(ci: CanvasItem, center: Vector2, r: float) -> void:
-	# Neljä talletettua essenssiä ja keskimmäinen maski.
-	for i in range(4):
-		var d := Vector2.RIGHT.rotated(PI * 0.25 + TAU * i / 4.0)
-		ci.draw_line(center + d * r * 0.28, center + d * r * 0.76, SHADE, maxf(1.5, r * 0.06))
-		ci.draw_circle(center + d * r * 0.78, r * 0.15, INK)
-	ci.draw_colored_polygon(PackedVector2Array([
-		center + Vector2(0, -r * 0.68), center + Vector2(r * 0.38, 0),
-		center + Vector2(0, r * 0.68), center + Vector2(-r * 0.38, 0)]), INK)
-	ci.draw_circle(center, r * 0.13, SHADE)
+	for i in range(6):
+		var d := Vector2.RIGHT.rotated(TAU * i / 6.0 - PI * 0.5)
+		ci.draw_colored_polygon(PackedVector2Array([
+			center + d * r * 0.16,
+			center + d * r * 0.62 + d.orthogonal() * r * 0.3,
+			center + d * r * 0.96,
+			center + d * r * 0.62 - d.orthogonal() * r * 0.3]), INK)
+	ci.draw_circle(center, r * 0.26, SHADE)
+	ci.draw_circle(center, r * 0.13, INK)
 
 
 ## Torq: hevosenkenkamagneetti kahtine napoineen ja sisaanpain kaartuvine

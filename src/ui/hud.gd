@@ -855,28 +855,80 @@ class PaneHud:
 								center + Vector2(lerpf(-r * 0.5, r, f), r * 0.5 * (1.0 - f)),
 								Color(0.03, 0.04, 0.07, 0.75), 1.8)
 			"vesper":
-				if slot == "a2":
-					for i in range(-1, 2):
-						draw_line(center + Vector2(-r, i * r * 0.45),
-							center + Vector2(r, -i * r * 0.45), col, 2.0)
-				elif slot == "dodge":
-					for i in range(3):
-						var d := Vector2.RIGHT.rotated(TAU * i / 3.0)
+				match slot:
+					"a1":
+						# Fosforipiikki: läpäisevä piikki + merkkirengas kärjessä.
+						draw_line(center + Vector2(-r, r * 0.3), center + Vector2(r * 0.4, -r * 0.2),
+							col, 2.8)
 						draw_colored_polygon(PackedVector2Array([
-							center + d * r * 0.2, center + d * r + d.orthogonal() * r * 0.25,
-							center + d * r - d.orthogonal() * r * 0.25]), col)
-				else:
-					draw_arc(center, r * 0.65, 0.0, TAU, 18, col, 2.4)
-					for i in range(4):
-						var d := Vector2.RIGHT.rotated(TAU * i / 4.0)
-						draw_line(center + d * r * 0.25, center + d * r, col, 2.2)
+							center + Vector2(r * 0.75, -r * 0.35),
+							center + Vector2(r * 0.2, -r * 0.35),
+							center + Vector2(r * 0.42, r * 0.1)]), col)
+						draw_arc(center + Vector2(r * 0.5, -r * 0.35), r * 0.42, 0.0, TAU, 14, col, 1.8)
+					"a2":
+						# Teloitus: laskeva vahinkopalkki ja lävistävä keihäs.
+						for k in range(3):
+							var h := r * (0.85 - k * 0.28)
+							draw_line(center + Vector2(-r * 0.8 + k * r * 0.4, r * 0.75),
+								center + Vector2(-r * 0.8 + k * r * 0.4, r * 0.75 - h), col, 3.0)
+						draw_line(center + Vector2(r * 0.05, r * 0.5),
+							center + Vector2(r, -r * 0.6), col, 2.8)
+						draw_colored_polygon(PackedVector2Array([
+							center + Vector2(r, -r * 0.85), center + Vector2(r * 0.5, -r * 0.4),
+							center + Vector2(r * 0.95, -r * 0.25)]), col)
+					"dodge":
+						# Fosforiloikka: kaari ja laskeutumisrengas.
+						draw_arc(center + Vector2(0, r * 0.5), r * 0.9, PI * 1.05, PI * 1.95,
+							14, col, 2.8)
+						draw_arc(center + Vector2(r * 0.7, r * 0.55), r * 0.3, 0.0, TAU, 12, col, 2.0)
+					"ult":
+						# Fosforisalama: pitkä ohut kiskolaukaus.
+						draw_line(center + Vector2(-r, 0), center + Vector2(r, 0), col, 4.0)
+						for k in [-1.0, 1.0]:
+							draw_line(center + Vector2(-r * 0.85, k * r * 0.45),
+								center + Vector2(r * 0.6, k * r * 0.45),
+								Color(col.r, col.g, col.b, col.a * 0.55), 1.8)
+						draw_colored_polygon(PackedVector2Array([
+							center + Vector2(r, 0), center + Vector2(r * 0.3, -r * 0.42),
+							center + Vector2(r * 0.3, r * 0.42)]), col)
+					_:
+						# Fosforipultti: yksinkertainen nuolikärki.
+						draw_line(center + Vector2(-r * 0.9, 0), center + Vector2(r * 0.35, 0), col, 2.6)
+						draw_colored_polygon(PackedVector2Array([
+							center + Vector2(r, 0), center + Vector2(r * 0.25, -r * 0.42),
+							center + Vector2(r * 0.25, r * 0.42)]), col)
 			"myria":
-				var count := 4 if slot in ["dodge", "ult"] else 3
-				for i in range(count):
-					var d := Vector2.RIGHT.rotated(TAU * i / count - PI * 0.5)
-					draw_circle(center + d * r * 0.68, r * 0.16, col)
-					draw_line(center + d * r * 0.18, center + d * r * 0.55, col, 1.8)
-				draw_circle(center, r * 0.22, col)
+				match slot:
+					"a1":
+						# Kukkaistutus: yksi orkidea varren päässä.
+						_draw_petals(center + Vector2(0, -r * 0.2), r * 0.72, col, 6)
+						draw_line(center + Vector2(0, r * 0.25), center + Vector2(0, r), col, 2.4)
+					"a2":
+						# Kukinta: kolme puhkeavaa kukkaa ulospäin.
+						for i in range(3):
+							var d := Vector2.RIGHT.rotated(TAU * i / 3.0 - PI * 0.5)
+							_draw_petals(center + d * r * 0.55, r * 0.42, col, 5)
+					"dodge":
+						# Terälehtiliuku: kolme sivuun lentävää terälehteä.
+						for i in range(3):
+							var y := (float(i) - 1.0) * r * 0.5
+							draw_colored_polygon(PackedVector2Array([
+								center + Vector2(-r, y), center + Vector2(r * 0.2, y - r * 0.22),
+								center + Vector2(r, y * 0.4), center + Vector2(r * 0.2, y + r * 0.22)]),
+								Color(col.r, col.g, col.b, col.a * (0.5 + 0.25 * float(i))))
+					"ult":
+						# Orkideapuutarha: kehäkukat ja iso keskuskukka.
+						for i in range(5):
+							var d := Vector2.RIGHT.rotated(TAU * i / 5.0 - PI * 0.5)
+							draw_circle(center + d * r * 0.82, r * 0.15, col)
+						_draw_petals(center, r * 0.55, col, 6)
+					_:
+						# Siitepölysyöksy: itiöpallo ja pieni pölyvana.
+						draw_circle(center + Vector2(r * 0.25, 0), r * 0.42, col)
+						for k in range(3):
+							draw_circle(center + Vector2(-r * 0.45 - k * r * 0.22, 0),
+								r * (0.16 - k * 0.04),
+								Color(col.r, col.g, col.b, col.a * (0.7 - 0.18 * float(k))))
 			"torq":
 				match slot:
 					"a1":
@@ -924,11 +976,16 @@ class PaneHud:
 							r * 0.19, col)
 
 
-	func _draw_rotor_glyph(center: Vector2, r: float, col: Color, teeth: int) -> void:
-		for i in range(teeth):
-			var d := Vector2.RIGHT.rotated(TAU * i / teeth)
-			draw_line(center + d * r * 0.32, center + d * r, col, 2.4)
-		draw_circle(center, r * 0.28, col)
+	## Kuuden terälehden kukka Myrian glyfeihin.
+	func _draw_petals(center: Vector2, r: float, col: Color, petals: int) -> void:
+		for i in range(petals):
+			var d := Vector2.RIGHT.rotated(TAU * i / float(petals) - PI * 0.5)
+			draw_colored_polygon(PackedVector2Array([
+				center + d * r * 0.16,
+				center + d * r * 0.65 + d.orthogonal() * r * 0.3,
+				center + d * r,
+				center + d * r * 0.65 - d.orthogonal() * r * 0.3]), col)
+		draw_circle(center, r * 0.22, Color(0.03, 0.04, 0.07, 0.85))
 
 
 	func _short_name(text: String, max_chars: int) -> String:

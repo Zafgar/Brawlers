@@ -332,6 +332,22 @@ func _draw() -> void:
 				draw_line(-forward * hit_radius * 0.1,
 					-forward * hit_radius * 0.75 + side * barb * hit_radius,
 					Color("fff0a8"), 3.0)
+		"vesper_exec":
+			# Teloituspultti: paksu fosforikeihäs ja hehkuva jälkivana.
+			if pts.size() > 1:
+				draw_polyline(pts, Palette.with_alpha(color, 0.6), 8.0)
+				draw_polyline(pts, Palette.with_alpha(Color.WHITE, 0.5), 2.5)
+			var spear := forward * hit_radius * 2.3
+			draw_line(-forward * hit_radius * 1.2, spear, Palette.glow(color, 1.65), 6.0)
+			draw_colored_polygon(PackedVector2Array([
+				spear, spear - forward * hit_radius * 1.1 + side * hit_radius * 0.75,
+				spear - forward * hit_radius * 1.1 - side * hit_radius * 0.75]), Color.WHITE)
+			# Kaksi vastakkaista väkästä: pultti luetaan "lopetukseksi".
+			for barb in [-1.0, 1.0]:
+				draw_line(-forward * hit_radius * 0.2,
+					-forward * hit_radius * 1.1 + side * barb * hit_radius * 1.0,
+					Palette.glow(color, 1.4), 3.0)
+			draw_circle(Vector2.ZERO, hit_radius * 0.5, Palette.glow(Color("b8ff3d"), 1.7))
 		"vesper_bolt", "vesper_tracker":
 			var tracker := visual_id == "vesper_tracker"
 			if pts.size() > 1:

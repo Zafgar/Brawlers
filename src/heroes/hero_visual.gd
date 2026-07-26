@@ -407,18 +407,21 @@ func _draw_ultimate_state(bob: float) -> void:
 						Palette.with_alpha(Palette.glow(Color("ff5f1f"), 1.5),
 							0.25 + kheat * 0.55), 5.0)
 		"vesper":
-			if float(hero.get("_drone_active")) > 0.0:
-				for i in range(3):
-					var a := _time * 2.5 + TAU * i / 3.0
-					var p := center + Vector2(cos(a), sin(a) * 0.45) * 43.0
-					draw_circle(p, 5.0, Palette.glow(Color("d9ff8f"), 1.5))
-					draw_line(center, p, Palette.with_alpha(hero.hero_color(), 0.28), 1.5)
+			# Teloituksen jälkihehku: fosforirengas kiristyy hahmon ympärille.
+			var vhunt := float(hero.call("hunt_glow")) if hero.has_method("hunt_glow") else 0.0
+			if vhunt > 0.02:
+				draw_arc(center, hero.radius + 10.0 + (1.0 - vhunt) * 22.0,
+					_time * 3.0, _time * 3.0 + PI * 1.5, 26,
+					Palette.with_alpha(Palette.glow(Color("b8ff3d"), 1.6), vhunt * 0.8), 4.0)
 		"myria":
-			var ec: Color = hero.call("essence_color") if hero.has_method("essence_color") else hero.hero_color()
-			for i in range(4):
-				var a := _time * 1.45 + TAU * i / 4.0
+			# Siitepölykehä: tiheämpi kun kukkia on maassa, kirkas kukinnassa.
+			var mb := float(hero.call("bloom_glow")) if hero.has_method("bloom_glow") else 0.0
+			var mp := int(hero.call("orchid_count")) if hero.has_method("orchid_count") else 0
+			for i in range(4 + mp):
+				var a := _time * 1.35 + TAU * float(i) / float(4 + mp)
 				var p := center + Vector2(cos(a), sin(a) * 0.48) * (34.0 + pulse * 3.0)
-				draw_circle(p, 4.5, Palette.with_alpha(Palette.glow(ec, 1.5), 0.78))
+				draw_circle(p, 4.0 + mb * 2.5,
+					Palette.with_alpha(Palette.glow(Color("ffb3e6"), 1.5), 0.55 + mb * 0.4))
 		"torq":
 			# Magneettiaura: kenttäviivat kiertyvät sisäänpäin kyvyn jälkeen.
 			var tglow := float(hero.call("field_glow")) if hero.has_method("field_glow") else 0.0
@@ -1626,77 +1629,128 @@ func _paint_kaira(c1: Color, c2: Color) -> void:
 		Palette.glow(Color("fff0a8"), 1.6))
 
 
+## VESPER — fosforijahtaaja. Muotokieli: yksi suuri SIRPPI (kiskojousi) ja
+## fosforilyhty. Kapea, eteenpäin nojaava siluetti; teloituksen jälkeen koko
+## hahmo hehkuu hetken kirkkaana.
 func _paint_vesper(c1: Color, c2: Color) -> void:
 	var d := hero.aim.normalized()
 	var p := d.orthogonal()
-	# Kolmisiipinen metsästysdroni selän yllä.
-	var drone := -d * 19.0 + Vector2(0, -24.0 + sin(_time * 3.5) * 3.0)
-	draw_circle(drone, 8.0, Palette.darker(c2, 0.7))
-	draw_circle(drone, 4.5, Palette.glow(Color("d9ff8f"), 1.5))
-	for i in range(3):
-		var ray := Vector2.RIGHT.rotated(_time * 0.45 + TAU * i / 3.0)
-		draw_colored_polygon(PackedVector2Array([
-			drone + ray * 5.0, drone + ray * 17.0 + ray.orthogonal() * 5.0,
-			drone + ray * 17.0 - ray.orthogonal() * 5.0]), c1)
+	var hunt := 0.0
+	if hero.has_method("hunt_glow"):
+		hunt = clampf(float(hero.call("hunt_glow")), 0.0, 1.0)
+	var burn := Color("b8ff3d")
+	var glow := Palette.glow(burn, 1.3 + hunt * 0.7)
 
-	_body_base(Vector2.ZERO, 17.0, c1, c2)
-	# Tracker-huppu, yksi kirkas tähtäyslinssi ja antennit.
-	draw_arc(Vector2(0, -7), 16.0, PI + 0.25, TAU - 0.25, 18, Palette.darker(c2, 0.6), 8.0)
-	var visor := Vector2(0, -6) + d * 5.0
-	draw_line(visor - p * 9.0, visor + p * 9.0, Color("1c3a10"), 6.0)
-	draw_circle(visor + p * 5.0, 4.0, Palette.glow(Color("d9ff8f"), 1.5))
-	draw_line(Vector2(0, -18) - p * 4.0, Vector2(0, -31) - p * 10.0, c1, 2.0)
-	draw_circle(Vector2(0, -32) - p * 10.0, 2.5, Color("d9ff8f"))
+	# Pieni merkintädroni leijuu olan yllä ja osoittaa tähtäyssuuntaan.
+	var drone := -d * 14.0 + Vector2(0, -27.0 + sin(_time * 3.2) * 3.0)
+	draw_circle(drone, 7.0, Palette.darker(c2, 0.65))
+	draw_circle(drone, 3.6, glow)
+	draw_line(drone, drone + d * 13.0, Palette.with_alpha(burn, 0.35 + hunt * 0.4), 1.6)
 
-	# Ratakiskojousi: kaksi rinnakkaista kiskoa ja energiajänne.
-	var grip := d * 13.0 + p * 5.0
-	var muzzle := d * (50.0 + _attack_anim * 7.0)
-	_hold(grip, c1, 17.0, 5.0)
-	for side in [-1.0, 1.0]:
-		draw_line(grip + p * side * 5.0, muzzle + p * side * 7.0,
-			Palette.darker(c2, 0.72), 6.0)
-		draw_line(grip + p * side * 5.0, muzzle + p * side * 7.0,
-			Color("76b23c"), 2.5)
-	draw_line(muzzle - p * 13.0, muzzle + p * 13.0, Color("eeffc9"), 3.0)
-	draw_circle(muzzle, 4.0 + _attack_anim * 4.0, Palette.glow(c1, 1.6))
+	# Viitta: kapea, taaksepäin liehuva kolmio — jahtaaja on aina liikkeessä.
+	draw_colored_polygon(PackedVector2Array([
+		-d * 4.0 + p * 13.0,
+		-d * (26.0 + sin(_time * 4.0) * 3.0) + p * 6.0,
+		-d * (30.0 + sin(_time * 4.0 + 1.0) * 3.0) - p * 5.0,
+		-d * 4.0 - p * 13.0]), Palette.darker(c2, 0.5))
+
+	_body_base(Vector2.ZERO, 16.0, c1, c2)
+	# Huppu ja YKSI kirkas tähtäyslinssi — ei kasvoja, vain optiikka.
+	draw_colored_polygon(PackedVector2Array([
+		-d * 13.0 + Vector2(0, -6),
+		d * 6.0 + Vector2(0, -20),
+		d * 14.0 + Vector2(0, -4),
+		d * 4.0 + Vector2(0, 4)]), Palette.darker(c2, 0.62))
+	draw_circle(d * 10.0 + Vector2(0, -7), 4.6, Palette.darker(c2, 0.3))
+	draw_circle(d * 10.0 + Vector2(0, -7), 3.0, glow)
+
+	# Fosforilyhty lantiolla: pieni hehkuva lähde, joka sykkii teloituksen jälkeen.
+	var lamp := -d * 10.0 + p * 12.0 + Vector2(0, 6)
+	draw_circle(lamp, 6.0, Palette.darker(c2, 0.6))
+	draw_circle(lamp, 3.4 + hunt * 2.0, Palette.glow(Color("d9ff8f"), 1.4 + hunt * 0.6))
+
+	# SIRPPI: iso kaareva kiskojousi, jännitteinen energiajänne kärkien välissä.
+	var grip := d * 12.0 + p * 6.0
+	var arc_c := d * 30.0 + p * 4.0
+	var bow := PackedVector2Array()
+	for i in range(13):
+		var a := -1.35 + 2.7 * float(i) / 12.0
+		bow.append(arc_c + d * cos(a) * 13.0 + p * sin(a) * (30.0 + _attack_anim * 4.0))
+	draw_polyline(bow, Palette.darker(c2, 0.7), 9.0)
+	draw_polyline(bow, Color("76b23c"), 4.0)
+	_hold(grip, c1, 16.0, 5.0)
+	# Jänne: kirkas viiva sirpin kärkien välillä, vetäytyy hyökkäyksessä taakse.
+	var tip_a: Vector2 = bow[0]
+	var tip_b: Vector2 = bow[bow.size() - 1]
+	var pull: Vector2 = (tip_a + tip_b) * 0.5 - d * (4.0 + _attack_anim * 12.0)
+	draw_line(tip_a, pull, Palette.glow(Color("eeffc9"), 1.4), 2.4)
+	draw_line(pull, tip_b, Palette.glow(Color("eeffc9"), 1.4), 2.4)
+	draw_circle(pull, 3.5 + _attack_anim * 3.5 + hunt * 2.0, glow)
 
 
+## MYRIA — orkideahenki. Muotokieli: KUUSI TERÄLEHTEÄ kruununa, kelluva runko
+## ja alaspäin riippuvat juurivarret. Istutetut orkideat näkyvät nuppuina
+## hahmon ympärillä, joten pelaaja tietää aina montako Kukinta räjäyttää.
 func _paint_myria(c1: Color, c2: Color) -> void:
-	var ec: Color = hero.call("essence_color") if hero.has_method("essence_color") else c1
-	# Neljä essenssisäiliötä kiertää epäsäännöllisillä elliptisillä radoilla.
-	for i in range(4):
-		var a := _time * (0.8 + i * 0.08) + TAU * i / 4.0
-		var orbit := Vector2(cos(a), sin(a) * 0.48) * (31.0 + i * 3.0)
-		draw_line(Vector2.ZERO, orbit, Palette.with_alpha(ec, 0.16), 1.5)
-		draw_circle(orbit, 6.0, Palette.darker(c2, 0.6))
-		draw_circle(orbit, 3.5, Palette.glow(ec, 1.45))
-
-	# Kelluva biomekaaninen runko, alhaalla terälehtimäiset reaktorievät.
-	_body_base(Vector2.ZERO, 17.0, c1, c2)
-	for i in range(6):
-		var ray := Vector2.RIGHT.rotated(TAU * i / 6.0 + _time * 0.18)
-		var fin := PackedVector2Array([
-			ray * 12.0, ray * 28.0 + ray.orthogonal() * 7.0,
-			ray * 28.0 - ray.orthogonal() * 7.0])
-		draw_colored_polygon(fin, Palette.with_alpha(c2, 0.8))
-	# Kasvoton maski, jossa valittu essenssi muodostaa pystysilmän.
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(0, -20), Vector2(13, -7), Vector2(9, 10),
-		Vector2(0, 17), Vector2(-9, 10), Vector2(-13, -7)]), Color("eadfff"))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(0, -12), Vector2(5, -3), Vector2(0, 9), Vector2(-5, -3)]), ec)
-	draw_circle(Vector2(0, -2), 3.5 + sin(_time * 6.0) * 1.0, Palette.glow(ec, 1.6))
-	# Kaksikärkinen essenssisauva tähtäyssuuntaan.
 	var d := hero.aim.normalized()
 	var p := d.orthogonal()
-	var hand := d * 12.0 + p * 8.0
-	var tip := d * 42.0
-	_hold(hand, c1, 17.0, 5.0)
-	draw_line(hand, tip, Palette.darker(c2, 0.7), 6.0)
-	draw_line(hand, tip, ec, 2.5)
+	var orchid := Color("c77bff")
+	var nectar := Color("ffb3e6")
+	var stem := Color("7ee08a")
+	var bloom := 0.0
+	if hero.has_method("bloom_glow"):
+		bloom = clampf(float(hero.call("bloom_glow")), 0.0, 1.0)
+	var planted := int(hero.call("orchid_count")) if hero.has_method("orchid_count") else 0
+
+	# Alaspäin riippuvat juurivarret: henki kelluu, juuret laahaavat maassa.
+	for i in range(5):
+		var sway := sin(_time * 1.8 + float(i)) * 5.0
+		var root := Vector2((float(i) - 2.0) * 7.0, 14.0)
+		draw_line(root, root + Vector2(sway, 17.0 + float(i % 2) * 5.0),
+			Palette.with_alpha(stem, 0.55), 2.6)
+
+	# Kuuden terälehden kruunu — Myrian tunnistettavin muoto.
+	for i in range(6):
+		var a := TAU * i / 6.0 + _time * 0.35
+		var ray := Vector2(cos(a), sin(a) * 0.72)
+		draw_colored_polygon(PackedVector2Array([
+			ray * 8.0,
+			ray * 24.0 + ray.orthogonal() * 10.0,
+			ray * (33.0 + bloom * 6.0),
+			ray * 24.0 - ray.orthogonal() * 10.0]),
+			Palette.with_alpha(Palette.glow(orchid, 1.25 + bloom * 0.5), 0.82))
+
+	# Kelluva runko ja hehkuva mesiydin.
+	_body_base(Vector2.ZERO, 15.0, c1, c2)
+	draw_circle(Vector2.ZERO, 8.0, Palette.darker(c2, 0.4))
+	draw_circle(Vector2.ZERO, 5.0 + sin(_time * 5.0) * 1.2 + bloom * 3.0,
+		Palette.glow(nectar, 1.5 + bloom * 0.5))
+	# Kasvoton maski: kapea pystyviiru mesiytimen yllä.
+	draw_colored_polygon(PackedVector2Array([
+		Vector2(0, -17), Vector2(6, -6), Vector2(0, 4), Vector2(-6, -6)]),
+		Color("eadfff"))
+	draw_line(Vector2(0, -14), Vector2(0, 1), Palette.glow(orchid, 1.6), 2.4)
+
+	# Istutetut orkideat nuppuina hahmon ympärillä: 0-3 (ultin jälkeen enemmän).
+	for i in range(mini(planted, 8)):
+		var a := _time * 1.2 + TAU * float(i) / maxf(float(mini(planted, 8)), 1.0)
+		var bud := Vector2(cos(a), sin(a) * 0.5) * 40.0
+		draw_circle(bud, 5.5, Palette.darker(c2, 0.5))
+		draw_circle(bud, 3.2, Palette.glow(nectar, 1.5))
+		draw_line(bud, bud + Vector2(0, 7.0), Palette.with_alpha(stem, 0.6), 1.8)
+
+	# Kaksihaarainen kukkasauva tähtäyssuuntaan.
+	var hand := d * 11.0 + p * 8.0
+	var tip := d * 40.0
+	_hold(hand, c1, 15.0, 5.0)
+	draw_line(hand, tip, Palette.darker(stem, 0.8), 5.0)
+	draw_line(hand, tip, stem, 2.2)
 	for side in [-1.0, 1.0]:
-		draw_line(tip, tip - d * 12.0 + p * side * 11.0, Palette.glow(ec, 1.4), 4.0)
-	draw_circle(tip + d * 3.0, 5.0 + _cast_anim * 5.0, Palette.glow(ec, 1.55))
+		draw_colored_polygon(PackedVector2Array([
+			tip, tip - d * 13.0 + p * side * 11.0, tip - d * 4.0 + p * side * 4.0]),
+			Palette.with_alpha(Palette.glow(orchid, 1.4), 0.85))
+	draw_circle(tip + d * 3.0, 4.5 + _cast_anim * 5.0 + bloom * 3.0,
+		Palette.glow(nectar, 1.55))
 
 
 ## TORQ — magneettivartija. Muotokieli: valtava HEVOSENKENKÄ (U) hartioilla,

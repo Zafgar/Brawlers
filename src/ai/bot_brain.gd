@@ -444,11 +444,11 @@ func _setup_role(hero: Hero) -> void:
 			_pref_range = 108.0
 			_basic_range = 158.0
 		"vesper":
-			_pref_range = 500.0
-			_basic_range = 760.0
+			_pref_range = 520.0
+			_basic_range = 780.0
 		"myria":
-			_pref_range = 420.0
-			_basic_range = 680.0
+			_pref_range = 430.0
+			_basic_range = 620.0
 		"torq":
 			_pref_range = 96.0
 			_basic_range = 160.0
@@ -2804,7 +2804,7 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 
 	# Junglerien X on kitin utility, ei geneerinen pakohyppy. Hahmo itse kertoo
 	# milloin leiri/objective tarvitsee sen; näin botti käyttää ankkurin, dronin,
-	# essenssivaihdon tai maadoituspiikin myös farmissa eikä vain paniikkiväistönä.
+	# junglerin väistön myös farmissa eikä vain paniikkiväistönä.
 	if _is_jungler_role and hero.cd.dodge <= 0.0 and hero.has_method("bot_wants_utility") \
 			and bool(hero.call("bot_wants_utility")) \
 			and randf() < 0.35 + combo_skill * 0.6:
@@ -2888,9 +2888,11 @@ func _select_ability_slot(hero: Hero, want_a1: bool, want_a2: bool, dist: float)
 			# Sulasyöksy avaa kaukaa, Maanjyrä kun kohde on jo kiinni.
 			return "a1" if dist > 190.0 else "a2"
 		"vesper":
+			# Merkitse ensin, teloita sitten — merkitty kohde avaa Teloituksen.
 			return "a1" if _target != null and _target.mark_timer <= 0.0 else "a2"
 		"myria":
-			return "a1" if dist > 260.0 else "a2"
+			# Istuta ensin, kuki sitten. Ilman kukkia a2 on vain pieni purkaus.
+			return "a2" if int(hero.get("_orchids").size()) >= 2 else "a1"
 		"torq":
 			# Koukku raahaa kaukaa, Napalukko juurruttaa lähellä.
 			return "a1" if dist > 230.0 else "a2"
@@ -3100,17 +3102,22 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 			return _target_is_hero() and dist < 780.0 \
 				and (target_cluster >= 2 or _target.hp < _target.max_hp * 0.6)
 		"vesper":
+			# Fosforisalama on 1050 px läpäisevä lopetuslinja: se kannattaa kun
+			# kohde on jo haavoittunut tai linjalla on useampi vihollinen.
 			if _target is Critter and (_target as Critter).is_major_objective():
 				return arena.heroes_in_circle(_target.global_position, 620.0,
 					1 - hero.team, true, true).size() >= 1
-			return _target_is_hero() and dist < 780.0 and target_cluster >= 2
+			return _target_is_hero() and dist < 1020.0 \
+				and (target_cluster >= 2 or _target.hp < _target.max_hp * 0.55)
 		"myria":
+			# Orkideapuutarha on kestoalue: sen arvo on objectivessa ja ryhmässä,
+			# ei yksittäisen kohteen perässä.
 			if _target is Critter and (_target as Critter).is_major_objective():
-				var useful: bool = str(hero.get("selected_essence")) in ["red", "void"]
-				return useful and (_target.hp < _target.max_hp * 0.62 \
+				return _target.hp < _target.max_hp * 0.7 \
 					or arena.heroes_in_circle(_target.global_position, 540.0,
-						1 - hero.team, true, true).size() >= 1)
-			return _target_is_hero() and dist < 700.0 and target_cluster >= 2
+						1 - hero.team, true, true).size() >= 1
+			return _target_is_hero() and dist < 700.0 \
+				and (target_cluster >= 2 or near_enemies >= 2)
 		"torq":
 			# Napakenttä on puhdas kontrolliulti: se kannattaa vain kun sisään jää
 			# useampi vihollinen TAI kun objective on kiistelty.
@@ -3198,9 +3205,12 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 			# Sulasyöksy on 440 px ryntäys: käytä kun kohde on oikeasti edessä.
 			return dist > 150.0 and dist < 470.0
 		"vesper":
-			return dist > 160.0 and dist < 760.0
+			# Fosforipiikki merkitsee: käytä aina kun kohde on kantamalla eikä
+			# merkkiä ole vielä päällä.
+			return dist < 780.0 and (_target == null or _target.mark_timer <= 0.5)
 		"myria":
-			return dist < 680.0
+			# Kukkaistutus: sijoita kukka kohteen päälle 620 px kantamalta.
+			return dist < 620.0
 		"torq":
 			# Magneettikoukku: pitkä yksittäiskohteen veto, ei lähitaistelussa.
 			return dist > 170.0 and dist < 620.0
@@ -3269,9 +3279,15 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 			# Maanjyrä maksaa 35 raivoa ja osuu 218 px säteellä.
 			return dist < 205.0 and hero.res >= 35.0
 		"vesper":
-			return dist < 620.0
+			# Teloitus kannattaa vasta kun kohteelta puuttuu elämää tai se on
+			# merkitty — täydessä elämässä olevaan se on hukkaan heitetty.
+			if _target == null or not is_instance_valid(_target):
+				return false
+			return dist < 720.0 and (_target.mark_timer > 0.0 \
+				or _target.hp < _target.max_hp * 0.6)
 		"myria":
-			return dist < 570.0 and hero.res >= 28.0
+			# Kukinta: puhkaise vasta kun maassa on vähintään kaksi orkideaa.
+			return hero.res >= 26.0 and int(hero.get("_orchids").size()) >= 2
 		"torq":
 			# Napalukko imee ja juurruttaa 232 px säteellä — se on aloitus.
 			return dist < 225.0 and hero.res >= 30.0

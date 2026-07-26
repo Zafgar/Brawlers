@@ -1,189 +1,183 @@
 class_name Myria
 extends JungleHero
-## Mage-jungleri: leirien kaadot tallentuvat neljäksi eri essenssiksi.
+## ORKIDEAHENKI. Myria istuttaa taistelukentälle orkideoita ja puhkaisee ne
+## kukkimaan. Kaksi nappia, yksi selkeä silmukka: ISTUTA (R1) — KUKI (L1).
+## Orkidea vahingoittaa vihollisia ja parantaa liittolaisia niin kauan kuin se
+## seisoo; kukinta räjäyttää kaikki kerralla. Ei essenssikirjanpitoa.
 
-const ESSENCES := ["red", "blue", "green", "void"]
-const FIELD_RADIUS := 138.0
-const ULT_RADIUS := 275.0
+const ORCHID := Color("c77bff")     # orkidean terälehti
+const NECTAR := Color("ffb3e6")     # medensävy: kukinta ja parannus
+const STEM := Color("7ee08a")       # varsi ja lehdet
 
-var essence_counts := {"red": 0, "blue": 0, "green": 1, "void": 0}
-var selected_essence := "green"
-var _essence_flash := 0.0
+const MAX_ORCHIDS := 3
+const ORCHID_RADIUS := 128.0
+const ORCHID_DUR := 11.0
+const ORCHID_DPS := 17.0
+const ORCHID_RANGE := 620.0
+
+const BLOOM_DMG := 52.0
+const BLOOM_BLAST := 168.0
+const BLOOM_HEAL := 22.0            # parannus per puhjennut orkidea
+
+const DRIFT_SPEED := 1080.0
+const DRIFT_TIME := 0.22
+
+const ULT_RADIUS := 285.0
+const ULT_DUR := 8.0
+const ULT_ORCHIDS := 5
+
+var _orchids: Array = []            # elossa olevat orkideat (JungleField)
+var _bloom_glow := 0.0
+
+
+func _init() -> void:
+	radius = 19.0
 
 
 func _setup_resource() -> void:
-	# The field mage trades some clear speed for safety without stalling at one camp.
+	# Kenttähenki vaihtaa osan puhdistusnopeudesta turvallisuuteen, mutta ei
+	# saa jumittua yhdelle leirille minuutiksi.
 	jungle_clear_mult = 2.0
 	res_type = "mana"
 	res_max = 120.0
 	res = res_max
-	res_regen = 10.5
-	res_cost.a1 = 18.0
-	res_cost.a2 = 28.0
+	res_regen = 11.0
+	res_cost.a1 = 20.0
+	res_cost.a2 = 26.0
+
+
+## Elossa olevien orkideoiden määrä — hero_visual ja HUD lukevat tämän.
+func orchid_count() -> int:
+	_prune_orchids()
+	return _orchids.size()
+
+
+func bloom_glow() -> float:
+	return _bloom_glow
 
 
 func _aimed_slots() -> Array:
-	return ["a1", "a2"]
+	return ["a1"]
 
 
 func _ground_targeted_slots() -> Array:
-	return ["a2"]
+	return ["a1"]
 
 
-func _aim_range(slot: String) -> float:
-	return 680.0 if slot == "a1" else 600.0
+func _aim_range(_slot: String) -> float:
+	return ORCHID_RANGE
 
 
-func _aim_default_range(slot: String) -> float:
-	return 470.0 if slot == "a1" else 390.0
+func _aim_default_range(_slot: String) -> float:
+	return 400.0
 
 
-func _aim_target_radius(slot: String) -> float:
-	return FIELD_RADIUS if slot == "a2" else 0.0
+func _aim_target_radius(_slot: String) -> float:
+	return ORCHID_RADIUS
 
 
+## Perushyökkäys: Siitepölysyöksy — kevyesti hakeutuva itiöpallo.
 func _basic(dir: Vector2) -> void:
 	var d := dir.normalized() if dir.length() > 0.1 else aim
 	visual.attack_swing()
 	ability_signature("myria", 105.0, d)
 	Projectile.launch(self, global_position + d * (radius + 7.0), d, {
-		"speed": 780.0, "dmg": 14.0, "radius": 10.0, "life": 0.95,
-		"kb": 55.0, "homing_rate": 1.2, "color": essence_color(),
-		"visual": "myria_wisp", "on_hit": Callable(self, "_wisp_hit"),
+		"speed": 800.0, "dmg": 16.0, "radius": 10.0, "life": 0.95,
+		"kb": 55.0, "homing_rate": 1.2, "color": ORCHID,
+		"visual": "myria_wisp", "on_hit": Callable(self, "_spore_hit"),
 	})
 	AudioMgr.play("light", 0.05, -10.0, global_position)
 
 
-func _wisp_hit(target: Hero, _projectile: Projectile) -> void:
-	match selected_essence:
-		"red":
-			deal_damage_to(target, 4.0)
-		"blue":
-			target.apply_slow(0.78, 0.7)
-		"green":
-			heal_hp(3.5, self)
-		"void":
-			var pull := global_position - target.global_position
-			if pull.length() > 1.0:
-				# Voima on viritetty valmiiksi (mikroveto per osuma) -> ohita kb_resist.
-				target.apply_knockback(pull, 90.0, false)
+func _spore_hit(target: Hero, _projectile: Projectile) -> void:
+	# Itiöt ruokkivat lähintä orkideaa: pieni parannus Myrialle kun kukkia on maassa.
+	if orchid_count() > 0:
+		heal_hp(3.5, self)
+	target.apply_slow(0.86, 0.5)
 
 
+## Kyky 1: Kukkaistutus — istuttaa orkidean valittuun kohtaan. Orkidea polttaa
+## vihollisia ja parantaa liittolaisia 11 sekunnin ajan. Enintään kolme
+## kerrallaan; neljäs kuihduttaa vanhimman.
 func _ability1(dir: Vector2) -> void:
-	var d := dir.normalized() if dir.length() > 0.1 else aim
-	ability_signature("myria", 155.0, d)
-	Projectile.launch(self, global_position + d * (radius + 8.0), d, {
-		"speed": 940.0, "dmg": 25.0, "radius": 11.0, "life": 0.78,
-		"kb": 80.0, "pierce": 1, "color": essence_color(),
-		"visual": "myria_thread", "on_hit": Callable(self, "_thread_hit"),
-	})
-	AudioMgr.play("luma_pulse", 0.08, -5.0, global_position)
-	controller_rumble(0.16, 0.35, 0.12)
-
-
-func _thread_hit(target: Hero, _projectile: Projectile) -> void:
-	if target is Critter:
-		gain_res(18.0)
-		if target.hp < target.max_hp * 0.5:
-			heal_hp(11.0, self)
-	else:
-		target.apply_slow(0.74, 0.65)
-	Fx.beam(arena, global_position, target.global_position,
-		Palette.glow(essence_color(), 1.5), 6.0)
-
-
-func _ability2(dir: Vector2) -> void:
-	var target := jungle_ground_target(dir, 600.0, 390.0)
-	var essence := selected_essence
-	_consume_selected()
+	var target := jungle_ground_target(dir, ORCHID_RANGE, 400.0)
+	_prune_orchids()
+	if _orchids.size() >= MAX_ORCHIDS:
+		var oldest = _orchids.pop_front()
+		if is_instance_valid(oldest):
+			oldest.queue_free()
 	ability_signature("myria", 150.0, target - global_position)
-	JungleField.spawn(self, target, "essence", {
-		"variant": essence, "radius": FIELD_RADIUS, "dur": 5.2,
-		"dps": 20.0 if essence != "green" else 15.0, "tick": 0.42,
-		"color": essence_color_for(essence),
+	var flower := JungleField.spawn(self, target, "orchid", {
+		"radius": ORCHID_RADIUS, "dur": ORCHID_DUR, "dps": ORCHID_DPS,
+		"tick": 0.5, "color": ORCHID,
 	})
-	# Rituaalipiiri: kaksoisrengas + keskusvälähdys essenssin värissä ja
-	# arkaaninen sointi — ei enää samaa kupuääntä kuin Torqilla.
-	Fx.ring(arena, target, Palette.glow(essence_color_for(essence), 1.5),
-		FIELD_RADIUS, 0.45, 5.0)
-	Fx.ring(arena, target, Palette.glow(essence_color_for(essence), 1.3),
-		FIELD_RADIUS * 0.55, 0.55, 3.0)
-	Fx.flash(arena, target, Palette.glow(essence_color_for(essence), 1.5), 46.0, 0.3)
-	AudioMgr.play("blessing", 0.06, -9.0, target)
+	_orchids.append(flower)
+	# Istutus luetaan heti: varsi nousee maasta ja terälehdet aukeavat.
+	Fx.ring(arena, target, Palette.glow(STEM, 1.5), ORCHID_RADIUS * 0.5, 0.4, 4.0)
+	for i in range(6):
+		var ray := Vector2.RIGHT.rotated(TAU * i / 6.0)
+		Fx.beam(arena, target, target + ray * ORCHID_RADIUS * 0.62,
+			Palette.with_alpha(ORCHID, 0.7), 4.0)
+	Fx.flash(arena, target, Palette.glow(NECTAR, 1.5), 42.0, 0.3)
+	AudioMgr.play("vine", 0.08, -7.0, target)
 
 
-func _dodge_action(_dir: Vector2) -> void:
-	_cycle_essence()
-	_essence_flash = 1.0
-	iframes = maxf(iframes, 0.38)
-	add_shield(24.0, 1.8, self)
-	ability_signature("myria", 130.0, aim)
-	Fx.ring(arena, global_position, Palette.glow(essence_color(), 1.6), 95.0, 0.4, 5.0)
-	arena.popup(global_position + Vector2(0, -74), essence_name_fi(selected_essence),
-		essence_color(), 16)
-	AudioMgr.play("pickup", 0.07, -5.0, global_position)
+## Kyky 2: Kukinta — kaikki istutetut orkideat puhkeavat kerralla. Jokainen
+## räjähtää omalla paikallaan (52 vahinkoa, 168 px) ja parantaa Myriaa.
+## Ilman orkideoita Myria kukkii itse, joten nappi ei ole koskaan kuollut.
+func _ability2(_dir: Vector2) -> void:
+	_prune_orchids()
+	ability_signature("myria", 175.0, aim)
+	AudioMgr.play("luma_bloom", 0.09, -3.0, global_position)
+	controller_rumble(0.4, 0.7, 0.2)
+	_bloom_glow = 1.0
+	var popped := 0
+	for flower in _orchids:
+		if not is_instance_valid(flower):
+			continue
+		if flower.bloom(BLOOM_DMG, BLOOM_BLAST):
+			popped += 1
+	_orchids.clear()
+	if popped > 0:
+		heal_hp(BLOOM_HEAL * float(popped), self)
+		arena.shake(0.12 * float(popped))
+		return
+	# Ei kukkia maassa: pienempi kukinta Myrian omalla paikalla.
+	Fx.ring(arena, global_position, Palette.glow(NECTAR, 1.6), BLOOM_BLAST, 0.45, 6.0)
+	Fx.burst(arena, global_position, Palette.glow(ORCHID, 1.6), 16, 300.0, 0.42, 5.0)
+	for enemy in arena.alive_enemies(team):
+		var off: Vector2 = enemy.global_position - global_position
+		var dist := off.length()
+		if dist > BLOOM_BLAST + enemy.radius:
+			continue
+		var away := off / dist if dist > 1.0 else Vector2.UP
+		deal_damage_to(enemy, BLOOM_DMG * 0.6, 200.0, away)
+		enemy.apply_slow(0.68, 1.0)
 
 
+## Väistö: Terälehtiliuku — Myria hajoaa terälehdiksi ja liukuu sivuun
+## osumattomana. Puhdistava liike: henki livahtaa kontrollista.
+func _dodge_action(dir: Vector2) -> void:
+	var d := dir.normalized() if dir.length() > 0.1 else aim
+	dash(d, DRIFT_SPEED, DRIFT_TIME, true)
+	add_shield(26.0, 2.0, self)
+	ability_signature("myria", 128.0, d)
+	Fx.ring(arena, global_position, Palette.glow(NECTAR, 1.5), 82.0, 0.42, 4.0)
+	Fx.burst(arena, global_position, Palette.with_alpha(ORCHID, 0.8), 14, 190.0, 0.5, 4.0)
+	AudioMgr.play("pickup", 0.07, -6.0, global_position)
+	controller_rumble(0.2, 0.32, 0.12)
+
+
+## Leirin kaato ruokkii henkeä: ultia latautuu ja istutuksen jäähdytys nopeutuu.
 func on_jungle_camp_defeated(camp: Critter) -> void:
 	super.on_jungle_camp_defeated(camp)
-	var gained := "green"
-	match camp.kind:
-		Critter.Kind.RED_CAMP, Critter.Kind.DAMAGE_CAMP:
-			gained = "red"
-		Critter.Kind.BLUE_CAMP, Critter.Kind.POINTS_CAMP:
-			gained = "blue"
-		Critter.Kind.BOSS, Critter.Kind.DRAGON:
-			gained = "void"
-		_:
-			gained = "green"
-	essence_counts[gained] = mini(int(essence_counts[gained]) + 1, 3)
-	selected_essence = gained
-	_essence_flash = 1.0
-	add_ult(5.0 if camp.is_major_objective() else 2.0)   # skaalattu uuteen ultitalouteen
-	if arena != null:
-		arena.popup(global_position + Vector2(0, -80),
-			"+ESSENSSI: %s" % essence_name_fi(gained), essence_color_for(gained), 16)
+	add_ult(5.0 if camp.is_major_objective() else 2.0)
+	cd.a1 = maxf(cd.a1 - 2.5, 0.0)
+	Fx.ring(arena, global_position, Palette.glow(STEM, 1.5), 70.0, 0.4, 3.5)
 
 
-func _consume_selected() -> void:
-	if int(essence_counts.get(selected_essence, 0)) > 0:
-		essence_counts[selected_essence] = int(essence_counts[selected_essence]) - 1
-	if int(essence_counts.get(selected_essence, 0)) <= 0:
-		_cycle_essence()
-
-
-func _cycle_essence() -> void:
-	var start := ESSENCES.find(selected_essence)
-	for step in range(1, ESSENCES.size() + 1):
-		var candidate: String = ESSENCES[(start + step) % ESSENCES.size()]
-		if int(essence_counts.get(candidate, 0)) > 0:
-			selected_essence = candidate
-			return
-	# Tyhjä varasto käyttää heikkoa vihreää peruskaikua, jotta X ei lukitse kittiä.
-	selected_essence = "green"
-
-
-func essence_color() -> Color:
-	return essence_color_for(selected_essence)
-
-
-## Essenssin suomenkielinen nimi popup-teksteihin.
-func essence_name_fi(kind: String) -> String:
-	match kind:
-		"red": return "PUNAINEN"
-		"blue": return "SININEN"
-		"green": return "VIHREÄ"
-		"void": return "TYHJYYS"
-	return kind.to_upper()
-
-
-func essence_color_for(kind: String) -> Color:
-	match kind:
-		"red": return Color("ff704a")
-		"blue": return Color("66b7ff")
-		"green": return Color("79df76")
-		"void": return Color("c477ff")
-	return hero_color()
+func _prune_orchids() -> void:
+	_orchids = _orchids.filter(func(f): return is_instance_valid(f))
 
 
 func _ult_is_held() -> bool:
@@ -206,56 +200,65 @@ func _ult_target_radius() -> float:
 	return ULT_RADIUS
 
 
+## Ultimate: Orkideapuutarha — Myria avaa kokonaisen puutarhan. Iso kenttä
+## polttaa vihollisia ja parantaa liittolaisia, ja kehälle nousee viisi
+## orkideaa, jotka voi vielä puhkaista Kukinnalla.
 func _ultimate(dir: Vector2) -> void:
 	var target := jungle_ground_target(dir, _ult_range(), _ult_default_range())
-	var essence := selected_essence
-	var ec := essence_color_for(essence)
-	Fx.ultimate_warning(arena, target, Palette.glow(ec, 1.6),
-		Palette.team(team), ULT_RADIUS, 0.6, "myria")
-	Fx.ultimate_field(arena, target, ec, Palette.team(team), ULT_RADIUS, 7.0, "myria")
-	JungleField.spawn(self, target, "essence", {
-		"variant": essence, "radius": ULT_RADIUS, "dur": 7.0,
-		"dps": 31.0 if essence != "green" else 24.0, "tick": 0.38,
-		"color": ec,
+	Fx.ultimate_warning(arena, target, Palette.glow(ORCHID, 1.6),
+		Palette.team(team), ULT_RADIUS, 0.55, "myria")
+	Fx.ultimate_field(arena, target, ORCHID, Palette.team(team),
+		ULT_RADIUS, ULT_DUR, "myria")
+	JungleField.spawn(self, target, "garden", {
+		"radius": ULT_RADIUS, "dur": ULT_DUR, "dps": 26.0, "tick": 0.45,
+		"color": ORCHID,
 	})
-	# Neljä kaikua -tunnus: neljä pientä rengasta essenssien väreissä rituaalin
-	# ympärillä kertoo heti, että kyseessä on Myrian ulti.
-	for i in range(ESSENCES.size()):
-		var echo: String = ESSENCES[i]
-		var p := target + Vector2.RIGHT.rotated(TAU * i / 4.0) * ULT_RADIUS * 0.55
-		Fx.ring(arena, p, Palette.glow(essence_color_for(echo), 1.5), 58.0, 0.55, 4.0)
-	arena.popup(target + Vector2(0, -ULT_RADIUS - 24),
-		"NELJÄ KAIKUA — %s" % essence_name_fi(essence), ec, 23)
+	_prune_orchids()
+	# Viisi orkideaa kehälle: puutarha on myös ladattu Kukinta.
+	for i in range(ULT_ORCHIDS):
+		if _orchids.size() >= MAX_ORCHIDS + ULT_ORCHIDS:
+			break
+		var p := target + Vector2.RIGHT.rotated(TAU * i / float(ULT_ORCHIDS) - PI * 0.5) \
+			* ULT_RADIUS * 0.66
+		var flower := JungleField.spawn(self, p, "orchid", {
+			"radius": ORCHID_RADIUS * 0.82, "dur": ULT_DUR, "dps": ORCHID_DPS,
+			"tick": 0.5, "color": NECTAR,
+		})
+		_orchids.append(flower)
+		Fx.flash(arena, p, Palette.glow(NECTAR, 1.6), 44.0, 0.35)
+	arena.popup(target + Vector2(0, -ULT_RADIUS - 26), "ORKIDEAPUUTARHA!", ORCHID, 25)
 	AudioMgr.play("ult", 0.12, -3.0, target)
-	AudioMgr.play("blessing", 0.07, -7.0, target)
-	controller_rumble(0.55, 0.85, 0.32)
+	AudioMgr.play("luma_bloom", 0.07, -6.0, target)
+	arena.shake(0.4)
+	controller_rumble(0.6, 0.9, 0.34)
+	_bloom_glow = 1.0
 
 
 func _passive_update(delta: float) -> void:
-	_essence_flash = maxf(_essence_flash - delta, 0.0)
+	_bloom_glow = maxf(_bloom_glow - delta * 1.4, 0.0)
 
 
+func _respawn() -> void:
+	super()
+	_orchids.clear()
+	_bloom_glow = 0.0
+
+
+## Botti käyttää väistön pakoliikkeenä: se on puhdas liike + kilpi.
 func bot_wants_utility() -> bool:
-	var target = controller.get("_target")
-	if not is_instance_valid(target) or not target is Critter \
-			or int(essence_counts.get(selected_essence, 0)) > 0:
-		return false
-	for essence in ESSENCES:
-		if essence != selected_essence and int(essence_counts.get(essence, 0)) > 0:
-			return true
-	return false
+	return hp < max_hp * 0.45
 
 
-## Tasoskaalaus: mage-jungleri/tuki — essenssit ja kentät, ei raakaa voimaa.
+## Tasoskaalaus: kenttähenki — loitsuvoima ja regen edellä, ei raakaa kestoa.
 func _level_scaling() -> Dictionary:
-	return {"hp": 0.95, "damage": 0.90, "spell": 0.90, "melee": 0.80, "regen": 1.20}
+	return {"hp": 0.95, "damage": 0.90, "spell": 1.15, "melee": 0.80, "regen": 1.20}
 
 
-## Väistön kehitys: puhdistus (essenssinkerääjä livahtaa kontrollista).
+## Väistön kehitys: puhdistus (henki hajoaa terälehdiksi kontrollista).
 func _dodge_evolution() -> String:
 	return "cleanse"
 
 
-## Botin rankkausjärjestys: Essenssikenttä ensin, pultti toisena.
+## Botin rankkausjärjestys: Kukkaistutus ensin, Kukinta toisena.
 func _bot_skill_order() -> Array:
-	return ["ult", "a2", "a1", "dodge", "basic"]
+	return ["ult", "a1", "a2", "basic", "dodge"]

@@ -120,6 +120,12 @@ static func ability_impact(parent: Node, pos: Vector2, visual_id: String, color:
 			flash(parent, pos, Palette.glow(Color("d9ff8f"), 1.65), 34.0, 0.2)
 			ring(parent, pos, team_color, 50.0, 0.34, 3.0)
 			burst(parent, pos, color, 10, 220.0, 0.3, 3.0)
+		"vesper_exec":
+			# Teloitusosuma: terävä valkoinen välähdys ja fosforisuihku.
+			flash(parent, pos, Color.WHITE, 40.0, 0.16)
+			flash(parent, pos, Palette.glow(Color("b8ff3d"), 1.7), 56.0, 0.26)
+			ring(parent, pos, Palette.glow(Color("b8ff3d"), 1.5), 62.0, 0.32, 4.0)
+			burst(parent, pos, Palette.glow(color, 1.6), 16, 320.0, 0.36, 4.5)
 		"myria_wisp":
 			ring(parent, pos, Palette.glow(color, 1.45), 30.0, 0.25, 2.5)
 			burst(parent, pos, color, 7, 140.0, 0.3, 3.0)
@@ -615,18 +621,31 @@ class SignatureFx:
 				draw_circle(direction * reach * 0.2, reach * 0.14,
 					Palette.with_alpha(Color("fff0a8"), alpha * 0.8))
 			"vesper":
-				draw_arc(Vector2.ZERO, reach * 0.55, 0.0, TAU, 32,
-					Palette.with_alpha(Palette.glow(main_color, 1.5), alpha), 3.0)
+				# Teloittajan tähtäin: supistuva sirppi + neljä ristikkoviivaa.
+				draw_arc(Vector2.ZERO, reach * lerpf(0.72, 0.4, f), -1.15, 1.15, 20,
+					Palette.with_alpha(Palette.glow(main_color, 1.6), alpha), 5.0)
+				draw_arc(Vector2.ZERO, reach * lerpf(0.72, 0.4, f), PI - 1.15, PI + 1.15, 20,
+					Palette.with_alpha(Palette.glow(main_color, 1.6), alpha), 5.0)
 				for j in range(4):
-					var ray := Vector2.RIGHT.rotated(TAU * j / 4.0)
-					draw_line(ray * reach * 0.22, ray * reach * 0.78,
-						Palette.with_alpha(main_color, alpha * 0.78), 3.0)
+					var ray := Vector2.RIGHT.rotated(TAU * j / 4.0 + PI * 0.25)
+					draw_line(ray * reach * 0.2, ray * reach * 0.8,
+						Palette.with_alpha(main_color, alpha * 0.7), 2.5)
+				draw_circle(Vector2.ZERO, reach * 0.09,
+					Palette.with_alpha(Color.WHITE, alpha * 0.8))
 			"myria":
-				for j in range(4):
-					var ang := f * 3.0 + TAU * j / 4.0
-					var p := Vector2(cos(ang), sin(ang) * 0.55) * reach * 0.58
-					draw_circle(p, 7.0, Palette.with_alpha(Palette.glow(main_color, 1.6), alpha))
-					draw_line(Vector2.ZERO, p, Palette.with_alpha(main_color, alpha * 0.42), 2.0)
+				# Orkidea aukeaa: kuusi terälehteä kasvaa ulos keskuksesta.
+				for j in range(6):
+					var ang := TAU * j / 6.0 + f * 0.9
+					var ray := Vector2.RIGHT.rotated(ang)
+					var petal_len: float = reach * lerpf(0.18, 0.78, f)
+					draw_colored_polygon(PackedVector2Array([
+						ray * reach * 0.1,
+						ray * petal_len * 0.7 + ray.orthogonal() * reach * 0.16,
+						ray * petal_len,
+						ray * petal_len * 0.7 - ray.orthogonal() * reach * 0.16]),
+						Palette.with_alpha(Palette.glow(main_color, 1.5), alpha * 0.85))
+				draw_circle(Vector2.ZERO, reach * 0.13,
+					Palette.with_alpha(Palette.glow(Color("ffb3e6"), 1.6), alpha))
 			"torq":
 				# Magneettinapa: hevosenkenkäkaari ja sisäänpäin kaartuvat kenttäviivat.
 				draw_arc(Vector2.ZERO, reach * 0.66, PI * 0.28, PI * 1.72, 26,
@@ -701,17 +720,19 @@ class UltimateTargetFx:
 					draw_line(ray * radius * 0.28, ray * radius * 0.78,
 						Palette.with_alpha(Palette.glow(color, 1.5), 0.42 + pulse * 0.22), 5.0)
 			"vesper":
-				for j in range(-2, 3):
-					var off := float(j) * radius * 0.25
-					draw_line(Vector2(-radius * 0.8, off), Vector2(radius * 0.8, off),
-						Palette.with_alpha(color, 0.45 * pulse), 2.5)
-					draw_line(Vector2(off, -radius * 0.8), Vector2(off, radius * 0.8),
-						Palette.with_alpha(color, 0.45 * pulse), 2.5)
-			"myria":
 				for j in range(4):
-					var a := _t * 2.0 + TAU * j / 4.0
-					var p := Vector2(cos(a), sin(a) * 0.55) * radius * 0.55
-					draw_circle(p, 8.0, Palette.with_alpha(Palette.glow(color, 1.5), 0.7))
+					var ray := Vector2.RIGHT.rotated(TAU * j / 4.0 + PI * 0.25)
+					draw_line(ray * radius * 0.25, ray * radius * 0.85,
+						Palette.with_alpha(color, 0.5 * pulse), 3.0)
+			"myria":
+				for j in range(6):
+					var ray := Vector2.RIGHT.rotated(TAU * j / 6.0 + _t * 0.8)
+					draw_colored_polygon(PackedVector2Array([
+						ray * radius * 0.12,
+						ray * radius * 0.5 + ray.orthogonal() * radius * 0.16,
+						ray * radius * 0.72,
+						ray * radius * 0.5 - ray.orthogonal() * radius * 0.16]),
+						Palette.with_alpha(Palette.glow(color, 1.5), 0.55 + pulse * 0.2))
 			"torq":
 				# Napakenttä: sisäänpäin kiertyvät kenttäviivat ja kaksi napaa.
 				for j in range(8):
@@ -778,11 +799,13 @@ class UltimateFieldFx:
 					draw_line(Vector2(off, -radius * 0.85), Vector2(off, radius * 0.85),
 						Palette.with_alpha(color, (0.14 + pulse * 0.12) * fade), 2.0)
 			"myria":
-				for j in range(4):
-					var a := _t * (0.8 + j * 0.08) + TAU * j / 4.0
-					var p := Vector2(cos(a), sin(a) * 0.55) * radius * (0.34 + j * 0.1)
-					draw_circle(p, 8.0 + pulse * 2.0,
-						Palette.with_alpha(Palette.glow(color, 1.55), 0.58 * fade))
+				# Puutarha: kehälle nousevat varret ja kiertyvät terälehdet.
+				for j in range(8):
+					var ray := Vector2.RIGHT.rotated(TAU * j / 8.0 + _t * 0.25)
+					draw_line(ray * radius * 0.9, ray * radius * 0.42,
+						Palette.with_alpha(Color("7ee08a"), 0.34 * fade), 4.0)
+					draw_circle(ray * radius * 0.42, 7.0 + pulse * 2.5,
+						Palette.with_alpha(Palette.glow(Color("ffb3e6"), 1.5), 0.6 * fade))
 			"torq":
 				# Kenttäviivat imevät sisäänpäin koko keston ajan.
 				for j in range(10):
