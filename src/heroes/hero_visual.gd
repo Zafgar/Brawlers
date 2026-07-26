@@ -379,6 +379,37 @@ func _draw_ultimate_state(bob: float) -> void:
 				draw_circle(center, hero.radius + 12.0, Palette.with_alpha(Color("ff532f"), 0.16 + pulse * 0.09))
 				draw_arc(center, hero.radius + 18.0, -PI * 0.5, -PI * 0.5 + TAU * frac, 42,
 					Palette.glow(Color("ff7547"), 1.55), 6.0)
+		"blink":
+			# Rytmipisteet (kaksi = kolmas isku on Kaksoisviilto), kaiun jäljellä
+			# oleva aika viivana lähtöpaikkaan ja Jälkiterän lopetusikkuna kaarena.
+			var bcad: float = float(hero.call("cadence_fraction")) \
+				if hero.has_method("cadence_fraction") else 0.0
+			var becho: float = float(hero.call("echo_fraction")) \
+				if hero.has_method("echo_fraction") else 0.0
+			var bfollow: float = float(hero.call("follow_fraction")) \
+				if hero.has_method("follow_fraction") else 0.0
+			if bcad > 0.01:
+				var blit: int = int(round(bcad * 3.0))
+				for i in range(2):
+					var bpip := center + Vector2(-7.0 + float(i) * 14.0, -hero.radius - 18.0)
+					if i < blit:
+						draw_circle(bpip, 3.6, Palette.glow(Color("d9c8ff"), 1.7))
+					else:
+						draw_circle(bpip, 2.6, Color(0, 0, 0, 0.45))
+				if blit >= 2:
+					draw_arc(center, hero.radius + 9.0, 0.0, TAU, 26,
+						Palette.with_alpha(Palette.glow(Color("d9c8ff"), 1.7),
+							0.45 + pulse * 0.35), 3.0)
+			if becho > 0.01:
+				var bhome: Vector2 = hero.to_local(hero.call("echo_position"))
+				draw_line(center, bhome,
+					Palette.with_alpha(Palette.glow(Color("d9c8ff"), 1.4), 0.18 + becho * 0.3), 2.5)
+				draw_arc(bhome, 15.0 + (1.0 - becho) * 11.0, -PI * 0.5,
+					-PI * 0.5 + TAU * becho, 24,
+					Palette.with_alpha(Palette.glow(Color("d9c8ff"), 1.5), 0.75), 3.0)
+			if bfollow > 0.01:
+				draw_arc(center, hero.radius + 17.0, -PI * 0.5, -PI * 0.5 + TAU * bfollow,
+					24, Palette.glow(Color.WHITE, 1.25), 4.0)
 		"shade":
 			if float(hero.get("_empower_timer")) > 0.0:
 				for i in range(4):
