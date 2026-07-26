@@ -616,7 +616,16 @@ func update(hero: Hero, delta: float) -> void:
 ## tapettavissa (matala hp) tai eristyksissä. Ylemmät tasot odottavat avausta,
 ## alemmat syöksyvät heti (patience skaalaa).
 func _update_lurk(hero: Hero, arena) -> void:
-	if not _is_assassin or _mode != Mode.FIGHT or patience < 0.05:
+	if not _is_assassin or _mode != Mode.FIGHT:
+		return
+	# ILMAN POISTUMISTIETÄ EI SYÖKSYTÄ. Tämä on rank-riippumaton perussääntö:
+	# assassiinin koko kauppa on sisään-ulos, ja ilman pakokykyä syöksy on vain
+	# ilmainen tappo vastustajalle. Mitattu syy blinkin 7.3 ja riftin 11.2
+	# kuolemaan ottelussa oli juuri tämä — botti divesi jäähdytykset tyhjinä.
+	if not _escape_ready(hero):
+		_lurk = true
+		return
+	if patience < 0.05:
 		return
 	if _assassin_should_dive(hero, arena):
 		return
@@ -627,6 +636,8 @@ func _update_lurk(hero: Hero, arena) -> void:
 func _assassin_should_dive(hero: Hero, arena) -> bool:
 	if _target == null or not is_instance_valid(_target) or not _target.alive:
 		return true
+	if _is_assassin and not _escape_ready(hero):
+		return false                    # pakotie kiinni -> ei avausta
 	if _target.hp < _target.max_hp * 0.45:
 		return true                     # tapettavissa -> syöksy kannattaa
 	# Eristetty kohde (vain se itse lähellä) -> hyvä avaus.
@@ -2675,15 +2686,64 @@ func _calculated_tower_execute(hero: Hero, arena, tower: Structure) -> bool:
 	return _escape_ready(hero)
 
 
+## Onko sankarilla poistumistie valmiina. Assassiineilla kaksivaiheisen kyvyn
+## AVATTU toinen vaihe (kaiku, varjo, merkki) on jo maksettu pakotie ja lasketaan
+## valmiiksi, vaikka kyvyn oma jäähdytys olisi käynnissä.
 func _escape_ready(hero: Hero) -> bool:
 	if hero.cd.dodge <= 0.0:
 		return true
 	match hero.hero_id:
-		"blink", "shade", "obsidian", "lance":
+		"blink":
+			if (hero as Blink).echo_fraction() > 0.0:
+				return true
+			return hero.cd.a1 <= 0.0 and hero._can_afford("a1")
+		"shade":
+			if (hero as Shade).shadow_fraction() > 0.0:
+				return true
+			return hero.cd.a1 <= 0.0
+		"rift":
+			# Riftin pakotie on väistö (räjäytys hyvittää sen) tai varppaus merkille.
+			return hero.cd.a1 <= 0.0 or (hero as Rift).has_mark()
+		"obsidian", "lance":
 			return hero.cd.a1 <= 0.0 and hero._can_afford("a1")
 		"tide":
 			return hero.cd.a1 <= 0.0 and hero.ammo > 0
 	return false
+
+
+## Assassiinin kaksivaiheisen kyvyn VALMIS jatko: Blinkin Jälkiterä ja kaikupaluu
+## sekä Shaden varjopaluu. Nämä eivät saa jäädä roikkumaan satunnaisheiton,
+## väijynnän tai tornidive-eston taakse: ikkuna on jo maksettu, ja käyttämättä
+## jättäminen on aina huonompi lopputulos kuin käyttäminen.
+func _assassin_finish(hero: Hero, arena) -> String:
+	match hero.hero_id:
+		"blink":
+			var bl := hero as Blink
+			if bl.follow_fraction() > 0.0:
+				return "a2"                 # lopetusikkuna auki -> Jälkiterä
+			if bl.echo_fraction() > 0.0 and _assassin_should_return(hero, arena,
+					bl.echo_fraction()):
+				return "a1"
+		"shade":
+			var sh := hero as Shade
+			if sh.shadow_fraction() > 0.0 and _assassin_should_return(hero, arena,
+					sh.shadow_fraction()):
+				return "a1"
+	return ""
+
+
+## Palataanko heti: matala HP, kohde kaatunut, ikkuna loppumassa tai ylivoima
+## päällä. Muuten assassiini jää vielä lyömään — paluu ei ole pakokauhu vaan
+## ajoitettu poistuminen.
+func _assassin_should_return(hero: Hero, arena, window_frac: float) -> bool:
+	if hero.hp < hero.max_hp * 0.55:
+		return true
+	if _target == null or not is_instance_valid(_target) or not _target.alive:
+		return true
+	if window_frac < 0.35:
+		return true
+	return arena.heroes_in_circle(hero.global_position, 220.0,
+		1 - hero.team, true, true).size() >= 2
 
 
 func _update_aim(hero: Hero) -> void:
@@ -2867,6 +2927,15 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 		if _try_escape(hero, bb):
 			return
 
+	# ASSASSIININ TOINEN VAIHE ennen kaikkia portteja: kaiku, varjo ja
+	# lopetusikkuna ovat jo maksettuja ja ne ovat kitin pakotie sekä purske.
+	# Ne eivät saa hukkua satunnaisheittoon, väijyntään tai piiritysestoon.
+	if _is_assassin:
+		var finish: String = _assassin_finish(hero, arena)
+		if finish != "" and hero.cd[finish] <= 0.0 and hero._can_afford(finish):
+			_request_cast(hero, finish)
+			return
+
 	# Scout: lataa lipas RULLAAMALLA (X) kun se on kolmanneksessa eikä ole
 	# välitöntä vaaraa (rulla lataa heti; muuten 2.5 s auto-lataus kesken
 	# taistelun syö perusvahingon). Perustaito -> lähes kaikilla tasoilla.
@@ -2913,8 +2982,13 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 			var follow_wanted: bool = _want_a1(hero, arena, bb, dist, pos) \
 				if _combo_followup == "a1" else _want_a2(hero, arena, bb, dist, pos)
 			if follow_wanted:
-				_request_cast(hero, _combo_followup)
-				_combo_followup = ""
+				var used: String = _combo_followup
+				_request_cast(hero, used)
+				# Kolmas isku: assassiinien kaksivaiheiset kyvyt ketjuttavat vielä
+				# kerran (Riftin varppaus -> räjäytys tyhjyysaukossa).
+				_combo_followup = _chain_after(hero, used)
+				if _combo_followup != "":
+					_combo_timer = maxf(_combo_timer, 1.4)
 				return
 
 	var want_a1: bool = hero.cd.a1 <= 0.0 and hero._can_afford("a1") \
@@ -2923,16 +2997,31 @@ func _update_abilities(hero: Hero, arena, bb: TeamBlackboard, decided: bool) -> 
 		and _want_a2(hero, arena, bb, dist, pos)
 
 	# Taitava liikkuva sankari ei polta viimeistä poistumistietään aggressiiviseen
-	# avaukseen, kun HP on jo matala ja väistö on jäähtymässä.
+	# avaukseen, kun HP on jo matala ja väistö on jäähtymässä. Auki oleva
+	# assassiini-ikkuna on poikkeus: silloin a1 ON paluu eikä uusi avaus.
 	if want_a1 and cooldown_discipline >= 0.45 and hero.cd.dodge > 0.0 \
 			and hero.hp < hero.max_hp * 0.62 \
-			and hero.hero_id in ["blink", "shade"]:
+			and hero.hero_id in ["blink", "shade", "rift"] \
+			and not _assassin_window_open(hero):
 		want_a1 = false
 
 	var chosen := _select_ability_slot(hero, want_a1, want_a2, dist)
 	if chosen != "":
 		_request_cast(hero, chosen)
 		_begin_combo(hero, chosen)
+
+
+## Onko assassiinin kaksivaiheinen ikkuna auki (kaiku / varjo / merkki). Auki
+## oleva ikkuna tarkoittaa että a1 on PALUU eikä uusi avaus.
+func _assassin_window_open(hero: Hero) -> bool:
+	match hero.hero_id:
+		"blink":
+			return (hero as Blink).echo_fraction() > 0.0
+		"shade":
+			return (hero as Shade).shadow_fraction() > 0.0
+		"rift":
+			return (hero as Rift).has_mark()
+	return false
 
 
 func _select_ability_slot(hero: Hero, want_a1: bool, want_a2: bool, dist: float) -> String:
@@ -2948,16 +3037,31 @@ func _select_ability_slot(hero: Hero, want_a1: bool, want_a2: bool, dist: float)
 		return "a1" if randf() < 0.5 else "a2"
 	match hero.hero_id:
 		"blink":
-			return "a1" if dist > 250.0 else "a2"
+			# Avatut ikkunat menevät aina uuden avauksen edelle.
+			var bl := hero as Blink
+			if bl.follow_fraction() > 0.0:
+				return "a2"             # Jälkiterä
+			if bl.echo_fraction() > 0.0:
+				return "a1"             # kaikupaluu
+			return "a1" if dist > 220.0 else "a2"
 		"bramble":
 			return "a1" if dist > 150.0 else "a2"
 		"ember":
 			return "a1" if dist > 210.0 else "a2"
-		"volt", "shade", "scout", "salvo":
-			return "a2"                 # alue/stun/shuriken/morttari avaa
+		"volt", "scout", "salvo":
+			return "a2"                 # alue/stun/morttari avaa
+		"shade":
+			# Varjopaluu ennen uutta shurikenia: pakotie on arvokkaampi.
+			if (hero as Shade).shadow_fraction() > 0.0:
+				return "a1"
+			return "a2"                 # shuriken avaa, loikka viimeistelee
 		"lance", "obsidian":
 			return "a1" if dist > 175.0 else "a2"
 		"rift":
+			# Merkki kiinni -> varppaa ensin selän taakse: se asemoi ja avaa
+			# tyhjyysaukon, jossa räjäytys tekee 30 % enemmän.
+			if (hero as Rift).has_mark():
+				return "a1"
 			return "a2"                 # pinoräjäytys on aina arvokkain kun valmis
 		"kaira":
 			# Sulasyöksy avaa kaukaa, Maanjyrä kun kohde on jo kiinni.
@@ -2984,19 +3088,30 @@ func _begin_combo(hero: Hero, opener: String) -> void:
 	_combo_followup = ""
 	match hero.hero_id:
 		"blink":
-			if opener == "a1": _combo_followup = "a2"
+			# Välähdys -> viuhka, ja viuhka -> Jälkiterä: molemmat jatkot ovat a2.
+			_combo_followup = "a2"
 		"bramble":
 			if opener == "a1": _combo_followup = "a2"
 		"volt":
 			if opener == "a2": _combo_followup = "a1"
 		"shade":
-			if opener == "a2": _combo_followup = "a1"
+			# Loikka -> shuriken, ja shuriken -> kutsu takaisin: molemmat a2.
+			_combo_followup = "a2"
 		"rift":
 			if opener == "a1": _combo_followup = "a1"   # merkki -> varppaus
 		"lance", "obsidian":
 			if opener == "a1": _combo_followup = "a2"
 		"kaira", "vesper", "myria", "torq":
 			if opener == "a1": _combo_followup = "a2"
+
+
+## Kombon kolmas isku kun jatko on juuri käytetty. Vain assassiinien
+## kaksivaiheisilla kyvyillä on aitoa arvoa jatkaa: varppaus avaa tyhjyysaukon,
+## jonka sisällä räjäytys on kitin kovin isku.
+func _chain_after(hero: Hero, used: String) -> String:
+	if hero.hero_id == "rift" and used == "a1":
+		return "a2"
+	return ""
 
 
 func _begin_ult_combo(hero: Hero) -> void:
@@ -3009,7 +3124,9 @@ func _begin_ult_combo(hero: Hero) -> void:
 			_combo_followup = "a1"
 		"scout":
 			_combo_followup = "a2"
-		"shade":
+		"shade", "blink", "rift":
+			# Assassiinin ulti on avaus purskeelle: Shadelle täydet varjopisteet
+			# teloitusvetoon, Blinkille viuhka + Jälkiterä, Riftille räjäytys.
 			_combo_followup = "a2"
 		_:
 			_combo_followup = ""
@@ -3046,6 +3163,9 @@ func _try_escape(hero: Hero, bb: TeamBlackboard) -> bool:
 		return false
 	match hero.hero_id:
 		"blink", "shade", "obsidian", "lance":
+			# Blinkillä ja Shadella auki oleva ikkuna tekee tästä PALUUN
+			# (kaikupaluu / varjopaluu): painallus laukaisee sen välittömästi,
+			# tähtäyssuunnalla ei ole silloin väliä.
 			if hero.cd.a1 <= 0.0 and hero._can_afford("a1"):
 				_aim = away
 				# Tähdättävä pakokyky pitää suunnan lukittuna poispäin ja käyttää
@@ -3107,7 +3227,10 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 		"ember", "bramble":
 			return near_enemies >= 2
 		"blink":
-			return dist < 450.0 and hero.hp > hero.max_hp * 0.4 and near_enemies >= 1
+			# Valotanssi teleporttaa haavoittuneimpiin ja nollaa Välähdyksen
+			# lopuksi: se on lopetusnappi, ei avaus tyhjään ilmaan.
+			return _target_is_hero() and dist < 520.0 and hero.hp > hero.max_hp * 0.35 \
+				and (_target.hp < _target.max_hp * 0.75 or target_cluster >= 2)
 		"luma":
 			var hurt := 0
 			for ally in arena.heroes_in_circle(pos, 300.0, hero.team, true, true):
@@ -3131,8 +3254,11 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 			return _target_is_hero() and dist < 560.0 \
 				and (target_cluster >= 2 or _target.hp < _target.max_hp * 0.5)
 		"shade":
-			return _target_is_hero() and dist < 520.0 \
-				and hero.hp > hero.max_hp * 0.35
+			# Varjoteurastus teleporttaa kohteen selän taakse ja teloittaa; se
+			# jättää varjon, joten pakotie tulee ultin mukana.
+			return _target_is_hero() and dist < 500.0 \
+				and hero.hp > hero.max_hp * 0.35 \
+				and (_target.hp < _target.max_hp * 0.8 or target_cluster >= 2)
 		"scout":
 			return arena.heroes_in_circle(pos, 640.0, 1 - hero.team, true, true).size() >= 2
 		"maestro":
@@ -3144,7 +3270,10 @@ func _want_ult(hero: Hero, arena, bb: TeamBlackboard, dist: float, near_enemies:
 		"prism":
 			return arena.heroes_in_circle(pos, 220.0, hero.team, true, true).size() >= 2
 		"rift":
-			return near_enemies >= 2
+			# Ajanpysäytys iskee ja lataa kaksi pinoa kaikkiin sisään jääneisiin,
+			# joten se kannattaa myös yhtä haavoittunutta kohdetta vastaan.
+			return _target_is_hero() and dist < 460.0 \
+				and (near_enemies >= 2 or _target.hp < _target.max_hp * 0.6)
 		"titan":
 			return dist < 380.0 and near_enemies >= 1
 		"hush":
@@ -3217,8 +3346,13 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 				and bb.lowest_ally.hp < bb.lowest_ally.max_hp * 0.75 \
 				and pos.distance_to(bb.lowest_ally.global_position) < 190.0
 		"blink":
-			return dist > 175.0 and dist < 390.0 and _target_is_hero() \
-				and _mode in [Mode.FIGHT, Mode.ATTACK_CARRIER]
+			# Kaiku pystyssä: paluu (pakotie) päättää ikkunan; muuten Välähdys on
+			# avaus keskietäisyydeltä. Saapumisisku tekee siitä oikean aloituksen.
+			var bl := hero as Blink
+			if bl.echo_fraction() > 0.0:
+				return _assassin_should_return(hero, arena, bl.echo_fraction())
+			return dist > 150.0 and dist < 380.0 and _target_is_hero() \
+				and _mode in [Mode.FIGHT, Mode.ATTACK_CARRIER] and _escape_ready(hero)
 		"bramble":
 			return dist > 145.0 and dist < 480.0
 		"quill":
@@ -3231,7 +3365,13 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"volt":
 			return dist < 450.0
 		"shade":
-			return dist > 175.0 and dist < 390.0 and _target_is_hero()
+			# Varjo pystyssä: paluu päättää väijytyksen. Muuten loikka on avaus,
+			# joka merkitsee kohteen ja avaa teloitusvedon.
+			var sh := hero as Shade
+			if sh.shadow_fraction() > 0.0:
+				return _assassin_should_return(hero, arena, sh.shadow_fraction())
+			return dist > 170.0 and dist < 400.0 and _target_is_hero() \
+				and _escape_ready(hero)
 		"tide":
 			# Syöksy kuluttaa ammoa (3 latausta); säästä yksi pakoon (_try_escape).
 			return dist > 250.0 and dist < 600.0 and hero.ammo > 1 \
@@ -3251,12 +3391,14 @@ func _want_a1(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"rift":
 			# VoidMark lentää yksiköiden läpi -> vain oikeaa sankaria vastaan.
 			var rift := hero as Rift
-			if rift._mark_target != null and is_instance_valid(rift._mark_target) \
-					and rift._mark_target.alive:
+			if rift.has_mark():
 				return true                  # toinen painallus varppaa merkille
 			if rift._mark_pending:
 				return false                 # odota ammuksen osumaa, älä hakkaa nappia
-			return dist > 190.0 and dist < 700.0 and _target_is_hero()
+			# Avaus kuluttaa merkkiheiton, joten poistumistien (väistö) on oltava
+			# valmiina ennen sitoutumista — Riftin pako ei tule a1:stä.
+			return dist > 190.0 and dist < 700.0 and _target_is_hero() \
+				and hero.cd.dodge <= 0.0
 		"titan":
 			# Tartunta ei tartu yksiköihin (torni/minioni) -> vain sankaria vastaan.
 			return dist < 150.0 and _target_is_hero()
@@ -3308,7 +3450,10 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 				and (bb.lowest_ally == hero \
 				or pos.distance_to(bb.lowest_ally.global_position) < 520.0)
 		"blink":
-			return dist < 400.0
+			# Lopetusikkuna auki -> Jälkiterä heti; muuten viuhka avaa ikkunan.
+			if (hero as Blink).follow_fraction() > 0.0:
+				return true
+			return dist < 400.0 and _target_is_hero()
 		"bramble":
 			return dist < 150.0
 		"quill":
@@ -3318,7 +3463,18 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 		"volt":
 			return dist > 120.0 and dist < 540.0
 		"shade":
-			return dist > 150.0 and dist < 450.0
+			# Shuriken lennossa: kutsu se takaisin vasta kun se on OHITTANUT
+			# kohteen — paluuveto on teloitus, ulosveto pelkkä naputus. Kutsun
+			# ajoitus on kyvyn taito, ja päätöstahti tekee siitä rank-eron.
+			var flying = (hero as Shade)._active_shuriken
+			if flying != null and is_instance_valid(flying):
+				if flying.returning:
+					return false
+				if _target == null or not is_instance_valid(_target):
+					return true
+				var shuri_d: float = hero.global_position.distance_to(flying.global_position)
+				return shuri_d > dist + 30.0
+			return dist > 120.0 and dist < 460.0 and _target_is_hero()
 		"tide":
 			return dist < 220.0
 		"scout":
@@ -3332,9 +3488,15 @@ func _want_a2(hero: Hero, arena, bb: TeamBlackboard, dist: float, pos: Vector2) 
 			return low != null and low.hp < low.max_hp * 0.7 \
 				and pos.distance_to(low.global_position) < 430.0
 		"rift":
-			# Räjäytä vain jos kohteessa on pinoja (muuten hukkaan).
-			return dist < 130.0 and _target != null and is_instance_valid(_target) \
-				and _target.void_stacks >= 2
+			# Räjäytä vasta kun purske kannattaa: pinoja tarpeeksi, tai tyhjyysaukko
+			# auki (ikkuna sulkeutuu, joten pienempikin lataus kannattaa purkaa),
+			# tai kohde on jo teloitusrajoilla.
+			if _target == null or not is_instance_valid(_target) or dist > 130.0:
+				return false
+			if (hero as Rift).void_window_fraction() > 0.0:
+				return _target.void_stacks >= 2
+			return _target.void_stacks >= 3 \
+				or (_target.void_stacks >= 2 and _target.hp < _target.max_hp * 0.45)
 		"titan":
 			return hero.hp < hero.max_hp * 0.55 and hero.res > 35.0
 		"hush":
