@@ -16,6 +16,13 @@ const DIVISIONS := 4
 const MAX_RANK := 31               # TIER_NAMES.size() * DIVISIONS - 1
 const ROMAN := ["IV", "III", "II", "I"]
 
+# Tierien tunnusvärit: ranked-merkit ja Phase B:n tier-taide nojaavat näihin,
+# jotta sama sarja näyttää samalta joka ruudulla.
+const TIER_COLORS := [
+	Color("a9835a"), Color("cd7f32"), Color("c0c8d8"), Color("ffd76d"),
+	Color("8ad8ff"), Color("7ce8e0"), Color("c58aff"), Color("ff9de0"),
+]
+
 # Vanhat 6 vaikeustasoa (0-5) vastaavina rankeina — vanhat valikot/simit
 # jatkavat toimintaansa tällä kartalla. Taso 5 ("Mestari") = Diamond I (23):
 # reilu, EI huijauksia — vain taso 6 ("Epäreilu") osuu huijausramppiin.
@@ -35,6 +42,17 @@ static func division_of(rank: int) -> String:
 ## Näyttönimi, esim. "Gold II".
 static func rank_name(rank: int) -> String:
 	return "%s %s" % [TIER_NAMES[tier_of(rank)], division_of(rank)]
+
+
+## Tierin (0..7) tunnusväri.
+static func tier_color(tier: int) -> Color:
+	var color: Color = TIER_COLORS[clampi(tier, 0, TIER_COLORS.size() - 1)]
+	return color
+
+
+## Rankin tunnusväri (tierin väri).
+static func rank_color(rank: int) -> Color:
+	return tier_color(tier_of(rank))
 
 
 ## Normalisoitu vaikeus 0..1 (Wood IV = 0, Challenger I = 1).

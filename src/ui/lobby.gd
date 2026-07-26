@@ -155,6 +155,8 @@ func _handle_join_input(device: int, edge: Dictionary) -> void:
 				AudioMgr.play("ui_back")
 				if Game.practice:
 					Game.go_menu()
+				elif Game.ranked_mode:
+					Game.go_ranked()
 				else:
 					Game.go_setup(false)
 		elif entry.ready:
@@ -183,6 +185,8 @@ func _join(device: int) -> void:
 	profile.device = device
 	profile.is_bot = false
 	profile.display_name = "Pelaaja %d" % (players.size() + 1)
+	if Game.ranked_mode:
+		_assign_ranked_user(profile)
 	var blue_count := _team_human_count(0)
 	var orange_count := _team_human_count(1)
 	if blue_count <= orange_count and blue_count < Game.team_size:
@@ -194,6 +198,49 @@ func _join(device: int) -> void:
 	players.append({"profile": profile, "ready": false, "cursor": 0, "locked": false,
 		"pos_cursor": 0, "pos_locked": false})
 	AudioMgr.play("ui_lock")
+
+
+## Ranked: ensimmäinen liittyjä saa aktiivisen tilin ja seuraavat paikalliset
+## pelaajat seuraavat vapaat tilit — sama kone, useampi kiipeäjä. Jos vapaita
+## tilejä ei riitä, pelaaja liittyy vieraana: hän pelaa mukana ottelun
+## kohderankilla mutta LP:tä ei kirjata kenellekään. Phase B rakentaa tähän
+## paikkakohtaisen tilivalitsimen.
+func _assign_ranked_user(profile: PlayerProfile) -> void:
+	var taken: Dictionary = {}
+	for entry in players:
+		var other: PlayerProfile = entry.profile
+		if other.user_id != "":
+			taken[other.user_id] = true
+
+	var wanted: String = Game.ranked_user_id
+	if wanted != "" and not taken.has(wanted) and _link_user(profile, wanted):
+		return
+	for entry in RankedDB.users():
+		var user: Dictionary = entry
+		var id: String = str(user.get("id", ""))
+		if id != "" and not taken.has(id) and _link_user(profile, id):
+			return
+	profile.ranked_rank = _active_rank()
+	profile.display_name = "%s (vieras)" % profile.display_name
+
+
+## Linkittää tilin pelipaikkaan. false = tiliä ei löytynyt.
+func _link_user(profile: PlayerProfile, user_id: String) -> bool:
+	var user: Dictionary = RankedDB.get_user(user_id)
+	if user.is_empty():
+		return false
+	profile.user_id = user_id
+	profile.display_name = str(user.get("name", profile.display_name))
+	profile.ranked_rank = clampi(int(user.get("rank", 0)), 0, BotRank.MAX_RANK)
+	return true
+
+
+## Aktiivisen tilin rank (vieraspelaajien ja otsikoiden pohja).
+func _active_rank() -> int:
+	var user: Dictionary = RankedDB.get_user(Game.ranked_user_id)
+	if user.is_empty():
+		return 0
+	return clampi(int(user.get("rank", 0)), 0, BotRank.MAX_RANK)
 
 
 func _check_all_ready() -> void:
@@ -285,6 +332,9 @@ func _enter_heroes() -> void:
 		players[i].cursor = i % HeroDef.ORDER.size()
 		players[i].locked = false
 		players[i].profile.hero_id = ""
+	if Game.ranked_mode:
+		_build_ranked_bots()
+		return
 	for team in [0, 1]:
 		while _team_total_count(team) < Game.team_size:
 			_bot_counter += 1
@@ -296,6 +346,22 @@ func _enter_heroes() -> void:
 			bot.display_name = "Botti %d" % _bot_counter
 			bots.append(bot)
 	_assign_bot_positions()
+
+
+## Ranked: liittolaiset ja vastustajat haetaan matchmakerilta, joten heillä on
+## oikeat nimet ja rankit ("Routavasara — Gold II") eikä geneeristä "Botti 3".
+## Matchmaker hoitaa myös co-op-tasapainon, positiot ja promo-sarjan
+## vastustajakaistan.
+func _build_ranked_bots() -> void:
+	var humans: Array = []
+	for entry in players:
+		humans.append(entry.profile)
+	var roster: Array = Matchmaker.build_ranked_roster(humans, Game.team_size,
+		Matchmaker.target_rank_for(humans), Matchmaker.promo_band_for(humans))
+	for entry in roster:
+		var profile: PlayerProfile = entry
+		if profile.is_bot:
+			bots.append(profile)
 
 
 ## Botit täyttävät joukkueen vapaiksi jääneet positiot (ihmisten valinnat
@@ -430,6 +496,16 @@ func _tick_bot_picks(delta: float) -> void:
 
 func _bot_pick(bot: PlayerProfile) -> void:
 	var taken := _team_hero_ids(bot.team)
+	# Ranked-botilla on oma pieni sankaripoolinsa (RankedDB) — jokaisella
+	# nimellä on siis tunnistettava tyyli. Käytetään sitä jos joku poolin
+	# sankareista on vielä vapaana.
+	var own_pool: Array = []
+	for hero_id in bot.hero_pool:
+		if not hero_id in taken:
+			own_pool.append(hero_id)
+	if not own_pool.is_empty():
+		bot.hero_id = str(own_pool[randi() % own_pool.size()])
+		return
 	var candidates: Array = []
 	for hero_id in HeroDef.ORDER:
 		if not hero_id in taken:
@@ -641,6 +717,20 @@ func _draw_title(text: String, y: float) -> void:
 	draw_circle(Vector2(960, uy + 3.0), 8.0 + pulse * 2.0, Palette.glow(Palette.GOLD, 1.5))
 
 
+## Sarjamerkki: tierin värinen laatta jossa lukee esim. "Silver II". pos on
+## laatan vasen reuna, pystysuunnassa keskitetty. Phase B korvaa tämän
+## varsinaisella tier-tunnuksella.
+func _draw_rank_chip(pos: Vector2, rank: int, height := 30.0) -> void:
+	var text := BotRank.rank_name(rank)
+	var font := ThemeDB.fallback_font
+	var fs := int(height * 0.52)
+	var w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 30.0
+	var rect := Rect2(pos.x, pos.y - height / 2.0, w, height)
+	var tint: Color = BotRank.rank_color(rank)
+	_card(rect, Palette.with_alpha(tint, 0.16), Palette.with_alpha(tint, 0.85), 2, height / 2.0)
+	UiKit.draw_text(self, rect.get_center(), text, fs, tint, true)
+
+
 ## Tyhjä (botti täyttää) paikka.
 func _draw_seat_empty(rect: Rect2) -> void:
 	_card(rect, Color(0, 0, 0, 0.22), Palette.with_alpha(Palette.TEXT_DIM, 0.25), 2, 16)
@@ -657,9 +747,14 @@ func _draw_seat_empty(rect: Rect2) -> void:
 
 
 func _draw_join() -> void:
-	_draw_title("4V4 MOBA — PELAAJAT", 78)
-	UiKit.draw_text(self, Vector2(960, 150),
-		"ETERNAL DIVIDE  •  2 LINJAA + JUNGLE  •  20:00", 20, Palette.GOLD, true)
+	_draw_title("RANKED 4V4 — PELAAJAT" if Game.ranked_mode else "4V4 MOBA — PELAAJAT", 78)
+	if Game.ranked_mode:
+		UiKit.draw_text(self, Vector2(960, 150),
+			"SARJAPELI  •  VOITOSTA LP  •  VASTASSA OMAN TASOSI HAASTAJAT",
+			20, Palette.GOLD, true)
+	else:
+		UiKit.draw_text(self, Vector2(960, 150),
+			"ETERNAL DIVIDE  •  2 LINJAA + JUNGLE  •  20:00", 20, Palette.GOLD, true)
 	UiKit.draw_text(self, Vector2(960, 178),
 		"Paina X (PS5-ohjain) tai Enter liittyäksesi — vapaat paikat täyttyvät AI:lla",
 		18, Palette.TEXT_DIM, true)
@@ -712,6 +807,11 @@ func _draw_seat_human(rect: Rect2, entry: Dictionary) -> void:
 	UiKit.draw_text(self, rect.position + Vector2(128, rect.size.y / 2.0 - 14.0),
 		profile.display_name, 28, Palette.TEXT_MAIN, false)
 	_draw_device_icon(rect.position + Vector2(128, rect.size.y / 2.0 + 22.0), profile.device)
+
+	# Ranked: pelaajan sarjamerkki nimen viereen.
+	if Game.ranked_mode and profile.ranked_rank >= 0:
+		_draw_rank_chip(rect.position + Vector2(rect.size.x - 300.0, rect.size.y / 2.0),
+			profile.ranked_rank, 34.0)
 
 	# Valmiustila
 	var rp := rect.position + Vector2(rect.size.x - 84, rect.size.y / 2.0)
@@ -903,21 +1003,37 @@ func _draw_player_chip(rect: Rect2, entry: Dictionary) -> void:
 	_card(rect, Palette.with_alpha(tc, 0.16), Palette.with_alpha(tc, 0.6), 2, 12)
 
 	# Pelaajatunnus vasemmalle
+	var ranked: bool = Game.ranked_mode and profile.ranked_rank >= 0
 	if profile.is_human():
 		draw_circle(rect.position + Vector2(24, rect.size.y / 2.0), 15.0, profile.color())
 		UiKit.draw_text(self, rect.position + Vector2(24, rect.size.y / 2.0 + 1),
 			str(profile.index + 1), 16, Palette.TEXT_DARK, true)
+	elif ranked:
+		# Ranked-botti tunnetaan divisioonastaan, ei "BOT"-leimasta.
+		UiKit.draw_text(self, rect.position + Vector2(24, rect.size.y / 2.0),
+			BotRank.division_of(profile.ranked_rank), 18,
+			BotRank.rank_color(profile.ranked_rank), true)
 	else:
 		UiKit.draw_text(self, rect.position + Vector2(24, rect.size.y / 2.0), "BOT", 13,
 			Palette.TEXT_DIM, true)
 
-	UiKit.draw_text(self, rect.position + Vector2(48, 22), profile.display_name, 16,
-		Palette.TEXT_MAIN, false)
 	var pick_text := "..."
 	if profile.hero_id != "":
 		pick_text = HeroDef.get_def(profile.hero_id)["name"]
-	UiKit.draw_text(self, rect.position + Vector2(48, 48), pick_text, 16,
-		Palette.GOLD if locked else Palette.TEXT_DIM, false)
+	if ranked:
+		# Kolme riviä: nimi, sarja ja sankarivalinta.
+		UiKit.draw_text(self, rect.position + Vector2(48, 18), profile.display_name, 15,
+			Palette.TEXT_MAIN, false)
+		UiKit.draw_text(self, rect.position + Vector2(48, 38),
+			BotRank.rank_name(profile.ranked_rank), 12,
+			BotRank.rank_color(profile.ranked_rank), false)
+		UiKit.draw_text(self, rect.position + Vector2(48, 58), pick_text, 14,
+			Palette.GOLD if locked else Palette.TEXT_DIM, false)
+	else:
+		UiKit.draw_text(self, rect.position + Vector2(48, 22), profile.display_name, 16,
+			Palette.TEXT_MAIN, false)
+		UiKit.draw_text(self, rect.position + Vector2(48, 48), pick_text, 16,
+			Palette.GOLD if locked else Palette.TEXT_DIM, false)
 
 	# Valitun sankarin medaljonki oikealle
 	if profile.hero_id != "":

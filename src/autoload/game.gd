@@ -175,6 +175,29 @@ func go_lobby() -> void:
 	_swap(Lobby.new())
 
 
+## Ranked-tila alkaa aina pelaajatilin valinnasta: jokainen tili kiipeää omaa
+## tikapuutaan ja muistaa rankinsa otteluiden välillä.
+func go_ranked() -> void:
+	_apply_moba_format()
+	_swap(UserSelect.new())
+
+
+## Aloittaa ranked-istunnon valitulla tilillä. Vaikeus ei tule enää valikon
+## tier-valinnasta vaan pelaajan omasta rankista — vastustajat haetaan
+## matchmakerilla nimetystä bottipopulaatiosta.
+func start_ranked(user_id: String) -> void:
+	practice = false
+	ranked_mode = true
+	ranked_user_id = user_id
+	last_ranked_results = []
+	RankedDB.set_active_user(user_id)
+	var user: Dictionary = RankedDB.get_user(user_id)
+	var rank: int = clampi(int(user.get("rank", 0)), 0, BotRank.MAX_RANK)
+	bot_tier = BotRank.tier_of(rank)
+	bot_level = BotRank.to_legacy_level(rank)
+	go_lobby()
+
+
 func go_gallery() -> void:
 	_swap(HeroGallery.new())
 
@@ -295,6 +318,10 @@ func _record_ranked_results() -> void:
 	last_ranked_results = []
 	if not ranked_mode or practice:
 		return
+	# Tasapelistä (aikaraja ilman ratkaisua) ei kirjata LP:tä kummallekaan
+	# suuntaan — kukaan ei ansainnut nousua eikä pudotusta.
+	if last_winner_team < 0:
+		return
 	for profile in roster:
 		if profile.is_bot or profile.user_id == "":
 			continue
@@ -322,6 +349,7 @@ func _capture_report() -> void:
 
 
 func go_sim() -> void:
+	ranked_mode = false
 	_swap(SimSetup.new())
 
 

@@ -156,6 +156,39 @@ func _draw() -> void:
 
 	_draw_mvp_card(214.0)
 	_draw_table(408.0)
+	_draw_ranked_strip()
+
+
+## Ranked-tulokset omana korttinaan tulostaulun oikealle puolelle (taulukko on
+## 1290 px leveä ja keskitetty, joten tämä kaista jää vapaaksi).
+## TOIMINNALLINEN POHJA — Phase B korvaa tämän omalla LP-ruudullaan ja
+## ylennyscinematiikalla; data tulee samasta Game.last_ranked_results-listasta.
+func _draw_ranked_strip() -> void:
+	if Game.last_ranked_results.is_empty():
+		return
+	var count: int = Game.last_ranked_results.size()
+	var rect := Rect2(1622, 408, 282, 74.0 + count * 92.0)
+	_card(rect, Palette.with_alpha(Palette.UI_PANEL, 0.92),
+		Palette.with_alpha(Palette.GOLD, 0.5), 2, 16)
+	var cx := rect.get_center().x
+	UiKit.draw_text(self, Vector2(cx, rect.position.y + 34.0), "RANKED", 24, Palette.GOLD, true, 3)
+
+	var y := rect.position.y + 84.0
+	for entry in Game.last_ranked_results:
+		var res: Dictionary = entry
+		var rank_after: int = int(res.get("rank_after", 0))
+		var accent: Color = BotRank.rank_color(rank_after)
+		if str(res.get("promoted", "")) != "":
+			accent = Palette.glow(Palette.GOLD, 1.3)
+		elif bool(res.get("demoted", false)):
+			accent = Palette.BAD
+		UiKit.draw_text(self, Vector2(cx, y), str(res.get("name", "")), 22,
+			Palette.TEXT_MAIN, true, 3)
+		UiKit.draw_text(self, Vector2(cx, y + 28.0), BotRank.rank_name(rank_after), 19,
+			BotRank.rank_color(rank_after), true)
+		UiKit.draw_text(self, Vector2(cx, y + 54.0), RankedRules.result_headline(res), 17,
+			accent, true)
+		y += 92.0
 
 
 func _draw_mvp_card(y: float) -> void:

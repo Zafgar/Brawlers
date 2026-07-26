@@ -51,6 +51,23 @@ static func button(text: String, on_pressed: Callable, size := 30) -> Button:
 	return b
 
 
+## Tekstikenttä valikkotyylillä (ranked-tilin nimi). Ohjaimella pelaava voi
+## ohittaa kirjoittamisen ja poimia valmiin nimiehdotuksen.
+static func line_edit(placeholder := "", max_length := 18, size := 26) -> LineEdit:
+	var edit := LineEdit.new()
+	edit.placeholder_text = placeholder
+	edit.max_length = max_length
+	edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	edit.add_theme_font_size_override("font_size", size)
+	edit.add_theme_color_override("font_color", Palette.TEXT_MAIN)
+	edit.add_theme_color_override("font_placeholder_color", Palette.TEXT_DIM)
+	edit.add_theme_stylebox_override("normal", _stylebox(Palette.UI_PANEL, Palette.UI_STROKE))
+	edit.add_theme_stylebox_override("focus",
+		_stylebox(Palette.UI_PANEL_LIGHT, Palette.GOLD, 3))
+	edit.focus_entered.connect(func(): AudioMgr.play("ui_move", 0.02, -7.0))
+	return edit
+
+
 static func _stylebox(bg: Color, border: Color, border_width := 2) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg

@@ -20,7 +20,8 @@ func _ready() -> void:
 	box.custom_minimum_size = Vector2(480, 0)
 	add_child(box)
 
-	var play_btn := _menu_button(box, "PELAA 4V4 MOBA", func(): Game.go_setup(false), true)
+	var play_btn := _menu_button(box, "RANKED — KIIPEÄ SARJASSA", func(): Game.go_ranked(), true)
+	_menu_button(box, "OMA OTTELU (EI RANKED)", func(): Game.go_setup(false))
 	_menu_button(box, "HARJOITTELU + AI", func(): Game.go_setup(true))
 	_menu_button(box, "SANKARIT & KYVYT", func(): Game.go_gallery())
 	_menu_button(box, "SIMULAATIO & META", func(): Game.go_sim())
