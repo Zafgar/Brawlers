@@ -33,10 +33,37 @@ const TIER_CAPABILITIES := [
 	"käyrien katto: lähes virheetön tähtäys, ei keskittymiskatkoja, täysi huijausramppi",
 ]
 
+# --- Balanssiraportin hälytysrajat (itemit, sankarit, järjestelmä) ----------
+# Kaikki liputukset kulkevat _flag()-apurin kautta, joka kerää ne myös raportin
+# ylimpään YHTEENVETO-laatikkoon. Rajat ovat tietoisen väljiä: raportti nostaa
+# esiin TARKISTUSKOHTEITA, ei julista itemiä tai sankaria rikkinäiseksi.
+const ITEM_MIN_N := 8              # pienin otanta jolla itemi ylipäätään liputetaan
+const ITEM_STRONG_WR := 62.0       # haltijan voitto% >= -> "vahva?"
+const ITEM_WEAK_WR := 38.0         # haltijan voitto% <= -> "heikko?"
+const ITEM_EFF_LOW := 0.60         # kultatehokkuus alle 60 % keskiarvosta -> TEHOTON
+const ITEM_EFF_HIGH := 1.50        # kultatehokkuus yli 150 % keskiarvosta -> YLIVOIMAINEN
+const FIRST_EPIC_DOMINANT := 35.0  # yhden ensiepicin osuus %-yksikköinä -> avaus dominoi
+const EARLY_EPIC_T := 600.0        # "aikainen" ensiepic: valmis ennen 10:00
+const WALLET_HOARD := 1000.0       # roolin käyttämätön kulta ottelun lopussa -> hamstraus
+const ARTIFACT_WASTE := 30.0       # % otteluista joissa pudonnut artefakti jäi käyttämättä
+const HERO_MIN_N := 8              # pienin otanta sankarin voitto%-liputukseen
+const HERO_WR_LOW := 42.0          # sankarin voitto% alle tämän -> TARKISTA
+const HERO_WR_HIGH := 58.0         # sankarin voitto% yli tämän -> TARKISTA
+const ROLE_WR_DEV := 8.0           # roolin voitto%:n sallittu poikkeama 50:stä (%-yks)
+const PHASE_RATIO := 2.0           # loppu/alku-vahinkosuhde jolla hahmo luokitellaan
+const PHASE_MIN_GAMES := 3         # voimakäyrän pienin otanta
+const TIMECAP_SHARE := 40.0        # % otteluista aikakattoon -> liputus
+const SNOWBALL_MIN_N := 4          # lumipallokauhan pienin otanta liputukseen
+const SNOWBALL_HIGH := 90.0        # iso johto voittaa yli tämän -> lumipallo liian vahva
+const SNOWBALL_LOW := 55.0         # iso johto voittaa alle tämän -> johdolla ei ole väliä
+const BARON_SKIP_SHARE := 30.0     # % otteluista joissa Baronia ei kaadettu lainkaan
+const BUILD_DOMINANT := 80.0       # yhden lopullisen buildin osuus %-yksikköinä
 
 static func build(snapshots: Array, intro: Array) -> String:
-	var lines: Array = intro.duplicate()
-	lines.append("")
+	# Runko kootaan ensin omaan taulukkoonsa: YHTEENVETO-laatikko tarvitsee
+	# osioiden keräämät liput ja se ladotaan raportin kärkeen vasta lopuksi.
+	var lines: Array = []
+	var flags: Array = []
 	var wins := [0, 0]
 	var total_time := 0.0
 	var agg: Dictionary = {}
@@ -90,10 +117,14 @@ static func build(snapshots: Array, intro: Array) -> String:
 	_survivability_table(lines, agg)
 	_tanking_table(lines, agg)
 	_ability_table(lines, agg)
-	_item_balance_table(lines, snapshots)
+	_item_balance_section(lines, snapshots, flags)
+	_hero_balance_section(lines, snapshots, flags)
 	_level_xp_table(lines, snapshots)
 	_skill_rank_table(lines, snapshots)
-	return "\n".join(PackedStringArray(lines))
+	var head: Array = intro.duplicate()
+	head.append("")
+	head.append_array(lines)
+	return "\n".join(PackedStringArray(head))
 
 
 ## Laaja läpikäynti: kukin ottelu on {snap, ba, oa} (blue/orange-kokoonpanotyyppi).
@@ -925,97 +956,285 @@ static func _ability_table(lines: Array, agg: Dictionary) -> void:
 		lines.append("      Tarkista rikki VAI tarkoituksella liikkumis-/asemointikyky: " + ", ".join(PackedStringArray(suspects)))
 
 
-## Itembalanssi: epicit ja legendat jotka valmistuivat vähintään kerran.
-## Haltijan voitto%, KDA sekä vahinko/GPM suhteessa samojen ottelujen kaikkien
-## sankarien keskiarvoon paljastavat yli- ja alivoimaiset itemit. Ostot luetaan
-## ostolokista (item_log); vanhat snapshotit ilman lokia ohitetaan kaatumatta.
-static func _item_balance_table(lines: Array, snapshots: Array) -> void:
+## Kirjaa tarkistuskohteen YHTEENVETO-laatikkoa varten ja palauttaa saman tekstin,
+## jotta liputus voidaan tulostaa myös taulukon tuomio-sarakkeeseen.
+##   kind: "itemi" | "sankari" | "järjestelmä"; name: rivin nimi koostetta varten.
+static func _flag(flags: Array, kind: String, name: String, text: String) -> String:
+	flags.append({"kind": kind, "name": name, "text": text})
+	return text
+
+
+## Osuus prosenttitekstinä; "-" kun otantaa ei ole (nollalla ei jaeta).
+static func _pct_text(part: int, total: int) -> String:
+	if total <= 0:
+		return "-"
+	return "%.1f %%" % (100.0 * float(part) / float(total))
+
+
+## Itembalanssi neljänä lohkona:
+##   (a) epicit ja legendat + tiivis rare-lohko: rakennusmäärä, poimintaosuus,
+##       valmistumisaika, haltijan voitto%, kultatehokkuus, vahinko-osuus
+##       joukkueesta sekä vah/GPM-kertoimet.
+##   (b) ensiepic: mikä epic valmistuu ensimmäisenä, dominoiko yksi avaus ja
+##       kannattaako avaus ennen 10:00.
+##   (c) legendat ja artefaktit: muuttuvatko Baronin artefaktipudotukset
+##       legendoiksi vai jääkö koko mekaniikka saavuttamatta.
+##   (d) käyttämätön kulta rooleittain: hamstraako botti lompakkoa (AI- tai
+##       kauppapääsyongelma) vai valuuko kulta itemeihin.
+## Kaikki kentät luetaan .get-oletuksilla, joten vanhat tilannekuvat kelpaavat.
+static func _item_balance_section(lines: Array, snapshots: Array, flags: Array) -> void:
+	var flag_start: int = flags.size()
 	lines.append("")
 	lines.append("=== ITEMIT (balanssi) ===")
-	lines.append("  Haltijan voitto% = ostajan joukkue voitti (tasapelit ohitettu). vah/GPM = kerroin")
-	lines.append("  suhteessa samojen ottelujen kaikkien sankarien keskiarvoon (esim. vah ×1.31).")
-	var table: Dictionary = {}   # id -> koonti (epic/legendary)
-	var minor: Dictionary = {}   # common+rare-ostojen suosio: id -> lkm
-	var legendary_buys := 0
+	lines.append("  Haltijan voitto% = ostajan joukkue voitti (tasapelit ohitettu).")
+	lines.append("  osto% = rakennettiin / ne sankariottelut joissa kulta olisi riittänyt hintaan.")
+	lines.append("  kulta-teho = (vahinko + parannus + vaimennettu) / (haltijan käyttämä kulta / 1000).")
+	lines.append("  vah-os% = haltijan osuus oman joukkueen kokonaisvahingosta.")
+	lines.append("  vah/GPM = kerroin samojen ottelujen kaikkien sankarien keskiarvoon.")
+	# Hinnasto kerran: poimintaosuuden nimittäjä tarvitsee itemin kokonaishinnan.
+	var priced: Dictionary = {}
+	for id_v in ItemDef.all_ids():
+		var pid: String = str(id_v)
+		var pdef: Dictionary = ItemDef.get_item(pid)
+		var ptier: String = str(pdef.get("tier", ""))
+		if ptier == "epic" or ptier == "legendary" or ptier == "rare":
+			priced[pid] = {"cost": float(pdef.get("cost", 0)), "tier": ptier}
+	var table: Dictionary = {}        # epic + legendary
+	var rare_tab: Dictionary = {}     # rare (tiivis lohko)
+	var common_pop: Dictionary = {}   # common-ostojen suosio
+	var opp: Dictionary = {}          # id -> sankariottelut joissa oli varaa
+	var first_epic: Dictionary = {}   # id -> ensiepic-koonti
+	var wallet_role: Dictionary = {}  # rooli -> käyttämätön kulta
+	var fe_total := 0
+	var fe_time_sum := 0.0
+	var fe_early_n := 0
+	var fe_early_wins := 0
+	var fe_late_n := 0
+	var fe_late_wins := 0
+	var hero_obs := 0
+	var wallet_sum := 0.0
+	var artifacts := 0                # pudonneet artefaktit = Baron-kaadot
+	var legend_n := 0
+	var legend_t_sum := 0.0
+	var legend_wins := 0
+	var legend_decided := 0
+	var matches_with_artifact := 0
+	var matches_wasted := 0
+	var eff_value := 0.0              # epic+legendary: tuotettu arvo yhteensä
+	var eff_spent := 0.0
+	var eff_value_rare := 0.0
+	var eff_spent_rare := 0.0
 	for snap_v in snapshots:
 		var snap: Dictionary = snap_v
 		var winner: int = int(snap.get("winner", -1))
+		var decided: bool = winner == 0 or winner == 1
 		var elapsed_min: float = maxf(float(snap.get("elapsed", 0.0)) / 60.0, 0.1)
 		var heroes: Array = snap.get("heroes", [])
-		# Ottelun kaikkien sankarien keskivahinko ja -GPM vertailupohjaksi.
+		# Ottelun vertailupohjat: joukkueen kokonaisvahinko (osuutta varten) sekä
+		# kaikkien sankarien keskivahinko ja -GPM (kertoimia varten).
+		var team_dmg: Array = [0.0, 0.0]
 		var avg_dmg := 0.0
 		var avg_gpm := 0.0
 		for hv in heroes:
 			var hh: Dictionary = hv
-			avg_dmg += float(hh.get("damage", 0.0))
+			var hdmg: float = float(hh.get("damage", 0.0))
+			avg_dmg += hdmg
 			avg_gpm += float(hh.get("gold", 0.0)) / elapsed_min
+			var ht: int = int(hh.get("team", -1))
+			if ht == 0 or ht == 1:
+				team_dmg[ht] = float(team_dmg[ht]) + hdmg
 		var n_heroes: float = maxf(float(heroes.size()), 1.0)
 		avg_dmg /= n_heroes
 		avg_gpm /= n_heroes
+		var barons := 0
+		for ev_v in snap.get("objective_events", []):
+			var oev: Dictionary = ev_v
+			if str(oev.get("kind", "")) == "baron":
+				barons += 1
+		artifacts += barons
+		var match_legends := 0
 		for hv in heroes:
 			var h: Dictionary = hv
+			hero_obs += 1
 			var team: int = int(h.get("team", -1))
+			var won: bool = decided and team == winner
+			var dmg: float = float(h.get("damage", 0.0))
+			var team_total: float = 1.0
+			if team == 0 or team == 1:
+				team_total = maxf(float(team_dmg[team]), 1.0)
+			var dmg_share: float = 100.0 * dmg / team_total
 			var kda: float = (float(h.get("kos", 0)) + float(h.get("assists", 0))) \
 				/ maxf(float(h.get("deaths", 0)), 1.0)
-			var gpm: float = float(h.get("gold", 0.0)) / elapsed_min
-			var purchase_log: Array = h.get("item_log", [])
-			for ev_v in purchase_log:
-				var ev: Dictionary = ev_v
+			var gold_total: float = float(h.get("gold", 0.0))
+			var gpm: float = gold_total / elapsed_min
+			var spent: float = float(h.get("gold_spent", 0.0))
+			var value: float = dmg + float(h.get("healing", 0.0)) \
+				+ float(h.get("mitigated", 0.0))
+			# (d) käyttämätön kulta rooleittain: lompakko = kulta - käytetty.
+			var role: String = str(h.get("progression_role", h.get("role", "unknown")))
+			if role == "":
+				role = "unknown"
+			if not wallet_role.has(role):
+				wallet_role[role] = {"sum": 0.0, "n": 0}
+			var wa: Dictionary = wallet_role[role]
+			var unspent: float = maxf(gold_total - spent, 0.0)
+			wa["sum"] = float(wa["sum"]) + unspent
+			wa["n"] = int(wa["n"]) + 1
+			wallet_sum += unspent
+			var built: Dictionary = {}   # tässä ottelussa valmistuneet (uniikit)
+			var fe_id := ""
+			var fe_t := -1.0
+			for ev_v2 in h.get("item_log", []):
+				var ev: Dictionary = ev_v2
 				if bool(ev.get("sold", false)):
 					continue
-				var tier := str(ev.get("tier", ""))
-				var id := str(ev.get("id", "?"))
-				if tier == "common" or tier == "rare":
-					minor[id] = int(minor.get(id, 0)) + 1
+				var tier: String = str(ev.get("tier", ""))
+				var id: String = str(ev.get("id", "?"))
+				var t_buy: float = float(ev.get("t", 0.0))
+				if tier == "common":
+					common_pop[id] = int(common_pop.get(id, 0)) + 1
 					continue
-				if tier != "epic" and tier != "legendary":
+				if tier != "rare" and tier != "epic" and tier != "legendary":
 					continue
-				if tier == "legendary":
-					legendary_buys += 1
-				if not table.has(id):
-					table[id] = {"id": id, "tier": tier, "n": 0, "t_sum": 0.0,
-						"wins": 0, "decided": 0, "kda_sum": 0.0,
-						"dmg_sum": 0.0, "dmg_base": 0.0,
-						"gpm_sum": 0.0, "gpm_base": 0.0}
-				var a: Dictionary = table[id]
+				built[id] = true
+				var dst: Dictionary = rare_tab if tier == "rare" else table
+				if not dst.has(id):
+					dst[id] = {"id": id, "tier": tier, "n": 0, "hm": 0, "t_sum": 0.0,
+						"wins": 0, "decided": 0, "kda_sum": 0.0, "share_sum": 0.0,
+						"val_sum": 0.0, "spent_sum": 0.0, "dmg_sum": 0.0,
+						"dmg_base": 0.0, "gpm_sum": 0.0, "gpm_base": 0.0}
+				var a: Dictionary = dst[id]
 				a["n"] = int(a["n"]) + 1
-				a["t_sum"] = float(a["t_sum"]) + float(ev.get("t", 0.0))
-				if winner == 0 or winner == 1:
+				a["t_sum"] = float(a["t_sum"]) + t_buy
+				if decided:
 					a["decided"] = int(a["decided"]) + 1
-					if team == winner:
+					if won:
 						a["wins"] = int(a["wins"]) + 1
 				a["kda_sum"] = float(a["kda_sum"]) + kda
-				a["dmg_sum"] = float(a["dmg_sum"]) + float(h.get("damage", 0.0))
+				a["share_sum"] = float(a["share_sum"]) + dmg_share
+				a["val_sum"] = float(a["val_sum"]) + value
+				a["spent_sum"] = float(a["spent_sum"]) + spent
+				a["dmg_sum"] = float(a["dmg_sum"]) + dmg
 				a["dmg_base"] = float(a["dmg_base"]) + avg_dmg
 				a["gpm_sum"] = float(a["gpm_sum"]) + gpm
 				a["gpm_base"] = float(a["gpm_base"]) + avg_gpm
+				if tier == "rare":
+					eff_value_rare += value
+					eff_spent_rare += spent
+				else:
+					eff_value += value
+					eff_spent += spent
+				if tier == "epic" and (fe_t < 0.0 or t_buy < fe_t):
+					fe_t = t_buy
+					fe_id = id
+				if tier == "legendary":
+					match_legends += 1
+					legend_n += 1
+					legend_t_sum += t_buy
+					if decided:
+						legend_decided += 1
+						if won:
+							legend_wins += 1
+			# Poimintaosuuden nimittäjä: oliko itemiin ylipäätään varaa. Rakennettu
+			# itemi lasketaan aina mahdollisuudeksi (hinta maksettiin osissa).
+			for id_v2 in priced:
+				var qid: String = str(id_v2)
+				var qd: Dictionary = priced[qid]
+				if built.has(qid) or gold_total + 0.5 >= float(qd["cost"]):
+					opp[qid] = int(opp.get(qid, 0)) + 1
+			# Osoittaja: montako sankariottelua itemi oli valmiina (uniikkeina).
+			for id_v3 in built:
+				var bid: String = str(id_v3)
+				if table.has(bid):
+					var ta: Dictionary = table[bid]
+					ta["hm"] = int(ta["hm"]) + 1
+				elif rare_tab.has(bid):
+					var ra: Dictionary = rare_tab[bid]
+					ra["hm"] = int(ra["hm"]) + 1
+			if fe_id != "":
+				if not first_epic.has(fe_id):
+					first_epic[fe_id] = {"id": fe_id, "n": 0, "t_sum": 0.0,
+						"wins": 0, "decided": 0}
+				var fa: Dictionary = first_epic[fe_id]
+				fa["n"] = int(fa["n"]) + 1
+				fa["t_sum"] = float(fa["t_sum"]) + fe_t
+				fe_total += 1
+				fe_time_sum += fe_t
+				if decided:
+					fa["decided"] = int(fa["decided"]) + 1
+					if won:
+						fa["wins"] = int(fa["wins"]) + 1
+					if fe_t < EARLY_EPIC_T:
+						fe_early_n += 1
+						if won:
+							fe_early_wins += 1
+					else:
+						fe_late_n += 1
+						if won:
+							fe_late_wins += 1
+		if barons > 0:
+			matches_with_artifact += 1
+			if match_legends <= 0:
+				matches_wasted += 1
+
+	# --- (a) epicit ja legendat ---
+	var mean_eff: float = 1000.0 * eff_value / maxf(eff_spent, 1.0)
+	var mean_eff_rare: float = 1000.0 * eff_value_rare / maxf(eff_spent_rare, 1.0)
 	var rows: Array = table.values()
-	for a in rows:
-		a["wr"] = float(a["wins"]) / maxf(float(a["decided"]), 1.0)
+	for a_v in rows:
+		var a: Dictionary = a_v
+		a["wr"] = 100.0 * float(a["wins"]) / maxf(float(a["decided"]), 1.0)
+		a["eff"] = 1000.0 * float(a["val_sum"]) / maxf(float(a["spent_sum"]), 1.0)
 	rows.sort_custom(func(x, y): return float(x["wr"]) > float(y["wr"]))
-	lines.append("  itemi                | tieri     |  n | valm. ka | voitto% | KDA ka | vah    | GPM    | tuomio")
-	for a in rows:
+	lines.append("")
+	lines.append("  -- (a) epicit ja legendat (otannan kulta-tehon keskiarvo %d) --" % int(mean_eff))
+	lines.append("  itemi                | tieri     |   n | osto% | valm. ka | voitto% | kulta-teho | vah-os% |  KDA  |  vah   |  GPM   | tuomio")
+	for a_v in rows:
+		var a: Dictionary = a_v
+		var id: String = str(a["id"])
+		var iname: String = str(ItemDef.get_item(id).get("name", id))
 		var n: int = int(a["n"])
-		var wr: float = float(a["wr"]) * 100.0
-		var verdict := ""
-		if n < 8:
-			verdict = "otanta pieni"
-		elif wr >= 62.0:
-			verdict = "TARKISTA: vahva?"
-		elif wr <= 38.0:
-			verdict = "TARKISTA: heikko?"
-		var name := str(ItemDef.get_item(str(a["id"])).get("name", str(a["id"])))
-		lines.append("  %-20s | %-9s | %2d | %8s | %5.1f %% | %6.2f | ×%5.2f | ×%5.2f | %s" % [
-			name, str(a["tier"]), n, _fmt(float(a["t_sum"]) / maxf(float(n), 1.0)),
-			wr, float(a["kda_sum"]) / maxf(float(n), 1.0),
+		var chances: int = maxi(int(opp.get(id, 0)), int(a["hm"]))
+		var wr_text: String = "-" if int(a["decided"]) <= 0 else "%5.1f %%" % float(a["wr"])
+		lines.append("  %-20s | %-9s | %3d | %4.0f%% | %8s | %-7s | %10d | %6.1f%% | %5.2f | ×%5.2f | ×%5.2f | %s" % [
+			iname, str(a["tier"]), n,
+			100.0 * float(a["hm"]) / maxf(float(chances), 1.0),
+			_fmt(float(a["t_sum"]) / maxf(float(n), 1.0)), wr_text, int(float(a["eff"])),
+			float(a["share_sum"]) / maxf(float(n), 1.0),
+			float(a["kda_sum"]) / maxf(float(n), 1.0),
 			float(a["dmg_sum"]) / maxf(float(a["dmg_base"]), 1.0),
-			float(a["gpm_sum"]) / maxf(float(a["gpm_base"]), 1.0), verdict])
+			float(a["gpm_sum"]) / maxf(float(a["gpm_base"]), 1.0),
+			_item_verdict(a, iname, mean_eff, flags)])
 	if rows.is_empty():
 		lines.append("  Yhtään epic/legendary-itemiä ei valmistunut otannassa.")
-	# Perusitemien suosio: mihin common/rare-kulta oikeasti valuu.
+	# Rare-lohko tiiviinä: sama tuomiologiikka, mutta oma kulta-tehon keskiarvo
+	# (raret ostetaan aikaisin ja pienemmällä kokonaiskululla).
+	var rare_rows: Array = rare_tab.values()
+	for a_v in rare_rows:
+		var a: Dictionary = a_v
+		a["wr"] = 100.0 * float(a["wins"]) / maxf(float(a["decided"]), 1.0)
+		a["eff"] = 1000.0 * float(a["val_sum"]) / maxf(float(a["spent_sum"]), 1.0)
+	rare_rows.sort_custom(func(x, y): return int(x["n"]) > int(y["n"]))
+	lines.append("")
+	lines.append("  -- raret tiiviisti (oma kulta-tehon keskiarvo %d) --" % int(mean_eff_rare))
+	lines.append("  itemi                |   n | osto% | valm. ka | voitto% | kulta-teho | tuomio")
+	for a_v in rare_rows:
+		var a: Dictionary = a_v
+		var id: String = str(a["id"])
+		var iname: String = str(ItemDef.get_item(id).get("name", id))
+		var n: int = int(a["n"])
+		var chances: int = maxi(int(opp.get(id, 0)), int(a["hm"]))
+		var wr_text: String = "-" if int(a["decided"]) <= 0 else "%5.1f %%" % float(a["wr"])
+		lines.append("  %-20s | %3d | %4.0f%% | %8s | %-7s | %10d | %s" % [
+			iname, n, 100.0 * float(a["hm"]) / maxf(float(chances), 1.0),
+			_fmt(float(a["t_sum"]) / maxf(float(n), 1.0)), wr_text, int(float(a["eff"])),
+			_item_verdict(a, iname, mean_eff_rare, flags)])
+	if rare_rows.is_empty():
+		lines.append("  Ei rare-ostoja otannassa.")
+	# Perusitemien suosio: mihin common-kulta oikeasti valuu.
 	var minor_rows: Array = []
-	for id in minor:
-		minor_rows.append({"id": id, "n": int(minor[id])})
+	for id_v4 in common_pop:
+		minor_rows.append({"id": str(id_v4), "n": int(common_pop[id_v4])})
 	minor_rows.sort_custom(func(x, y): return int(x["n"]) > int(y["n"]))
 	var parts: Array = []
 	for i in range(mini(minor_rows.size(), 5)):
@@ -1023,12 +1242,121 @@ static func _item_balance_table(lines: Array, snapshots: Array) -> void:
 		parts.append("%s x%d" % [
 			str(ItemDef.get_item(str(m["id"])).get("name", str(m["id"]))), int(m["n"])])
 	if parts.is_empty():
-		lines.append("  Suosituimmat perusitemit (common+rare): ei ostoja.")
+		lines.append("  Suosituimmat perusitemit (common): ei ostoja.")
 	else:
-		lines.append("  Suosituimmat perusitemit (common+rare, top 5): "
+		lines.append("  Suosituimmat perusitemit (common, top 5): "
 			+ ", ".join(PackedStringArray(parts)))
-	lines.append("  Artefaktitalous: legendoja valmistui keskimäärin %.2f per ottelu." % [
-		float(legendary_buys) / maxf(float(snapshots.size()), 1.0)])
+
+	# --- (b) ensiepic ---
+	lines.append("")
+	lines.append("  -- (b) ensiepic: ensimmäisenä valmistunut epic (dominoiko yksi avaus) --")
+	var fe_rows: Array = first_epic.values()
+	for a_v in fe_rows:
+		var a: Dictionary = a_v
+		a["wr"] = 100.0 * float(a["wins"]) / maxf(float(a["decided"]), 1.0)
+	fe_rows.sort_custom(func(x, y): return int(x["n"]) > int(y["n"]))
+	lines.append("  itemi                |   n | osuus | ka aika | voitto% | tuomio")
+	for a_v in fe_rows:
+		var a: Dictionary = a_v
+		var id: String = str(a["id"])
+		var iname: String = str(ItemDef.get_item(id).get("name", id))
+		var n: int = int(a["n"])
+		var share: float = 100.0 * float(n) / maxf(float(fe_total), 1.0)
+		var wr_text: String = "-" if int(a["decided"]) <= 0 else "%5.1f %%" % float(a["wr"])
+		var note := ""
+		var fe_notes: Array = []
+		if n >= ITEM_MIN_N and share >= FIRST_EPIC_DOMINANT:
+			fe_notes.append(_flag(flags, "itemi", iname,
+				"TARKISTA: avaus dominoi (%.0f %% ensiepiceistä)" % share))
+		if int(a["decided"]) >= ITEM_MIN_N:
+			if float(a["wr"]) >= ITEM_STRONG_WR:
+				fe_notes.append(_flag(flags, "itemi", iname, "TARKISTA: avaus vahva?"))
+			elif float(a["wr"]) <= ITEM_WEAK_WR:
+				fe_notes.append(_flag(flags, "itemi", iname, "TARKISTA: avaus heikko?"))
+		if not fe_notes.is_empty():
+			note = " + ".join(PackedStringArray(fe_notes))
+		lines.append("  %-20s | %3d | %4.0f%% | %7s | %-7s | %s" % [
+			iname, n, share, _fmt(float(a["t_sum"]) / maxf(float(n), 1.0)), wr_text, note])
+	if fe_rows.is_empty():
+		lines.append("  Yksikään sankari ei saanut epiciä valmiiksi otannassa.")
+	else:
+		lines.append("  Ensiepic valmistui %d/%d sankariottelussa (%.0f %%), ka aika %s." % [
+			fe_total, hero_obs, 100.0 * float(fe_total) / maxf(float(hero_obs), 1.0),
+			_fmt(fe_time_sum / maxf(float(fe_total), 1.0))])
+		lines.append("  Ensiepic ennen 10:00: voitto %s (n=%d) | 10:00 jälkeen: voitto %s (n=%d)" % [
+			_pct_text(fe_early_wins, fe_early_n), fe_early_n,
+			_pct_text(fe_late_wins, fe_late_n), fe_late_n])
+
+	# --- (c) legendat ja artefaktit ---
+	lines.append("")
+	lines.append("  -- (c) legendat ja artefaktit (legenda vaatii Baronin artefaktin) --")
+	var mcount: int = snapshots.size()
+	lines.append("  Artefaktipudotuksia (Baron-kaadot): %d = %.2f / ottelu" % [
+		artifacts, float(artifacts) / maxf(float(mcount), 1.0)])
+	var leg_time: String = "-" if legend_n <= 0 else _fmt(legend_t_sum / float(legend_n))
+	lines.append("  Legendoja valmistui: %d (%s pudotuksista), valmistumisaika ka %s" % [
+		legend_n, _pct_text(legend_n, artifacts), leg_time])
+	lines.append("  Legendan rakentaneen joukkueen voitto%%: %s (n=%d ratkennutta)" % [
+		_pct_text(legend_wins, legend_decided), legend_decided])
+	var waste: float = 100.0 * float(matches_wasted) / maxf(float(matches_with_artifact), 1.0)
+	lines.append("  Ottelut joissa artefakti putosi mutta legendaa EI rakennettu: %d/%d (%.1f %%)" % [
+		matches_wasted, matches_with_artifact, waste])
+	if matches_with_artifact > 0 and waste > ARTIFACT_WASTE:
+		lines.append("  " + _flag(flags, "järjestelmä", "artefakti",
+			"TARKISTA: yli %d %% artefakteista jäi käyttämättä — legendamekaniikka ei ole saavutettavissa"
+			% int(ARTIFACT_WASTE)))
+
+	# --- (d) käyttämätön kulta ---
+	lines.append("")
+	lines.append("  -- (d) käyttämätön kulta ottelun lopussa (lompakko = kulta - käytetty) --")
+	var wkeys: Array = wallet_role.keys()
+	wkeys.sort_custom(func(x, y): return _role_rank(str(x)) < _role_rank(str(y)))
+	var wparts: Array = []
+	var hoard: Array = []
+	for role_v in wkeys:
+		var role: String = str(role_v)
+		var wa: Dictionary = wallet_role[role]
+		var avg_w: float = float(wa["sum"]) / maxf(float(wa["n"]), 1.0)
+		wparts.append("%s %d" % [role, int(avg_w)])
+		if int(wa["n"]) >= 4 and avg_w >= WALLET_HOARD:
+			hoard.append(_flag(flags, "järjestelmä", "lompakko",
+				"TARKISTA: rooli '%s' istuu %d kullan päällä — botti hamstraa tai kauppaan ei pääse"
+				% [role, int(avg_w)]))
+	if wparts.is_empty():
+		lines.append("  Ei sankaridataa otannassa.")
+	else:
+		lines.append("  " + " | ".join(PackedStringArray(wparts))
+			+ "   (koko otanta ka %d)" % int(wallet_sum / maxf(float(hero_obs), 1.0)))
+	for hline in hoard:
+		lines.append("  " + str(hline))
+	lines.append("  Itemiosion tarkistuskohteita: %d (yksityiskohdat tuomio-sarakkeissa)."
+		% (flags.size() - flag_start))
+
+
+## Yhden itemirivin tuomio + liputus. Otanta n on rakennuskerrat; voitto%:n
+## liputus vaatii lisäksi ratkenneita otteluita, jotta pelkät tasapelit eivät
+## näytä itemiä heikolta.
+static func _item_verdict(a: Dictionary, iname: String, mean_eff: float, flags: Array) -> String:
+	if int(a["n"]) < ITEM_MIN_N:
+		return "otanta pieni"
+	var parts: Array = []
+	if int(a["decided"]) >= ITEM_MIN_N:
+		var wr: float = float(a["wr"])
+		if wr >= ITEM_STRONG_WR:
+			parts.append(_flag(flags, "itemi", iname, "TARKISTA: vahva?"))
+		elif wr <= ITEM_WEAK_WR:
+			parts.append(_flag(flags, "itemi", iname, "TARKISTA: heikko?"))
+	if mean_eff > 0.0:
+		var eff: float = float(a["eff"])
+		if eff < mean_eff * ITEM_EFF_LOW:
+			parts.append(_flag(flags, "itemi", iname,
+				"TEHOTON: kultatehokkuus alle 60 % keskiarvosta"))
+		elif eff > mean_eff * ITEM_EFF_HIGH:
+			parts.append(_flag(flags, "itemi", iname,
+				"YLIVOIMAINEN: kultatehokkuus yli 150 %"))
+	if parts.is_empty():
+		return ""
+	return " + ".join(PackedStringArray(parts))
 
 
 ## Tasot ja XP: muuntuuko talous- ja tasojohto voitoiksi. Voittaja- vs häviäjä-
@@ -1300,3 +1628,205 @@ static func _team(t: int) -> String:
 static func _fmt(sec: float) -> String:
 	var s: int = int(sec)
 	return "%d:%02d" % [s / 60, s % 60]
+
+
+## Sankaribalanssin syvyys kolmena taulukkona:
+##   - per-sankari: voitto%, KDA ja panosten OSUUDET oman joukkueen summasta
+##     (vahinko, tornivahinko, kulta) sekä päätöstaso ja ensiepicin aika.
+##   - voimakäyrä: vahingon osuus pelivaiheittain (0-7 / 7-14 / 14+ min). Tämä on
+##     _level_scaling-profiilien todentaja: kertoo onko sankari toteutuneesti
+##     alku- vai loppupelin hahmo. Luokittelu on TIETOA, ei virhe.
+##   - roolikooste: voitto%, kulta/min, vahinko-osuus ja kuolemat rooleittain.
+## Osuudet lasketaan ottelukohtaisina ja keskiarvoistetaan, jotta yksi pitkä
+## ottelu ei paina enempää kuin lyhyt.
+static func _hero_balance_section(lines: Array, snapshots: Array, flags: Array) -> void:
+	var flag_start: int = flags.size()
+	lines.append("")
+	lines.append("=== SANKARIBALANSSI ===")
+	lines.append("  Osuus = sankarin osuus OMAN joukkueen summasta, ottelukohtaisten osuuksien ka.")
+	lines.append("  1. epic = ensimmäisen epicin valmistumisaika (ostologista).")
+	var hero: Dictionary = {}
+	var roles: Dictionary = {}
+	for snap_v in snapshots:
+		var snap: Dictionary = snap_v
+		var winner: int = int(snap.get("winner", -1))
+		var decided: bool = winner == 0 or winner == 1
+		var elapsed: float = float(snap.get("elapsed", 0.0))
+		var heroes: Array = snap.get("heroes", [])
+		var t_dmg: Array = [0.0, 0.0]
+		var t_str: Array = [0.0, 0.0]
+		var t_gold: Array = [0.0, 0.0]
+		var t_ph: Array = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+		for hv in heroes:
+			var hh: Dictionary = hv
+			var ht: int = int(hh.get("team", -1))
+			if ht != 0 and ht != 1:
+				continue
+			t_dmg[ht] = float(t_dmg[ht]) + float(hh.get("damage", 0.0))
+			t_str[ht] = float(t_str[ht]) + float(hh.get("structure_damage", 0.0))
+			t_gold[ht] = float(t_gold[ht]) + float(hh.get("gold", 0.0))
+			var ph: Array = hh.get("damage_phase", [])
+			var acc: Array = t_ph[ht]
+			for i in range(mini(ph.size(), 3)):
+				acc[i] = float(acc[i]) + float(ph[i])
+		for hv in heroes:
+			var h: Dictionary = hv
+			var id: String = str(h.get("hero_id", "?"))
+			var team: int = int(h.get("team", -1))
+			var won: bool = decided and team == winner
+			if not hero.has(id):
+				hero[id] = {"id": id, "games": 0, "wins": 0, "decided": 0,
+					"kos": 0.0, "deaths": 0.0, "assists": 0.0, "level_sum": 0.0,
+					"dmg_share": 0.0, "str_share": 0.0, "gold_share": 0.0,
+					"fe_sum": 0.0, "fe_n": 0,
+					"ph_share": [0.0, 0.0, 0.0], "ph_n": [0, 0, 0]}
+			var a: Dictionary = hero[id]
+			a["games"] = int(a["games"]) + 1
+			a["kos"] = float(a["kos"]) + float(h.get("kos", 0))
+			a["deaths"] = float(a["deaths"]) + float(h.get("deaths", 0))
+			a["assists"] = float(a["assists"]) + float(h.get("assists", 0))
+			a["level_sum"] = float(a["level_sum"]) + float(h.get("level", 1))
+			if decided:
+				a["decided"] = int(a["decided"]) + 1
+				if won:
+					a["wins"] = int(a["wins"]) + 1
+			if team == 0 or team == 1:
+				a["dmg_share"] = float(a["dmg_share"]) + 100.0 * float(h.get("damage", 0.0)) \
+					/ maxf(float(t_dmg[team]), 1.0)
+				a["str_share"] = float(a["str_share"]) \
+					+ 100.0 * float(h.get("structure_damage", 0.0)) / maxf(float(t_str[team]), 1.0)
+				a["gold_share"] = float(a["gold_share"]) + 100.0 * float(h.get("gold", 0.0)) \
+					/ maxf(float(t_gold[team]), 1.0)
+				# Voimakäyrä: vaihe lasketaan vain jos joukkue teki vaiheessa vahinkoa
+				# (ottelu voi päättyä ennen loppuvaihetta -> ei nollien keskiarvoa).
+				var ph: Array = h.get("damage_phase", [])
+				var tot: Array = t_ph[team]
+				var shares: Array = a["ph_share"]
+				var counts: Array = a["ph_n"]
+				for i in range(mini(ph.size(), 3)):
+					if float(tot[i]) <= 0.0:
+						continue
+					shares[i] = float(shares[i]) + 100.0 * float(ph[i]) / float(tot[i])
+					counts[i] = int(counts[i]) + 1
+			# Ensimmäisen epicin valmistumisaika ostologista.
+			var fe_t := -1.0
+			for ev_v in h.get("item_log", []):
+				var ev: Dictionary = ev_v
+				if bool(ev.get("sold", false)) or str(ev.get("tier", "")) != "epic":
+					continue
+				var t_buy: float = float(ev.get("t", 0.0))
+				if fe_t < 0.0 or t_buy < fe_t:
+					fe_t = t_buy
+			if fe_t >= 0.0:
+				a["fe_sum"] = float(a["fe_sum"]) + fe_t
+				a["fe_n"] = int(a["fe_n"]) + 1
+			# Roolikooste (progression_role).
+			var role: String = str(h.get("progression_role", h.get("role", "unknown")))
+			if role == "":
+				role = "unknown"
+			if not roles.has(role):
+				roles[role] = {"role": role, "games": 0, "wins": 0, "decided": 0,
+					"gold": 0.0, "time": 0.0, "dmg_share": 0.0, "deaths": 0.0}
+			var r: Dictionary = roles[role]
+			r["games"] = int(r["games"]) + 1
+			r["gold"] = float(r["gold"]) + float(h.get("gold", 0.0))
+			r["time"] = float(r["time"]) + elapsed
+			r["deaths"] = float(r["deaths"]) + float(h.get("deaths", 0))
+			if team == 0 or team == 1:
+				r["dmg_share"] = float(r["dmg_share"]) + 100.0 * float(h.get("damage", 0.0)) \
+					/ maxf(float(t_dmg[team]), 1.0)
+			if decided:
+				r["decided"] = int(r["decided"]) + 1
+				if won:
+					r["wins"] = int(r["wins"]) + 1
+
+	# --- per-sankari, järjestetty voitto%:n mukaan ---
+	var rows: Array = hero.values()
+	for a_v in rows:
+		var a: Dictionary = a_v
+		a["wr"] = 100.0 * float(a["wins"]) / maxf(float(a["decided"]), 1.0)
+	rows.sort_custom(func(x, y): return float(x["wr"]) > float(y["wr"]))
+	lines.append("")
+	lines.append("  sankari  | pel | voitto% |  KDA  | vah-os% | torni-os% | kulta-os% | LV ka | 1. epic | tuomio")
+	for a_v in rows:
+		var a: Dictionary = a_v
+		var g: float = maxf(float(a["games"]), 1.0)
+		var wr_text: String = "-" if int(a["decided"]) <= 0 else "%5.1f %%" % float(a["wr"])
+		var fe_text: String = "-" if int(a["fe_n"]) <= 0 \
+			else _fmt(float(a["fe_sum"]) / float(a["fe_n"]))
+		var note := ""
+		if int(a["decided"]) >= HERO_MIN_N:
+			var wr: float = float(a["wr"])
+			if wr > HERO_WR_HIGH:
+				note = _flag(flags, "sankari", str(a["id"]),
+					"TARKISTA: voitto%% %.1f yli %.0f" % [wr, HERO_WR_HIGH])
+			elif wr < HERO_WR_LOW:
+				note = _flag(flags, "sankari", str(a["id"]),
+					"TARKISTA: voitto%% %.1f alle %.0f" % [wr, HERO_WR_LOW])
+		lines.append("  %-8s | %3d | %-7s | %5.2f | %6.1f%% | %8.1f%% | %8.1f%% | %5.1f | %7s | %s" % [
+			str(a["id"]), int(a["games"]), wr_text,
+			(float(a["kos"]) + float(a["assists"])) / maxf(float(a["deaths"]), 1.0),
+			float(a["dmg_share"]) / g, float(a["str_share"]) / g, float(a["gold_share"]) / g,
+			float(a["level_sum"]) / g, fe_text, note])
+	if rows.is_empty():
+		lines.append("  Ei sankaridataa otannassa.")
+
+	# --- voimakäyrä ---
+	lines.append("")
+	lines.append("  -- voimakäyrä: vahingon osuus omasta joukkueesta pelivaiheittain --")
+	lines.append("  Loppu/alku-suhde yli ×%.1f = loppupelin hahmo, alle ×%.2f = alkupelin hahmo." % [
+		PHASE_RATIO, 1.0 / PHASE_RATIO])
+	lines.append("  Tulkinta on TIETOA: se kertoo osuuko _level_scaling-profiili suunnitteluaikeeseen.")
+	lines.append("  sankari  | 0-7 min | 7-14 min | 14-20 min | loppu/alku | tulkinta")
+	var curve_rows: Array = hero.values()
+	curve_rows.sort_custom(func(x, y): return str(x["id"]) < str(y["id"]))
+	var any_curve := false
+	for a_v in curve_rows:
+		var a: Dictionary = a_v
+		var shares: Array = a["ph_share"]
+		var counts: Array = a["ph_n"]
+		if int(counts[0]) <= 0 and int(counts[1]) <= 0 and int(counts[2]) <= 0:
+			continue
+		any_curve = true
+		var early: float = float(shares[0]) / maxf(float(counts[0]), 1.0)
+		var mid: float = float(shares[1]) / maxf(float(counts[1]), 1.0)
+		var late: float = float(shares[2]) / maxf(float(counts[2]), 1.0)
+		var ratio_text := "-"
+		var verdict := ""
+		var enough: bool = int(a["games"]) >= PHASE_MIN_GAMES \
+			and int(counts[0]) > 0 and int(counts[2]) > 0 and early > 0.0
+		if enough:
+			var ratio: float = late / early
+			ratio_text = "×%.2f" % ratio
+			if ratio >= PHASE_RATIO:
+				verdict = "LOPPUPELIN HAHMO"
+			elif ratio <= 1.0 / PHASE_RATIO:
+				verdict = "ALKUPELIN HAHMO"
+		lines.append("  %-8s | %6.1f%% | %7.1f%% | %8.1f%% | %10s | %s" % [
+			str(a["id"]), early, mid, late, ratio_text, verdict])
+	if not any_curve:
+		lines.append("  Ei vaihekohtaista vahinkodataa (vanhat tilannekuvat ilman damage_phasea).")
+
+	# --- roolikooste ---
+	lines.append("")
+	lines.append("  -- roolikooste (progression_role) --")
+	lines.append("  rooli   | pel | voitto% | G/min | vah-os% | kuol/peli | tuomio")
+	var role_rows: Array = roles.values()
+	role_rows.sort_custom(func(x, y): return _role_rank(str(x["role"])) < _role_rank(str(y["role"])))
+	for a_v in role_rows:
+		var a: Dictionary = a_v
+		var g: float = maxf(float(a["games"]), 1.0)
+		var minutes: float = maxf(float(a["time"]) / 60.0, 0.1)
+		var wr: float = 100.0 * float(a["wins"]) / maxf(float(a["decided"]), 1.0)
+		var wr_text: String = "-" if int(a["decided"]) <= 0 else "%5.1f %%" % wr
+		var note := ""
+		if int(a["decided"]) >= HERO_MIN_N and absf(wr - 50.0) > ROLE_WR_DEV:
+			note = _flag(flags, "järjestelmä", "rooli",
+				"TARKISTA: rooli '%s' voitto%% %.1f (poikkeama %+.1f %%-yks)" % [
+					str(a["role"]), wr, wr - 50.0])
+		lines.append("  %-7s | %3d | %-7s | %5d | %6.1f%% | %9.2f | %s" % [
+			str(a["role"]), int(a["games"]), wr_text, int(float(a["gold"]) / minutes),
+			float(a["dmg_share"]) / g, float(a["deaths"]) / g, note])
+	if role_rows.is_empty():
+		lines.append("  Ei rooliaineistoa otannassa.")
+	lines.append("  Sankariosion tarkistuskohteita: %d." % (flags.size() - flag_start))
