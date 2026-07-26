@@ -204,22 +204,23 @@ static func build_sweep(results: Array, intro: Array) -> String:
 			lines.append("  Kokoonpano '%s': voitto%% %.0f (%d peliä) — %s" % [
 				str(a["name"]), float(a["wr"]) * 100.0, int(a["games"]),
 				("liian vahva?" if float(a["wr"]) >= 0.75 else "liian heikko?")])
-	# Sankaripoikkeamat vahinko/min-keskiarvosta.
+	# Sankaripoikkeamat vahinko/min-keskiarvosta. HUOM: vertailu tehdään
+	# SANKARIVAHINGOSTA (_combat_damage), ei kokonaisvahingosta — muuten
+	# jungleri liputtuu leirifarmista (mitattu: kaira 1863 vahinkoa/min "yli 2x
+	# keskiarvo", josta 44 % oli leirivahinkoa).
 	var mean_dpm := _mean_dpm(agg, avg_min)
 	for id in agg:
 		var a: Dictionary = agg[id]
 		if int(a["games"]) < 3:
 			continue
-		var hero_min: float = float(a.get("time", 0.0)) / 60.0
-		if hero_min <= 0.0:
-			hero_min = maxf(float(a["games"]), 1.0) * avg_min
-		var dpm: float = float(a["damage"]) / maxf(hero_min, 0.1)
+		var hero_min: float = _hero_minutes(a, avg_min)
+		var dpm: float = _combat_damage(a) / maxf(hero_min, 0.1)
 		if float(a["damage"]) <= 1.0:
 			flagged = true
 			lines.append("  Sankari '%s': ~0 vahinkoa — rikki tai ei osu?" % id)
 		elif mean_dpm > 0.0 and dpm > mean_dpm * 2.0:
 			flagged = true
-			lines.append("  Sankari '%s': vahinko/min %d (yli 2x keskiarvo %d) — mahd. yli" % [
+			lines.append("  Sankari '%s': sankarivahinko/min %d (yli 2x keskiarvo %d) — mahd. yli" % [
 				id, int(dpm), int(mean_dpm)])
 		elif mean_dpm > 0.0 and dpm < mean_dpm * 0.4:
 			# Rooli-tietoinen: tuki/tankki tekee vähän vahinkoa mutta parantaa/estää,
@@ -228,7 +229,7 @@ static func build_sweep(results: Array, intro: Array) -> String:
 			var util: float = (float(a["healing"]) + float(a["mitigated"])) / maxf(float(a["games"]), 1.0)
 			if not ((role == "Tuki" or role == "Tankki") and util >= 150.0):
 				flagged = true
-				lines.append("  Sankari '%s': vahinko/min %d (alle 0.4x keskiarvo %d) — mahd. ali (%s)" % [
+				lines.append("  Sankari '%s': sankarivahinko/min %d (alle 0.4x keskiarvo %d) — mahd. ali (%s)" % [
 					id, int(dpm), int(mean_dpm), role if role != "" else "?"])
 	if not flagged:
 		lines.append("  Ei selkeitä anomalioita.")
@@ -812,23 +813,47 @@ static func _buff_impact_tables(lines: Array, agg: Dictionary, snapshots: Array)
 	lines.append("")
 
 
+## Sankarin TAISTELUVAHINKO minuutissa: kokonaisvahingosta on vähennetty
+## viidakko- ja rakennusvahinko. Molemmat ovat sim_snapshotissa kokonaisvahingon
+## OSAJOUKKOJA (Hero.deal_damage_to kasvattaa aina damagea ja sen LISÄKSI
+## structure_/jungle_damagea kohteen mukaan), ja molemmilla on taulukossa oma
+## sarakkeensa — samassa vah/min-luvussa ne olisivat kaksoislaskentaa.
+## Mitattu vääränä hälytyksenä: kaira 1863 vahinkoa/min "yli 2x keskiarvo",
+## kun 44 % siitä oli leirifarmia; oikea sankarivahinko ~1000/min eli samaa
+## luokkaa kuin obsidian. Piiritys ja farmi ovat omia kysymyksiään, eivät
+## sankaritehoa.
+static func _combat_damage(a: Dictionary) -> float:
+	return maxf(float(a.get("damage", 0.0)) - float(a.get("jungle_damage", 0.0))
+		- float(a.get("structure_damage", 0.0)), 0.0)
+
+
+## Sankarin peliminuutit koosteessa: oma kertynyt aika, tai jos sitä ei ole
+## (vanha tilannekuva), pelien määrä * otannan keskikesto.
+static func _hero_minutes(a: Dictionary, avg_min: float) -> float:
+	var hero_min: float = float(a.get("time", 0.0)) / 60.0
+	if hero_min <= 0.0:
+		hero_min = maxf(float(a.get("games", 0)), 1.0) * avg_min
+	return hero_min
+
+
 static func _hero_table(lines: Array, agg: Dictionary, avg_min: float) -> void:
-	lines.append("Sankariteho (järjestetty vahinko/min):")
-	lines.append("  sankari  | pel | LV  | K / D / A   |vah/min|torni |viidak|paran |vaim. | CS  |voit%")
+	lines.append("Sankariteho (järjestetty SANKARIVAHINKO/min):")
+	lines.append("  vah/min = kokonaisvahinko - viidakko - rakennukset; ne ovat omina sarakkeinaan (torn/m, vidk/m)")
+	lines.append("  sankari  | pel | LV  | K / D / A      |vah/min|torn/m|vidk/m|paran |vaim. | CS  |voit%")
 	var rows: Array = agg.values()
 	for a in rows:
-		var hero_min: float = float(a.get("time", 0.0)) / 60.0
-		if hero_min <= 0.0:
-			hero_min = maxf(float(a["games"]), 1.0) * avg_min
-		a["dpm"] = float(a["damage"]) / maxf(hero_min, 0.1)
+		var hero_min: float = _hero_minutes(a, avg_min)
+		a["dpm"] = _combat_damage(a) / maxf(hero_min, 0.1)
+		a["str_pm"] = float(a["structure_damage"]) / maxf(hero_min, 0.1)
+		a["jgl_pm"] = float(a["jungle_damage"]) / maxf(hero_min, 0.1)
 	rows.sort_custom(func(x, y): return float(x["dpm"]) > float(y["dpm"]))
 	for a in rows:
 		var g: float = maxf(float(a["games"]), 1.0)
 		lines.append("  %-8s | %2d  |%4.1f | %4.1f/%4.1f/%4.1f | %5d |%5d |%5d |%5d |%5d |%4.1f |%3d%%" % [
 			str(a["hero_id"]), int(a["games"]), float(a.get("level_sum", 0.0)) / g,
 			float(a["kos"]) / g, float(a["deaths"]) / g, float(a["assists"]) / g,
-			int(float(a["dpm"])), int(float(a["structure_damage"]) / g),
-			int(float(a["jungle_damage"]) / g), int(float(a["healing"]) / g),
+			int(float(a["dpm"])), int(float(a["str_pm"])),
+			int(float(a["jgl_pm"])), int(float(a["healing"]) / g),
 			int(float(a["mitigated"]) / g), float(a["minion_kills"]) / g,
 			int(round(100.0 * float(a["wins"]) / g))])
 
@@ -1804,6 +1829,8 @@ static func _median_fmt(times: Array) -> String:
 	return _fmt((float(sorted_times[mid - 1]) + float(sorted_times[mid])) * 0.5)
 
 
+## Otannan keskimääräinen SANKARIVAHINKO/min (sama pohja kuin taulukon
+## vah/min-sarakkeessa, jotta anomaliaraja vertaa samaa suuretta).
 static func _mean_dpm(agg: Dictionary, avg_min: float) -> float:
 	var total := 0.0
 	var n := 0
@@ -1811,10 +1838,7 @@ static func _mean_dpm(agg: Dictionary, avg_min: float) -> float:
 		var a: Dictionary = agg[id]
 		if int(a["games"]) < 3 or float(a["damage"]) <= 1.0:
 			continue
-		var hero_min: float = float(a.get("time", 0.0)) / 60.0
-		if hero_min <= 0.0:
-			hero_min = maxf(float(a["games"]), 1.0) * avg_min
-		total += float(a["damage"]) / maxf(hero_min, 0.1)
+		total += _combat_damage(a) / maxf(_hero_minutes(a, avg_min), 0.1)
 		n += 1
 	return total / maxf(n, 1)
 
