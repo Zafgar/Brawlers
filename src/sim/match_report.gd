@@ -117,14 +117,16 @@ static func build(snapshots: Array, intro: Array) -> String:
 	_survivability_table(lines, agg)
 	_tanking_table(lines, agg)
 	_ability_table(lines, agg)
-	_item_balance_section(lines, snapshots, flags)
-	_hero_balance_section(lines, snapshots, flags)
-	_match_health_section(lines, snapshots, flags)
-	_level_xp_table(lines, snapshots)
-	_skill_rank_table(lines, snapshots)
+	# Osiot ovat jaettuja: sama koonti ladotaan myös sweep- ja ladder-raporttiin.
+	var opts: Dictionary = {"flags": flags}
+	_section_items(lines, snapshots, opts)
+	_section_heroes(lines, snapshots, opts)
+	_section_match_health(lines, snapshots, opts)
+	_section_levels(lines, snapshots, opts)
+	_section_ability_ranks(lines, snapshots, opts)
 	var head: Array = intro.duplicate()
 	head.append("")
-	_summary_box(head, snapshots, flags)
+	_summary_box(head, snapshots, opts)
 	head.append("")
 	head.append_array(lines)
 	return "\n".join(PackedStringArray(head))
@@ -974,6 +976,30 @@ static func _pct_text(part: int, total: int) -> String:
 	return "%.1f %%" % (100.0 * float(part) / float(total))
 
 
+## Poimii tilannekuvat mistä tahansa tulosjoukosta: vakiosimulaatio antaa
+## snapshotit sellaisenaan, sweep ja ladder käärivät ne merkintöihin
+## ({snap, ba, oa} / {snap, lo, hi, ...}). Näin sama osio kelpaa joka tilaan.
+static func _snapshots(results: Array) -> Array:
+	var out: Array = []
+	for e_v in results:
+		if e_v is Dictionary:
+			var e: Dictionary = e_v
+			if e.has("snap"):
+				out.append(e["snap"])
+			else:
+				out.append(e)
+	return out
+
+
+## Osioiden yhteinen liputuslista opts-paketista. Lista luodaan jos sitä ei
+## annettu, jolloin osion voi ladota myös ilman yhteenvetolaatikkoa.
+static func _opt_flags(opts: Dictionary) -> Array:
+	if not opts.has("flags"):
+		opts["flags"] = []
+	var out: Array = opts["flags"]
+	return out
+
+
 ## Itembalanssi neljänä lohkona:
 ##   (a) epicit ja legendat + tiivis rare-lohko: rakennusmäärä, poimintaosuus,
 ##       valmistumisaika, haltijan voitto%, kultatehokkuus, vahinko-osuus
@@ -985,7 +1011,9 @@ static func _pct_text(part: int, total: int) -> String:
 ##   (d) käyttämätön kulta rooleittain: hamstraako botti lompakkoa (AI- tai
 ##       kauppapääsyongelma) vai valuuko kulta itemeihin.
 ## Kaikki kentät luetaan .get-oletuksilla, joten vanhat tilannekuvat kelpaavat.
-static func _item_balance_section(lines: Array, snapshots: Array, flags: Array) -> void:
+static func _section_items(lines: Array, results: Array, opts: Dictionary) -> void:
+	var snapshots: Array = _snapshots(results)
+	var flags: Array = _opt_flags(opts)
 	var flag_start: int = flags.size()
 	lines.append("")
 	lines.append("=== ITEMIT (balanssi) ===")
@@ -1364,9 +1392,10 @@ static func _item_verdict(a: Dictionary, iname: String, mean_eff: float, flags: 
 
 ## Tasot ja XP: muuntuuko talous- ja tasojohto voitoiksi. Voittaja- vs häviäjä-
 ## joukkueen päätöstasot, ulttiaikataulu (L4) ja XP-/kultajohdon konversio.
-static func _level_xp_table(lines: Array, snapshots: Array) -> void:
+static func _section_levels(lines: Array, results: Array, opts: Dictionary) -> void:
+	var snapshots: Array = _snapshots(results)
 	lines.append("")
-	lines.append("=== TASOT JA XP ===")
+	lines.append(str(opts.get("levels_title", "=== TASOT JA XP ===")))
 	lines.append("  Muuntuuko talousjohto voitoiksi: tasoerot, ulttiaikataulu ja johdon konversio.")
 	var win_level_sum := 0.0
 	var lose_level_sum := 0.0
@@ -1433,9 +1462,10 @@ static func _level_xp_table(lines: Array, snapshots: Array) -> void:
 ## järjestystä ("ensin maksattu" vaatisi aikaleimatun lokin), joten raportoidaan
 ## rehellisesti keskirankki per slotti sekä rank 3:n saavuttaneiden voitto%
 ## verrattuna muihin — iso ero vihjaa yli-/alivoimaisesta kyvystä.
-static func _skill_rank_table(lines: Array, snapshots: Array) -> void:
+static func _section_ability_ranks(lines: Array, results: Array, opts: Dictionary) -> void:
+	var snapshots: Array = _snapshots(results)
 	lines.append("")
-	lines.append("=== KYKYRANKIT ===")
+	lines.append(str(opts.get("ranks_title", "=== KYKYRANKIT ===")))
 	lines.append("  Lopputila ei kerro maksausjärjestystä; vertailu: slotin rank 3 vs alle 3.")
 	lines.append("  TARKISTA kun ero >= 12 %-yks ja molemmissa ryhmissä n >= 16 (tasapelit ohitettu).")
 	var order := ["basic", "a1", "a2", "dodge", "ult"]
@@ -1634,21 +1664,10 @@ static func _fmt(sec: float) -> String:
 	return "%d:%02d" % [s / 60, s % 60]
 
 
-## Sankaribalanssin syvyys kolmena taulukkona:
-##   - per-sankari: voitto%, KDA ja panosten OSUUDET oman joukkueen summasta
-##     (vahinko, tornivahinko, kulta) sekä päätöstaso ja ensiepicin aika.
-##   - voimakäyrä: vahingon osuus pelivaiheittain (0-7 / 7-14 / 14+ min). Tämä on
-##     _level_scaling-profiilien todentaja: kertoo onko sankari toteutuneesti
-##     alku- vai loppupelin hahmo. Luokittelu on TIETOA, ei virhe.
-##   - roolikooste: voitto%, kulta/min, vahinko-osuus ja kuolemat rooleittain.
-## Osuudet lasketaan ottelukohtaisina ja keskiarvoistetaan, jotta yksi pitkä
-## ottelu ei paina enempää kuin lyhyt.
-static func _hero_balance_section(lines: Array, snapshots: Array, flags: Array) -> void:
-	var flag_start: int = flags.size()
-	lines.append("")
-	lines.append("=== SANKARIBALANSSI ===")
-	lines.append("  Osuus = sankarin osuus OMAN joukkueen summasta, ottelukohtaisten osuuksien ka.")
-	lines.append("  1. epic = ensimmäisen epicin valmistumisaika (ostologista).")
+## Sankaridatan koonti yhdessä paikassa: per-sankari-rivit ja roolikooste.
+## Sama koonti palvelee sekä SANKARIBALANSSI-osiota että itsenäistä
+## voimakäyrätaulukkoa, joten luvut eivät pääse erilleen toisistaan.
+static func _hero_stats(snapshots: Array) -> Dictionary:
 	var hero: Dictionary = {}
 	var roles: Dictionary = {}
 	for snap_v in snapshots:
@@ -1743,39 +1762,12 @@ static func _hero_balance_section(lines: Array, snapshots: Array, flags: Array) 
 				r["decided"] = int(r["decided"]) + 1
 				if won:
 					r["wins"] = int(r["wins"]) + 1
+	return {"hero": hero, "roles": roles}
 
-	# --- per-sankari, järjestetty voitto%:n mukaan ---
-	var rows: Array = hero.values()
-	for a_v in rows:
-		var a: Dictionary = a_v
-		a["wr"] = 100.0 * float(a["wins"]) / maxf(float(a["decided"]), 1.0)
-	rows.sort_custom(func(x, y): return float(x["wr"]) > float(y["wr"]))
-	lines.append("")
-	lines.append("  sankari  | pel | voitto% |  KDA  | vah-os% | torni-os% | kulta-os% | LV ka | 1. epic | tuomio")
-	for a_v in rows:
-		var a: Dictionary = a_v
-		var g: float = maxf(float(a["games"]), 1.0)
-		var wr_text: String = "-" if int(a["decided"]) <= 0 else "%5.1f %%" % float(a["wr"])
-		var fe_text: String = "-" if int(a["fe_n"]) <= 0 \
-			else _fmt(float(a["fe_sum"]) / float(a["fe_n"]))
-		var note := ""
-		if int(a["decided"]) >= HERO_MIN_N:
-			var wr: float = float(a["wr"])
-			if wr > HERO_WR_HIGH:
-				note = _flag(flags, "sankari", str(a["id"]),
-					"TARKISTA: voitto%% %.1f yli %.0f" % [wr, HERO_WR_HIGH])
-			elif wr < HERO_WR_LOW:
-				note = _flag(flags, "sankari", str(a["id"]),
-					"TARKISTA: voitto%% %.1f alle %.0f" % [wr, HERO_WR_LOW])
-		lines.append("  %-8s | %3d | %-7s | %5.2f | %6.1f%% | %8.1f%% | %8.1f%% | %5.1f | %7s | %s" % [
-			str(a["id"]), int(a["games"]), wr_text,
-			(float(a["kos"]) + float(a["assists"])) / maxf(float(a["deaths"]), 1.0),
-			float(a["dmg_share"]) / g, float(a["str_share"]) / g, float(a["gold_share"]) / g,
-			float(a["level_sum"]) / g, fe_text, note])
-	if rows.is_empty():
-		lines.append("  Ei sankaridataa otannassa.")
 
-	# --- voimakäyrä ---
+## Voimakäyrätaulukko omana lohkonaan: sama taulukko ladotaan sekä
+## sankariosion sisälle että sweep-raporttiin omana osionaan.
+static func _power_curve_block(lines: Array, hero: Dictionary) -> void:
 	lines.append("")
 	lines.append("  -- voimakäyrä: vahingon osuus omasta joukkueesta pelivaiheittain --")
 	lines.append("  Loppu/alku-suhde yli ×%.1f = loppupelin hahmo, alle ×%.2f = alkupelin hahmo." % [
@@ -1811,6 +1803,73 @@ static func _hero_balance_section(lines: Array, snapshots: Array, flags: Array) 
 	if not any_curve:
 		lines.append("  Ei vaihekohtaista vahinkodataa (vanhat tilannekuvat ilman damage_phasea).")
 
+
+## Voimakäyrä omana osionaan: sama taulukko kuin sankariosion sisällä, mutta
+## oma otsikko ja selitys. Sweepissä tämä on itsenäinen tulos — se vastaa
+## kysymykseen "kuinka tehokas sankari on pelin eri vaiheissa".
+static func _section_power_curve(lines: Array, results: Array, opts: Dictionary) -> void:
+	var snapshots: Array = _snapshots(results)
+	lines.append("")
+	lines.append(str(opts.get("curve_title", "=== VOIMAKÄYRÄ (alku- / keski- / loppupeli) ===")))
+	lines.append("  Sama taulukko kuin sankariosiossa: vahingon osuus omasta joukkueesta vaiheittain.")
+	var stats: Dictionary = _hero_stats(snapshots)
+	var hero: Dictionary = stats["hero"]
+	_power_curve_block(lines, hero)
+
+
+## Sankaribalanssin syvyys kolmena taulukkona:
+##   - per-sankari: voitto%, KDA ja panosten OSUUDET oman joukkueen summasta
+##     (vahinko, tornivahinko, kulta) sekä päätöstaso ja ensiepicin aika.
+##   - voimakäyrä: vahingon osuus pelivaiheittain (0-7 / 7-14 / 14+ min). Tämä on
+##     _level_scaling-profiilien todentaja: kertoo onko sankari toteutuneesti
+##     alku- vai loppupelin hahmo. Luokittelu on TIETOA, ei virhe.
+##   - roolikooste: voitto%, kulta/min, vahinko-osuus ja kuolemat rooleittain.
+## Osuudet lasketaan ottelukohtaisina ja keskiarvoistetaan, jotta yksi pitkä
+## ottelu ei paina enempää kuin lyhyt.
+static func _section_heroes(lines: Array, results: Array, opts: Dictionary) -> void:
+	var snapshots: Array = _snapshots(results)
+	var flags: Array = _opt_flags(opts)
+	var flag_start: int = flags.size()
+	lines.append("")
+	lines.append("=== SANKARIBALANSSI ===")
+	lines.append("  Osuus = sankarin osuus OMAN joukkueen summasta, ottelukohtaisten osuuksien ka.")
+	lines.append("  1. epic = ensimmäisen epicin valmistumisaika (ostologista).")
+	var stats: Dictionary = _hero_stats(snapshots)
+	var hero: Dictionary = stats["hero"]
+	var roles: Dictionary = stats["roles"]
+
+	# --- per-sankari, järjestetty voitto%:n mukaan ---
+	var rows: Array = hero.values()
+	for a_v in rows:
+		var a: Dictionary = a_v
+		a["wr"] = 100.0 * float(a["wins"]) / maxf(float(a["decided"]), 1.0)
+	rows.sort_custom(func(x, y): return float(x["wr"]) > float(y["wr"]))
+	lines.append("")
+	lines.append("  sankari  | pel | voitto% |  KDA  | vah-os% | torni-os% | kulta-os% | LV ka | 1. epic | tuomio")
+	for a_v in rows:
+		var a: Dictionary = a_v
+		var g: float = maxf(float(a["games"]), 1.0)
+		var wr_text: String = "-" if int(a["decided"]) <= 0 else "%5.1f %%" % float(a["wr"])
+		var fe_text: String = "-" if int(a["fe_n"]) <= 0 \
+			else _fmt(float(a["fe_sum"]) / float(a["fe_n"]))
+		var note := ""
+		if int(a["decided"]) >= HERO_MIN_N:
+			var wr: float = float(a["wr"])
+			if wr > HERO_WR_HIGH:
+				note = _flag(flags, "sankari", str(a["id"]),
+					"TARKISTA: voitto%% %.1f yli %.0f" % [wr, HERO_WR_HIGH])
+			elif wr < HERO_WR_LOW:
+				note = _flag(flags, "sankari", str(a["id"]),
+					"TARKISTA: voitto%% %.1f alle %.0f" % [wr, HERO_WR_LOW])
+		lines.append("  %-8s | %3d | %-7s | %5.2f | %6.1f%% | %8.1f%% | %8.1f%% | %5.1f | %7s | %s" % [
+			str(a["id"]), int(a["games"]), wr_text,
+			(float(a["kos"]) + float(a["assists"])) / maxf(float(a["deaths"]), 1.0),
+			float(a["dmg_share"]) / g, float(a["str_share"]) / g, float(a["gold_share"]) / g,
+			float(a["level_sum"]) / g, fe_text, note])
+	if rows.is_empty():
+		lines.append("  Ei sankaridataa otannassa.")
+	_power_curve_block(lines, hero)
+
 	# --- roolikooste ---
 	lines.append("")
 	lines.append("  -- roolikooste (progression_role) --")
@@ -1840,7 +1899,9 @@ static func _hero_balance_section(lines: Array, snapshots: Array, flags: Array) 
 ## comeback (kultajohto 10:00 vs lopputulos), ensitapahtumien konversio voitoiksi,
 ## objektiivimäärät, talouden lähteet rooleittain sekä CC/vaimennus.
 ## Tämä osio vastaa kysymykseen "onko itse peli terve", ei "onko itemi vahva".
-static func _match_health_section(lines: Array, snapshots: Array, flags: Array) -> void:
+static func _section_match_health(lines: Array, results: Array, opts: Dictionary) -> void:
+	var snapshots: Array = _snapshots(results)
+	var flags: Array = _opt_flags(opts)
 	var flag_start: int = flags.size()
 	lines.append("")
 	lines.append("=== OTTELUIDEN TERVEYS ===")
@@ -2087,7 +2148,9 @@ static func _match_health_section(lines: Array, snapshots: Array, flags: Array) 
 ## Raportin kärkilaatikko: ensimmäinen asia jonka lukija näkee. Kokoaa otannan
 ## koon, keskikeston, nexus-loppujen osuuden, eniten liputetut itemit ja
 ## sankarit sekä yhden rivin tuomion.
-static func _summary_box(lines: Array, snapshots: Array, flags: Array) -> void:
+static func _summary_box(lines: Array, results: Array, opts: Dictionary) -> void:
+	var snapshots: Array = _snapshots(results)
+	var flags: Array = _opt_flags(opts)
 	var total_time := 0.0
 	var nexus := 0
 	for snap_v in snapshots:
