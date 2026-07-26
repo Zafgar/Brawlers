@@ -14,9 +14,43 @@ extends Node
 ## äänekkyystavoitteeseen ja rajoitetaan -1 dBFS:ään. Mitatut arvot jäävät
 ## talteen (loudness_report / dump_loudness).
 
-const POOL_SIZES := {"world": 26, "ui": 6, "alert": 4, "ambient": 4}
+const POOL_SIZES := {"world": 26, "ui": 6, "alert": 4, "ambient": 4, "stinger": 2}
 const MUSIC_VOL := -8.0          # musiikin soittimien häivytystaso
 const MIN_REPEAT_MS := 28        # ehdoton alaraja saman äänen toistolle
+
+# --- Adaptiivinen musiikki ---
+# Jokainen biisi on joukko kerroksia, jotka soivat rinnakkain ja pysyvät
+# näytetarkasti synkassa. Kerroksen voimakkuus seuraa INTENSITEETTIÄ (0..1),
+# jonka areena laskee sekunnin välein oikeasta pelitilasta.
+const LAYER_RANGE := {
+	"bed": [0.0, 0.0],           # aina täysillä
+	"pulse": [0.16, 0.42],
+	"lead": [0.38, 0.66],
+	"tension": [0.58, 0.92],
+}
+# Hystereesi: nousu on nopeampi kuin lasku ja pieni muutos jätetään huomiotta,
+# jottei mittari väpätä taistelun reunalla.
+const INT_RISE := 0.35           # yksikköä sekunnissa ylös
+const INT_FALL := 0.10           # yksikköä sekunnissa alas
+const INT_DEADZONE := 0.04
+const LAYER_TAU := 0.35          # s: kerroksen ristihäivytyksen aikavakio (~1.2 s täysi)
+const DECK_TAU := 0.28           # s: biisistä toiseen
+const CALM_EXIT := 0.45          # tämän yli...
+const CALM_HOLD := 3.0           # ...näin kauan -> rauhallinen peti vaihtuu taisteluun
+
+## Musiikin tilacuet: motiivi + musiikin duckaus + intensiteetin alaraja.
+## floor < 0 = ei kosketa intensiteettiin (valikot, loppuruutu).
+const MUSIC_CUES := {
+	"match_start": {"sound": "cue_match_start", "duck": 3.0, "release": 1.4, "floor": 0.10},
+	"first_blood": {"sound": "cue_first_blood", "duck": 4.0, "release": 1.1, "floor": 0.30},
+	"objective_spawn": {"sound": "cue_objective", "duck": 4.0, "release": 1.2, "floor": 0.35},
+	"objective_taken": {"sound": "cue_objective_taken", "duck": 5.0, "release": 1.2, "floor": 0.45},
+	"nexus_exposed": {"sound": "cue_nexus", "duck": 7.0, "release": 1.5, "floor": 0.78},
+	"victory": {"sound": "cue_victory", "duck": 9.0, "release": 2.0, "floor": -1.0},
+	"defeat": {"sound": "cue_defeat", "duck": 9.0, "release": 2.0, "floor": -1.0},
+	"promo_tier": {"sound": "cue_promo_tier", "duck": 6.0, "release": 1.6, "floor": -1.0},
+	"promo_division": {"sound": "cue_promo_div", "duck": 4.0, "release": 1.2, "floor": -1.0},
+}
 
 # Etäisyysvaimennus (positionaaliset äänet): täysi voimakkuus lähellä, sitten
 # hiipuu. Suuret kartat (esim. MOBA 4400x2600) eivät enää soi tasaisen kovaa.
@@ -51,12 +85,18 @@ var _voice_seq := {}                # poolin nimi -> Array[int] (ikäjärjestys)
 var _seq_counter := 0
 var _pan_ready := false
 
-var _music_players: Array = []      # kaksi soitinta ristihäivytystä varten
-var _music_tracks := {}             # nimi -> AudioStreamWAV
+var _decks: Array = []              # kaksi "kannua", kumpikin kerros -> soitin
+var _deck_gain: Array = [0.0, 0.0]
+var _deck_target: Array = [0.0, 0.0]
+var _layer_gain := {}               # kerros -> nykyinen kerroin (häivytetty)
+var _intensity := 0.0
+var _intensity_target := 0.0
+var _calm_hold := 0.0
+var _auto_promote := false          # rauhallinen peti saa vaihtua taisteluun
+var _music_tracks := {}             # nimi -> {kerros -> AudioStreamWAV}
 var _active_idx := 0
 var _current_track := ""             # haluttu biisi
 var _playing_track := ""             # tällä hetkellä soiva biisi
-var _music_tween: Tween = null
 var _music_enabled := true
 var _thread: Thread = null
 var _warned := {}
@@ -81,6 +121,7 @@ func _ready() -> void:
 	_make_bus("SFX_ALERT", "Master")
 	_make_bus("SFX_AMBIENT", "Master")
 	_make_bus("Music", "Master")
+	_make_bus("MusicCue", "Master")   # cuet eivät saa duckata itseään
 	_setup_master_fx()
 	_setup_sfx_fx()
 	_setup_pan_buses()
@@ -88,12 +129,28 @@ func _ready() -> void:
 	_build_pool("ui", "SFX_UI")
 	_build_pool("alert", "SFX_ALERT")
 	_build_pool("ambient", "SFX_AMBIENT")
-	for i in range(2):
-		var mp := AudioStreamPlayer.new()
-		mp.bus = "Music"
-		mp.volume_db = -40.0
-		add_child(mp)
-		_music_players.append(mp)
+	_build_pool("stinger", "MusicCue")
+	for deck_i in range(2):
+		var deck := {}
+		for layer_name in MusicBank.LAYERS:
+			var mp := AudioStreamPlayer.new()
+			mp.bus = "Music"
+			mp.volume_db = -60.0
+			add_child(mp)
+			deck[layer_name] = mp
+		_decks.append(deck)
+	for layer_name in MusicBank.LAYERS:
+		_layer_gain[layer_name] = 1.0 if String(layer_name) == MusicBank.BED else 0.0
+
+	# Autoload-järjestys on Game -> AudioMgr, joten Game.apply_options() ehtii
+	# ajaa ENNEN kuin nämä väylät ovat olemassa. Asetetaan voimakkuudet
+	# uudelleen tässä, muuten tallennetut liukusäätimet eivät vaikuttaneet
+	# mihinkään ennen kuin asetuksia kävi käsin muuttamassa.
+	if Game.options.has("volume"):
+		set_master_volume(float(Game.options.volume))
+		set_music_volume(float(Game.options.music_volume))
+		set_sfx_volume(float(Game.options.sfx_volume))
+		set_music_enabled(bool(Game.options.music))
 
 	_thread = Thread.new()
 	_thread.start(_synth_all)
@@ -369,10 +426,14 @@ func set_sfx_volume(v: float) -> void:
 
 
 func set_music_volume(v: float) -> void:
+	_music_base_db = linear_to_db(clampf(v, 0.0001, 1.0))
 	var idx := AudioServer.get_bus_index("Music")
 	if idx >= 0:
-		_music_base_db = linear_to_db(clampf(v, 0.0001, 1.0))
 		AudioServer.set_bus_volume_db(idx, _music_base_db)
+	# Musiikkicuet ovat musiikkia: sama liukusäädin, mutta ei duckausta.
+	var cue_idx := AudioServer.get_bus_index("MusicCue")
+	if cue_idx >= 0:
+		AudioServer.set_bus_volume_db(cue_idx, _music_base_db)
 
 
 ## Duckaa musiikin hetkeksi alas ison hetken alta (nexus, pomo) ja palauttaa
@@ -424,29 +485,159 @@ func play_music_pool(pool: String) -> void:
 
 
 func _crossfade_to(track: String) -> void:
-	var cur: AudioStreamPlayer = _music_players[_active_idx]
-	var nxt: AudioStreamPlayer = _music_players[1 - _active_idx]
-	nxt.stream = _music_tracks[track]
-	nxt.volume_db = -40.0
-	nxt.play()
-	if _music_tween != null and _music_tween.is_valid():
-		_music_tween.kill()
-	_music_tween = create_tween()
-	_music_tween.tween_property(nxt, "volume_db", MUSIC_VOL, 0.9)
-	_music_tween.parallel().tween_property(cur, "volume_db", -40.0, 0.9)
-	_music_tween.chain().tween_callback(cur.stop)
-	_active_idx = 1 - _active_idx
+	var nxt: int = 1 - _active_idx
+	var layers: Dictionary = _music_tracks[track]
+	var deck: Dictionary = _decks[nxt]
+	for layer_name in MusicBank.LAYERS:
+		var mp: AudioStreamPlayer = deck[layer_name]
+		if layers.has(layer_name):
+			mp.stream = layers[layer_name]
+			mp.volume_db = -60.0
+			mp.play()
+		else:
+			mp.stop()
+			mp.stream = null
+	_deck_gain[nxt] = 0.0
+	_deck_target[nxt] = 1.0
+	_deck_target[_active_idx] = 0.0
+	_active_idx = nxt
 	_playing_track = track
 
 
 func set_music_enabled(enabled: bool) -> void:
 	_music_enabled = enabled
 	if not enabled:
-		for mp in _music_players:
-			mp.stop()
+		for deck in _decks:
+			for layer_name in MusicBank.LAYERS:
+				var mp: AudioStreamPlayer = deck[layer_name]
+				mp.stop()
+		_deck_gain = [0.0, 0.0]
+		_deck_target = [0.0, 0.0]
 		_playing_track = ""
 	elif _current_track != "" and _music_tracks.has(_current_track):
 		_crossfade_to(_current_track)
+
+
+# --- Adaptiivinen intensiteetti ---
+
+## Areena kutsuu tätä kerran sekunnissa raa'alla tavoitearvolla 0..1.
+## Hystereesi ja häivytys hoidetaan täällä, joten kutsuja saa heittää
+## hyppiviäkin lukemia ilman että musiikki nykii.
+func set_music_intensity(value: float) -> void:
+	_intensity_target = clampf(value, 0.0, 1.0)
+
+
+func music_intensity() -> float:
+	return _intensity
+
+
+## Ottelun musiikki alkaa rauhallisesta linjapedistä ja nousee taistelubiisiin
+## itsestään, kun intensiteetti pysyy CALM_EXITin yllä CALM_HOLD sekuntia.
+func start_match_music() -> void:
+	_intensity = 0.0
+	_intensity_target = 0.0
+	_calm_hold = 0.0
+	_auto_promote = true
+	if _music_tracks.has("lane_calm"):
+		play_music("lane_calm")
+	else:
+		_current_track = "lane_calm"
+
+
+## Tilacue: lyhyt motiivi omalla väylällään + musiikin duckaus + tarvittaessa
+## intensiteetin alaraja (esim. nexus auki pitää musiikin loppupelitasolla).
+func music_cue(cue: String) -> void:
+	var spec: Dictionary = MUSIC_CUES.get(cue, {})
+	if spec.is_empty():
+		return
+	play(String(spec["sound"]), 0.0, 0.0)
+	duck_music(float(spec["duck"]), float(spec["release"]))
+	var floor_v: float = float(spec["floor"])
+	if floor_v >= 0.0:
+		_intensity_target = maxf(_intensity_target, floor_v)
+		_intensity = maxf(_intensity, floor_v - 0.15)
+
+
+func _process(delta: float) -> void:
+	if _decks.is_empty() or not _music_enabled:
+		return
+	_advance_intensity(delta)
+	_advance_layers(delta)
+	_advance_decks(delta)
+	_apply_music_mix()
+	_check_calm_promotion(delta)
+
+
+func _advance_intensity(delta: float) -> void:
+	var diff: float = _intensity_target - _intensity
+	if absf(diff) <= INT_DEADZONE:
+		return
+	var step: float = (INT_RISE if diff > 0.0 else INT_FALL) * delta
+	if absf(diff) <= step:
+		_intensity = _intensity_target
+	else:
+		_intensity += step * signf(diff)
+
+
+func _layer_target(layer_name: String) -> float:
+	var span: Array = LAYER_RANGE.get(layer_name, [0.0, 0.0])
+	var lo: float = float(span[0])
+	var hi: float = float(span[1])
+	if hi <= lo:
+		return 1.0
+	return clampf((_intensity - lo) / (hi - lo), 0.0, 1.0)
+
+
+func _advance_layers(delta: float) -> void:
+	var k: float = 1.0 - exp(-delta / LAYER_TAU)
+	for layer_name in MusicBank.LAYERS:
+		var cur: float = float(_layer_gain[layer_name])
+		var target: float = _layer_target(String(layer_name))
+		_layer_gain[layer_name] = cur + (target - cur) * k
+
+
+func _advance_decks(delta: float) -> void:
+	var k: float = 1.0 - exp(-delta / DECK_TAU)
+	for i in range(_deck_gain.size()):
+		var cur: float = float(_deck_gain[i])
+		var target: float = float(_deck_target[i])
+		var next_v: float = cur + (target - cur) * k
+		if target <= 0.0 and next_v < 0.004:
+			next_v = 0.0
+			var deck: Dictionary = _decks[i]
+			for layer_name in MusicBank.LAYERS:
+				var mp: AudioStreamPlayer = deck[layer_name]
+				if mp.playing:
+					mp.stop()
+		_deck_gain[i] = next_v
+
+
+func _apply_music_mix() -> void:
+	for i in range(_decks.size()):
+		var deck: Dictionary = _decks[i]
+		var deck_g: float = float(_deck_gain[i])
+		for layer_name in MusicBank.LAYERS:
+			var mp: AudioStreamPlayer = deck[layer_name]
+			if mp.stream == null:
+				continue
+			var g: float = deck_g * float(_layer_gain[layer_name])
+			if g <= 0.0015:
+				mp.volume_db = -60.0
+			else:
+				mp.volume_db = MUSIC_VOL + linear_to_db(g)
+
+
+func _check_calm_promotion(delta: float) -> void:
+	if not _auto_promote or _playing_track != "lane_calm":
+		return
+	if _intensity < CALM_EXIT:
+		_calm_hold = 0.0
+		return
+	_calm_hold += delta
+	if _calm_hold >= CALM_HOLD:
+		_auto_promote = false
+		_calm_hold = 0.0
+		play_music_pool("battle")
 
 
 # --- Äänekkyysraportti (debug) ---
@@ -483,50 +674,67 @@ func _synth_all() -> void:
 	# omanaan — näin valikko soi lähes välittömästi eikä vasta sitten kun
 	# kaikki tehosteet on ehditty laskea taustasäikeessä.
 	# Menu: tumma mutta eteenpäin liikkuva MOBA-komentokeskus (Am-F-C-G).
-	call_deferred("_music_ready", {"menu": _track_wav(MusicBank.make_track(
+	call_deferred("_music_ready", {"menu": _single_layer(MusicBank.make_track(
 		[110.0, 87.31, 130.81, 98.0], [true, false, false, false], 2.25, "tri", 0.28, 0.94))})
 
-	# Ensisijaiset biisit (yksi per näkymä) heti menun perään, jotta lobby ja
-	# taistelu soivat nopeasti ilman että vaihtelu­versioita tarvitsee odottaa.
+	# Ottelun ensimmäinen biisi on rauhallinen linjapeti; taistelukerrokset
+	# tulevat heti perään, jotta nousu taisteluun ei jää odottamaan synteesiä.
 	var primary := {}
+	# Rauhallinen laning-peti (Am-C-F-G): patja + kevyt pulssi, ei leadia.
+	primary["lane_calm"] = _layered(MusicBank.make_calm_bed(
+		[110.0, 130.81, 87.31, 98.0], 2.6, 0.90))
 	# Draft/lobby: selkeä taktinen pulssi (C-G-Am-F).
-	primary["lobby"] = _track_wav(MusicBank.make_track(
+	primary["lobby"] = _single_layer(MusicBank.make_track(
 		[130.81, 98.0, 110.0, 87.31], [false, false, true, false], 1.82, "square", 0.62, 0.96))
 	# Taistelu 1: ajava ja jännittävä (Em-C-G-D).
-	primary["battle"] = _track_wav(MusicBank.make_track(
-		[82.41, 130.81, 98.0, 146.83], [true, false, false, false], 1.6, "saw", 1.0, 1.0))
+	primary["battle"] = _layered(MusicBank.make_layers(
+		[82.41, 130.81, 98.0, 146.83], [true, false, false, false], 1.6, "saw", 1.0, 8100))
 	call_deferred("_music_ready", primary)
 
 	# Vaihteluversiot viimeisenä (poolit arpovat näistä).
 	var variety := {}
 	# Menu 2: hieman kirkkaampi strateginen vaihtoehto (G-Bb-F-C).
-	variety["menu2"] = _track_wav(MusicBank.make_track(
+	variety["menu2"] = _single_layer(MusicBank.make_track(
 		[98.0, 116.54, 87.31, 130.81], [false, true, false, false], 2.35, "tri", 0.24, 0.92))
 	# Lobby 2: napakampi odotus (Bb-F-C-G).
-	variety["lobby2"] = _track_wav(MusicBank.make_track(
+	variety["lobby2"] = _single_layer(MusicBank.make_track(
 		[116.54, 87.31, 130.81, 98.0], [false, false, false, true], 1.72, "square", 0.68, 0.96))
 	# Taistelu 2: vaihtelua (Am-F-G-Em).
-	variety["battle2"] = _track_wav(MusicBank.make_track(
-		[110.0, 87.31, 98.0, 82.41], [true, false, false, true], 1.6, "saw", 1.0, 1.0))
+	variety["battle2"] = _layered(MusicBank.make_layers(
+		[110.0, 87.31, 98.0, 82.41], [true, false, false, true], 1.6, "saw", 1.0, 8200))
 	# Taistelu 3: kiivas (Dm-G-Em-A).
-	variety["battle3"] = _track_wav(MusicBank.make_track(
-		[73.42, 98.0, 82.41, 110.0], [true, false, true, false], 1.5, "saw", 1.0, 1.0))
-	# Taistelu 4: raju huipennus (F-Bb-G-D).
-	variety["battle4"] = _track_wav(MusicBank.make_track(
-		[87.31, 116.54, 98.0, 73.42], [false, false, false, false], 1.4, "saw", 1.0, 1.0))
+	variety["battle3"] = _layered(MusicBank.make_layers(
+		[73.42, 98.0, 82.41, 110.0], [true, false, true, false], 1.5, "saw", 1.0, 8300))
+	# Taistelu 4: raju huipennus (F-Bb-G-D) — nexus-avauksen loppupeli.
+	variety["battle4"] = _layered(MusicBank.make_layers(
+		[87.31, 116.54, 98.0, 73.42], [false, false, false, false], 1.4, "saw", 1.0, 8400))
 	call_deferred("_music_ready", variety)
 
-	# Tehosteet erissä: perus/UI ensin, sitten MOBA-maailma, lopuksi sankarit.
+	# Tehosteet erissä: perus/UI ensin, sitten MOBA-maailma, sankarit ja lopuksi
+	# uudet järjestelmät + musiikkicuet.
 	_deliver_sfx(SoundBank.core_batch())
 	_deliver_sfx(SoundBank.world_batch())
 	_deliver_sfx(SoundBank.hero_batch())
 	_deliver_sfx(SoundBank.extra_batch())
+	_deliver_sfx(SoundBank.cue_batch())
 
 
-## Musiikkiraita normalisoidaan omaan tavoitteeseensa ja luupataan.
-func _track_wav(samples: PackedFloat32Array) -> AudioStreamWAV:
+## Yksikerroksinen biisi (valikot): pelkkä "bed".
+func _single_layer(samples: PackedFloat32Array) -> Dictionary:
 	var report: Dictionary = AudioDsp.normalize(samples, MusicBank.MUSIC_RMS, 0.0)
-	return AudioDsp.to_wav(report["buf"], true)
+	return {MusicBank.BED: AudioDsp.to_wav(report["buf"], true)}
+
+
+## Kerroksittainen biisi: jokainen kerros normalisoidaan omaan tavoitteeseensa,
+## jotta kerroksen mukaantulo ei koskaan hyppää voimakkuudessa.
+func _layered(layers: Dictionary) -> Dictionary:
+	var out := {}
+	for layer_name in layers:
+		var name: String = String(layer_name)
+		var target: float = float(MusicBank.LAYER_RMS.get(name, MusicBank.MUSIC_RMS))
+		var report: Dictionary = AudioDsp.normalize(layers[layer_name], target, 0.0)
+		out[name] = AudioDsp.to_wav(report["buf"], true)
+	return out
 
 
 ## Kutsutaan pääsäikeessä kun uusia biisejä valmistuu. Käynnistää halutun

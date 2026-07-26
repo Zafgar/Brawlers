@@ -799,3 +799,64 @@ static func extra_batch() -> Dictionary:
 		AudioDsp.shimmer(0.86, 1174.0, 0.11, 276),
 		AudioDsp.whoosh(0.70, 0.24, 400.0, 1800.0, 0.7, 277), 0.02), 0.0)
 	return s
+
+
+## Musiikkicuet: lyhyet motiivit, jotka soivat omalla MusicCue-väylällään
+## samalla kun taustamusiikki duckataan hetkeksi niiden alta.
+static func cue_batch() -> Dictionary:
+	var s := {}
+	# Ottelun alku: nouseva kvartti + matala isku.
+	s["cue_match_start"] = AudioDsp.mix(AudioDsp.mix(
+		AudioDsp.seq([[0.16, 196.0, 196.0, "tri"], [0.16, 262.0, 262.0, "tri"],
+			[0.42, 392.0, 392.0, "sine"]], 0.20),
+		AudioDsp.sub_thump(49.0, 0.70, 0.30), 0.0),
+		AudioDsp.bell(784.0, 0.62, 0.14), 0.30)
+	# Ensiveri: kaksi terävää nousevaa askelta.
+	s["cue_first_blood"] = AudioDsp.mix(AudioDsp.mix(
+		AudioDsp.seq([[0.13, 233.0, 233.0, "saw"], [0.34, 349.0, 349.0, "saw"]], 0.17),
+		AudioDsp.sub_thump(58.0, 0.50, 0.30), 0.0),
+		AudioDsp.metal_ring(699.0, 0.44, 0.13), 0.10)
+	# Objective herää: kolmen sävelen laskeva varoitus.
+	s["cue_objective"] = AudioDsp.mix(AudioDsp.mix(
+		AudioDsp.seq([[0.20, 294.0, 294.0, "tri"], [0.20, 247.0, 247.0, "tri"],
+			[0.48, 185.0, 185.0, "saw"]], 0.18),
+		AudioDsp.tone(0.90, 62.0, 49.0, "sine", 0.03, 0.66, 0.26), 0.0),
+		AudioDsp.whoosh(0.60, 0.10, 260.0, 1600.0, 0.7, 3001), 0.10)
+	# Objective vallattu: kirkas voittosointu.
+	s["cue_objective_taken"] = AudioDsp.mix(AudioDsp.mix(
+		AudioDsp.seq([[0.14, 392.0, 392.0, "tri"], [0.14, 523.0, 523.0, "tri"],
+			[0.44, 784.0, 784.0, "sine"]], 0.19),
+		AudioDsp.bell(1046.0, 0.70, 0.20), 0.10),
+		AudioDsp.shimmer(0.76, 1568.0, 0.09, 3002), 0.14)
+	# Nexus avattu: uhkaava laskeva urku + subisku.
+	s["cue_nexus"] = AudioDsp.mix(AudioDsp.mix(
+		AudioDsp.seq([[0.20, 233.0, 233.0, "saw"], [0.20, 185.0, 185.0, "saw"],
+			[0.62, 123.0, 123.0, "saw"]], 0.18),
+		AudioDsp.sub_thump(41.0, 1.10, 0.34), 0.0),
+		AudioDsp.metal_ring(123.0, 0.95, 0.16), 0.06)
+	# Voitto: nouseva duurifanfaari.
+	s["cue_victory"] = AudioDsp.mix(AudioDsp.mix(
+		AudioDsp.seq([[0.15, 392.0, 392.0, "tri"], [0.15, 523.0, 523.0, "tri"],
+			[0.15, 659.0, 659.0, "tri"], [0.60, 784.0, 784.0, "square"]], 0.18),
+		AudioDsp.bell(1568.0, 1.10, 0.22), 0.06),
+		AudioDsp.shimmer(1.15, 2093.0, 0.09, 3003), 0.12)
+	# Tappio: laskeva mollikadenssi.
+	s["cue_defeat"] = AudioDsp.mix(AudioDsp.mix(
+		AudioDsp.seq([[0.22, 349.0, 349.0, "tri"], [0.22, 294.0, 294.0, "tri"],
+			[0.70, 220.0, 220.0, "sine"]], 0.18),
+		AudioDsp.tone(1.15, 55.0, 44.0, "sine", 0.05, 0.85, 0.26), 0.0),
+		AudioDsp.metal_ring(220.0, 0.85, 0.10), 0.20)
+	# Tier-ylennys: pisin ja juhlavin motiivi (promo-cinematic).
+	s["cue_promo_tier"] = AudioDsp.mix(AudioDsp.mix(
+		AudioDsp.seq([[0.14, 262.0, 262.0, "tri"], [0.14, 392.0, 392.0, "tri"],
+			[0.14, 523.0, 523.0, "tri"], [0.14, 659.0, 659.0, "square"],
+			[0.72, 1046.0, 1046.0, "square"]], 0.17),
+		AudioDsp.bell(2093.0, 1.30, 0.22), 0.10), AudioDsp.mix(
+		AudioDsp.sub_thump(44.0, 1.05, 0.32),
+		AudioDsp.shimmer(1.40, 2093.0, 0.10, 3004), 0.06), 0.0)
+	# Divisioonanousu: sama kieli, lyhyempi ja pehmeämpi.
+	s["cue_promo_div"] = AudioDsp.mix(AudioDsp.mix(
+		AudioDsp.seq([[0.12, 392.0, 392.0, "sine"], [0.34, 587.0, 587.0, "sine"]], 0.19),
+		AudioDsp.bell(1174.0, 0.66, 0.20), 0.04),
+		AudioDsp.shimmer(0.72, 1760.0, 0.08, 3005), 0.08)
+	return s

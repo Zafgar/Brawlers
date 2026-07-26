@@ -237,6 +237,14 @@ func _cue(id: String, at: float, sound: String, db := 0.0, pitch := 0.06) -> voi
 	AudioMgr.play(sound, pitch, db)
 
 
+## Kertaalleen laukeava musiikkimotiivi (duckaa taustabiisin alleen).
+func _music_cue(id: String, at: float, cue: String) -> void:
+	if _t < at or _fired.has(id):
+		return
+	_fired[id] = true
+	AudioMgr.music_cue(cue)
+
+
 func _play_cues() -> void:
 	match _kind():
 		"division":
@@ -244,6 +252,7 @@ func _play_cues() -> void:
 			_cue("t2", 0.72, "count_tick", -6.0)
 			_cue("t3", 1.02, "count_tick", -4.0)
 			_cue("burst", 1.15, "promo_div_up", -2.0)
+			_music_cue("motif", 1.15, "promo_division")
 			_cue("banner", 1.40, "rank_hub_confirm", -4.0)
 		"tier":
 			_cue("low", 0.15, "heartbeat", -4.0)
@@ -252,6 +261,7 @@ func _play_cues() -> void:
 			_cue("light", 1.80, "light", -2.0)
 			_cue("rise", 2.35, "ult_unlock", -4.0)
 			_cue("bless", 2.70, "promo_tier_up", 0.0)
+			_music_cue("motif", 2.70, "promo_tier")
 			_cue("boom", 3.50, "crescendo", -2.0)
 			_cue("fanfare", 3.64, "promo_slot_win", -4.0)
 		"promo_start":

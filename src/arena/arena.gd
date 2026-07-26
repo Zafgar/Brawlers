@@ -121,6 +121,19 @@ var _dragon_spawned_once := false
 var _dragon_warned := false
 var _moba_audio: MobaAudioDirector = null
 
+# --- Adaptiivinen musiikki -------------------------------------------------
+# Intensiteetti 0..1 lasketaan kerran sekunnissa oikeasta pelitilasta ja
+# syötetään AudioMgr:lle, joka häivyttää musiikin kerrokset sen mukaan.
+const MUSIC_TICK := 1.0                 # s: laskennan väli (halpa)
+const MUSIC_NEAR_ENEMY := 900.0         # px: vihollissankari "lähellä" omaa
+const MUSIC_RECENT_KO := 12.0           # s: tuoreen tyrmäyksen vaikutusaika
+const MUSIC_RECENT_STRUCT := 20.0       # s: tuoreen rakennusmenetyksen vaikutusaika
+const MUSIC_OBJECTIVE_RANGE := 1200.0   # px: objective-taistelun säde
+var _music_tick := 0.0
+var _music_last_ko := -999.0
+var _music_last_struct := -999.0
+var _music_nexus_open := false
+
 # Simulaatiotelemetria (kerätään kun Game.simulating). match_elapsed = pelattu
 # aika sekunteina; sim_events = tapahtumaloki aikaleimoineen.
 var match_elapsed := 0.0
@@ -587,6 +600,8 @@ func _spawn_boss() -> void:
 		hud.show_banner("VIIDAKKOPOMO HERÄÄ!",
 			"Kaada pomo keskellä — voittaja saa ison boostin", 2.4)
 	AudioMgr.play("baron_spawn" if mode == "moba" else "dome_up", 0.03, -2.0)
+	if not Game.simulating:
+		AudioMgr.music_cue("objective_spawn")
 	Fx.ring(self, pos, Palette.glow(Color("b64ad6"), 1.6), 220.0, 0.9, 9.0)
 	shake(0.4)
 
@@ -687,7 +702,7 @@ func on_critter_ko(critter, source) -> void:
 			# Baron-kaato on globaali strateginen hetki. Olento itse soittaa
 			# positionaalisen romahduksen; tämä cue kertoo palkinnosta koko kartalle.
 			if not Game.simulating:
-				AudioMgr.duck_music(8.0, 1.15)
+				AudioMgr.music_cue("objective_taken")
 			AudioMgr.play("baron_defeat", 0.02, -1.0)
 			_sim_event("Pomo kaadettu: %s" % Game.team_name(team))
 			# Baron pudottaa legendaarisen artefaktin kaatumispaikalleen (MOBA).
@@ -703,7 +718,7 @@ func on_critter_ko(critter, source) -> void:
 			hud.show_banner("%s KAATOI DRAGONIN!" % Game.team_name(team),
 				"Liikenopeus ja latausvoima koko joukkueelle", 2.6)
 			if not Game.simulating:
-				AudioMgr.duck_music(6.0, 0.9)
+				AudioMgr.music_cue("objective_taken")
 			AudioMgr.play("dragon_defeat", 0.02, -2.0)
 			_sim_event("Dragon kaadettu: %s" % Game.team_name(team))
 		Critter.Kind.RED_CAMP:
@@ -948,12 +963,15 @@ func _spawn_dragon() -> void:
 	_dragon_critter = d
 	_dragon_spawned_once = true
 	hud.show_banner("DRAGON SAAPUU!", "Alaviidakon objective on nyt vallattavissa", 2.2)
+	if not Game.simulating:
+		AudioMgr.music_cue("objective_spawn")
 	AudioMgr.play("dragon_spawn", 0.03, -2.0)
 	Fx.ring(self, pos, Palette.glow(Color("37cdbb"), 1.6), 205.0, 0.8, 9.0)
 	shake(0.3)
 
 
 func _moba_physics(delta: float) -> void:
+	_update_music_intensity(delta)
 	_update_moba_base_rules(delta)
 	_tick_moba_economy(delta)
 	_tick_moba_telemetry(delta)
@@ -1336,6 +1354,7 @@ func _spawn_wave(team: int, lane_id: String = MapMoba.BOTTOM) -> void:
 
 ## Rakennus tuhottu: torni avaa nexuksen kun molemmat kaatuneet; nexus = voitto.
 func on_structure_destroyed(structure, source) -> void:
+	_music_last_struct = match_elapsed
 	var s := structure as Structure
 	if s == null:
 		return
@@ -1544,9 +1563,10 @@ func _refresh_nexus_protection(team: int) -> void:
 			"%s nexus on nyt haavoittuvainen" % Game.team_name(team), 2.6)
 		# Uhkaava oma Nexus-cue kuuluu aina ja musiikki siirtyy loppupeliin.
 		AudioMgr.play("nexus_exposed", 0.02, -1.0)
+		_music_nexus_open = true
 		if not Game.simulating:
-			AudioMgr.duck_music(7.0, 0.9)    # musiikki dippaa iskun alta
-			AudioMgr.play_music("battle4")   # raju huipennus loppupeliin
+			AudioMgr.play_music("battle4")     # raju huipennus loppupeliin
+			AudioMgr.music_cue("nexus_exposed")  # duckaus + intensiteetin lattia
 		_sim_event("%s nexus avattu" % Game.team_name(team))
 	elif not open and not was_protected:
 		hud.show_banner("NEXUS SUOJATTU",
@@ -1636,6 +1656,10 @@ func _end_moba(winner: int) -> void:
 	var who: String = "TASAPELI" if winner < 0 else "%s VOITTAA" % Game.team_name(winner)
 	_sim_event("%s (%s)" % [who, _end_reason])
 	AudioMgr.play("match_win", 0.05, -6.0)
+	if not Game.simulating:
+		var local: int = _local_team()
+		if local >= 0 and winner >= 0:
+			AudioMgr.music_cue("victory" if winner == local else "defeat")
 	shake(0.6)
 	var title: String
 	var sub: String
@@ -1891,8 +1915,20 @@ func _start_round_intro() -> void:
 
 
 func _run_intro() -> void:
-	# Uusi taistelubiisi joka erälle -> vaihtelua erien välillä.
-	AudioMgr.play_music_pool("battle")
+	if mode == "moba":
+		# MOBA alkaa rauhallisesta linjapedistä; musiikki nousee taistelu-
+		# kerroksiin itsestään kun intensiteetti pysyy korkealla.
+		_music_tick = 0.0
+		_music_last_ko = -999.0
+		_music_last_struct = -999.0
+		_music_nexus_open = false
+		AudioMgr.set_music_intensity(0.0)
+		AudioMgr.start_match_music()
+		if not Game.simulating:
+			AudioMgr.music_cue("match_start")
+	else:
+		# Muissa muodoissa uusi taistelubiisi joka erälle -> vaihtelua.
+		AudioMgr.play_music_pool("battle")
 	# Simulaatiossa ohitetaan lähtölaskenta ja mennään suoraan peliin.
 	if Game.simulating:
 		state = State.PLAY
@@ -2013,6 +2049,7 @@ func on_hero_ko(hero: Hero, source: Hero) -> void:
 				source.profile.add_score(20.0)
 				break
 		hud.ko_feed("%s tyrmäsi %s" % [source.profile.display_name, hero.profile.display_name])
+		_music_last_ko = match_elapsed
 		_register_multi_kill(source)
 		if not _first_blood:
 			_first_blood = true
@@ -2020,11 +2057,81 @@ func on_hero_ko(hero: Hero, source: Hero) -> void:
 				"%s avasi tyrmäystilin" % source.profile.display_name, 1.8)
 			if not Game.simulating:
 				AudioMgr.play("first_blood", 0.02, -3.0)
+				AudioMgr.music_cue("first_blood")
 			_sim_event("Ensiveri: %s (%s) tyrmäsi %s (%s)" % [
 				Game.team_name(source.team), source.hero_id,
 				Game.team_name(hero.team), hero.hero_id])
 	else:
 		hud.ko_feed("%s poistui hetkeksi" % hero.profile.display_name)
+
+
+## Paikallisen (ei-botti) pelaajan joukkue, tai -1 jos katsojana/simulaatiossa.
+func _local_team() -> int:
+	for h in player_heroes:
+		if is_instance_valid(h) and not h.is_unit and not h.profile.is_bot:
+			return int(h.team)
+	return -1
+
+
+## Musiikin intensiteetti kerran sekunnissa. Simulaatiossa ohitetaan kokonaan.
+func _update_music_intensity(delta: float) -> void:
+	if Game.simulating:
+		return
+	_music_tick -= delta
+	if _music_tick > 0.0:
+		return
+	_music_tick = MUSIC_TICK
+	AudioMgr.set_music_intensity(_music_intensity())
+
+
+## Intensiteetti 0..1 oikeasta pelitilasta. Osatekijöillä on omat kattonsa,
+## jottei yksikään yksin vie mittaria ylös:
+##   ottelun vaihe             0.00 .. 0.15   (kello)
+##   viholliset lähellä omia   0.00 .. 0.42   (0.14 per sankari, max 3)
+##   tuore tyrmäys             0.00 .. 0.22   (lineaarinen hiipuma 12 s)
+##   tuore rakennusmenetys     0.00 .. 0.18   (lineaarinen hiipuma 20 s)
+##   objective-paine           0.00 .. 0.30   (0.12 yksipuolinen, 0.30 kiistelty)
+##   nexus auki                lattia 0.75
+func _music_intensity() -> float:
+	var value: float = clampf(match_elapsed / MOBA_TIME, 0.0, 1.0) * 0.15
+	var near := 0
+	for h in player_heroes:
+		if not is_instance_valid(h) or not h.alive or h.is_unit or h.profile.is_bot:
+			continue
+		for foe in enemy_heroes(h.team):
+			if foe.global_position.distance_to(h.global_position) <= MUSIC_NEAR_ENEMY:
+				near += 1
+	value += minf(float(near) * 0.14, 0.42)
+	var ko_age: float = match_elapsed - _music_last_ko
+	if ko_age <= MUSIC_RECENT_KO:
+		value += 0.22 * (1.0 - ko_age / MUSIC_RECENT_KO)
+	var struct_age: float = match_elapsed - _music_last_struct
+	if struct_age <= MUSIC_RECENT_STRUCT:
+		value += 0.18 * (1.0 - struct_age / MUSIC_RECENT_STRUCT)
+	value += _objective_pressure()
+	if _music_nexus_open:
+		value = maxf(value, 0.75)
+	return clampf(value, 0.0, 1.0)
+
+
+## Onko Baronin tai Dragonin luona sankareita — ja kummaltako puolelta.
+## Molempien joukkueiden läsnäolo = kiistelty objective = suurin paine.
+func _objective_pressure() -> float:
+	var best := 0.0
+	for boss in [_boss_critter, _dragon_critter]:
+		if boss == null or not is_instance_valid(boss) or not boss.alive:
+			continue
+		var present: Array = [false, false]
+		for h in player_heroes:
+			if not is_instance_valid(h) or not h.alive or h.is_unit or h.team > 1:
+				continue
+			if h.global_position.distance_to(boss.global_position) <= MUSIC_OBJECTIVE_RANGE:
+				present[h.team] = true
+		if bool(present[0]) and bool(present[1]):
+			best = maxf(best, 0.30)
+		elif bool(present[0]) or bool(present[1]):
+			best = maxf(best, 0.12)
+	return best
 
 
 ## Moninkertainen tyrmäys: saman tappajan peräkkäiset tapot MULTI_KILL_WINDOW:n

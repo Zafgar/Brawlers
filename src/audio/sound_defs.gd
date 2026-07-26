@@ -55,6 +55,12 @@ const CATEGORIES := {
 		"bus": "SFX_AMBIENT", "pool": "ambient", "rms": -24.0, "gain": 0.0,
 		"cooldown": 1800, "prio": 0, "pitch_var": 0.30, "positional": true, "voices": 4,
 	},
+	# Musiikkicuet soivat omalla väylällään, jota musiikin duckaus ei kosketa —
+	# muuten cue duckaisi itse itsensä.
+	"stinger": {
+		"bus": "MusicCue", "pool": "stinger", "rms": -12.0, "gain": 0.0,
+		"cooldown": 900, "prio": 3, "pitch_var": 0.0, "positional": false, "voices": 2,
+	},
 }
 
 ## Käytetään jos avainta ei löydy rekisteristä lainkaan (ei saisi tapahtua —
@@ -325,6 +331,17 @@ const DEFS := {
 	"myria_drift": {"cat": "ability", "gain": -3.0, "cooldown": 120},
 	"myria_bloom": {"cat": "ability", "gain": 1.0, "cooldown": 180},
 	"myria_garden": {"cat": "ability", "gain": 2.0, "cooldown": 400, "prio": 3},
+
+	# --- Musiikin tilacuet (AudioMgr.music_cue) ---
+	"cue_match_start": {"cat": "stinger", "gain": -1.0, "cooldown": 4000},
+	"cue_first_blood": {"cat": "stinger", "cooldown": 4000},
+	"cue_objective": {"cat": "stinger", "gain": -1.0, "cooldown": 3000},
+	"cue_objective_taken": {"cat": "stinger", "cooldown": 3000},
+	"cue_nexus": {"cat": "stinger", "gain": 1.0, "cooldown": 6000},
+	"cue_victory": {"cat": "stinger", "gain": 1.0, "cooldown": 6000},
+	"cue_defeat": {"cat": "stinger", "gain": 1.0, "cooldown": 6000},
+	"cue_promo_tier": {"cat": "stinger", "gain": 1.0, "cooldown": 4000},
+	"cue_promo_div": {"cat": "stinger", "cooldown": 4000},
 }
 
 
