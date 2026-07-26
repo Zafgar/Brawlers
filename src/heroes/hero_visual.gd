@@ -434,6 +434,28 @@ func _draw_ultimate_state(bob: float) -> void:
 				draw_arc(shome, 15.0 + (1.0 - sshadow) * 11.0, -PI * 0.5,
 					-PI * 0.5 + TAU * sshadow, 24,
 					Palette.with_alpha(Palette.glow(hero.hero_color(), 1.5), 0.75), 3.0)
+		"rift":
+			# Tyhjyysaukko (varppauksen jälkeinen purskeikkuna) kirkkaana kaarena ja
+			# ajanpysäytyksen tehostus repeilevänä kehänä.
+			var rwin: float = float(hero.call("void_window_fraction")) \
+				if hero.has_method("void_window_fraction") else 0.0
+			if rwin > 0.01:
+				draw_arc(center, hero.radius + 14.0, -PI * 0.5, -PI * 0.5 + TAU * rwin,
+					28, Palette.glow(Color("d9a6ff"), 1.7), 5.0)
+				draw_circle(center, hero.radius + 4.0,
+					Palette.with_alpha(Palette.glow(hero.hero_color(), 1.5), 0.16 * rwin))
+			if hero.has_method("freeze_power_active") and bool(hero.call("freeze_power_active")):
+				for i in range(6):
+					var rray := Vector2.RIGHT.rotated(TAU * i / 6.0 + _time * 2.6)
+					draw_line(center + rray * (hero.radius + 6.0),
+						center + rray * (hero.radius + 18.0 + pulse * 5.0),
+						Palette.with_alpha(Palette.glow(hero.hero_color(), 1.6), 0.7), 3.5)
+			if hero.has_method("has_mark") and bool(hero.call("has_mark")):
+				var rmark: Vector2 = hero.to_local(hero.call("mark_position"))
+				draw_line(center, rmark, Palette.with_alpha(
+					Palette.glow(hero.hero_color(), 1.4), 0.22 + pulse * 0.2), 2.0)
+				draw_arc(rmark, 20.0, _time * 4.0, _time * 4.0 + TAU * 0.7, 18,
+					Palette.glow(hero.hero_color(), 1.5), 3.0)
 		"scout":
 			if bool(hero.get("_turret")):
 				draw_arc(center, hero.radius + 15.0, _time * 1.8, _time * 1.8 + PI * 1.45, 30,
