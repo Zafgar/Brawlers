@@ -110,6 +110,7 @@ static func draw_chip(canvas: CanvasItem, rank: int, pos: Vector2, height := 28.
 	var rect := Rect2(left, pos.y - height / 2.0, w, height)
 	var base: Color = BotRank.tier_color(tier)
 	var deep: Color = DEEP[tier]
+	var bright: Color = BRIGHT[tier]
 	_rounded(canvas, rect, Palette.with_alpha(deep, 0.86),
 		Palette.with_alpha(base, 0.85), maxf(height * 0.07, 1.0), height / 2.0)
 	# Miniatyyritunnus: tason värinen vinoneliö jonka sisällä divisioonan sakarat.
@@ -121,7 +122,7 @@ static func draw_chip(canvas: CanvasItem, rank: int, pos: Vector2, height := 28.
 	for i in range(spikes):
 		var ang: float = -PI * 0.5 + TAU * float(i) / float(BotRank.DIVISIONS)
 		canvas.draw_line(badge, badge + Vector2(cos(ang), sin(ang)) * height * 0.20,
-			Palette.with_alpha(BRIGHT[tier], 0.9), maxf(height * 0.05, 1.0))
+			Palette.with_alpha(bright, 0.9), maxf(height * 0.05, 1.0))
 	UiKit.draw_text(canvas, Vector2(left + height * 1.06, pos.y), text, fs, base, false)
 	return w
 
@@ -421,7 +422,8 @@ static func _wood(canvas: CanvasItem, c: Vector2, r: float, t: float, alpha: flo
 	var s2: float = _stage(build, 2)
 	if s2 > 0.0:
 		# Rautavanteet ylä- ja alaosaan.
-		for band in [0.10, 0.78]:
+		for band_v in [0.10, 0.78]:
+			var band: float = band_v
 			var strip: PackedVector2Array = _rotated(
 				_shield_band(c, r, band, band + 0.11), c, sway)
 			canvas.draw_colored_polygon(strip, _fade(IRON, 0.55 * alpha * s2))
@@ -543,7 +545,8 @@ static func _silver(canvas: CanvasItem, c: Vector2, r: float, t: float, alpha: f
 	var s1: float = _stage(build, 1)
 	if s1 > 0.0:
 		# Neljä sulkaa kummallakin puolella, ulommat pisimmät.
-		for side in [-1.0, 1.0]:
+		for side_v in [-1.0, 1.0]:
+			var side: float = side_v
 			for k in range(4):
 				var fr: float = float(k) / 3.0
 				var spread: float = breath * r * 0.035 * (1.0 + fr)
@@ -635,7 +638,8 @@ static func _gold(canvas: CanvasItem, c: Vector2, r: float, t: float, alpha: flo
 	var s2: float = _stage(build, 2)
 	if s2 > 0.0:
 		# Laakeriseppele: kaksi kaarta, kummassakin 7 lehteä.
-		for side in [1.0, -1.0]:
+		for side_v in [1.0, -1.0]:
+			var side: float = side_v
 			for k in range(7):
 				var fr: float = float(k) / 6.0
 				var ang: float = lerpf(PI * 0.44, -PI * 0.30, fr)
@@ -877,7 +881,8 @@ static func _champion(canvas: CanvasItem, c: Vector2, r: float, t: float, alpha:
 		# Feeniks: siivet, runko, pää ja liekkihäntä.
 		var beat: float = sin(t * 1.6)
 		var body := c + Vector2(0, r * 0.06)
-		for side in [-1.0, 1.0]:
+		for side_v in [-1.0, 1.0]:
+			var side: float = side_v
 			for k in range(3):
 				var fr: float = float(k) / 2.0
 				var lift: float = beat * r * 0.05 * (1.0 + fr)

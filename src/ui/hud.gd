@@ -1681,6 +1681,13 @@ class Scoreboard:
 			draw_arc(med, 23.0, 0.0, TAU, 26, p.color(), 2.5)
 		UiKit.draw_text(self, med + Vector2(34.0, -10.0), str(p.display_name), 17,
 			Palette.TEXT_MAIN, false, 2)
+		# Ranked-ottelussa myös botit tunnetaan nimestään JA sarjastaan.
+		if Game.ranked_mode and p.ranked_rank >= 0:
+			var name_font := ThemeDB.fallback_font
+			var name_w: float = name_font.get_string_size(str(p.display_name),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
+			RankEmblem.draw_chip(self, p.ranked_rank,
+				med + Vector2(46.0 + name_w, -10.0), 22.0)
 		UiKit.draw_text(self, med + Vector2(34.0, 12.0), str(def["name"]), 14,
 			Palette.with_alpha(c1, 0.9), false)
 		if not h.alive:

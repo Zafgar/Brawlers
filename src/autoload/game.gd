@@ -175,9 +175,25 @@ func go_lobby() -> void:
 	_swap(Lobby.new())
 
 
-## Ranked-tila alkaa aina pelaajatilin valinnasta: jokainen tili kiipeää omaa
-## tikapuutaan ja muistaa rankinsa otteluiden välillä.
+## Ranked-tilan kotinäkymä. Ilman valittua tiliä mennään ensin pelaajavalintaan
+## — jokainen tili kiipeää omaa tikapuutaan ja muistaa rankinsa otteluiden
+## välillä.
 func go_ranked() -> void:
+	_apply_moba_format()
+	if RankedDB.active_user().is_empty():
+		_swap(UserSelect.new())
+		return
+	_swap(RankedHub.new())
+
+
+## Ranked-aula: oma tunnus, LP, saldo ja tikapuut. Tänne palataan lobbysta ja
+## pelaajavalinnasta.
+func go_ranked_hub() -> void:
+	go_ranked()
+
+
+## Pelaajatilien hallinta (luonti, nimeäminen, poisto, aktiivisen valinta).
+func go_user_select() -> void:
 	_apply_moba_format()
 	_swap(UserSelect.new())
 

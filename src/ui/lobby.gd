@@ -717,18 +717,10 @@ func _draw_title(text: String, y: float) -> void:
 	draw_circle(Vector2(960, uy + 3.0), 8.0 + pulse * 2.0, Palette.glow(Palette.GOLD, 1.5))
 
 
-## Sarjamerkki: tierin värinen laatta jossa lukee esim. "Silver II". pos on
-## laatan vasen reuna, pystysuunnassa keskitetty. Phase B korvaa tämän
-## varsinaisella tier-tunnuksella.
+## Sarjamerkki: tason värinen laatta jossa on tason tunnus ja teksti
+## (esim. "Silver II"). pos on laatan vasen reuna, pystysuunnassa keskitetty.
 func _draw_rank_chip(pos: Vector2, rank: int, height := 30.0) -> void:
-	var text := BotRank.rank_name(rank)
-	var font := ThemeDB.fallback_font
-	var fs := int(height * 0.52)
-	var w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 30.0
-	var rect := Rect2(pos.x, pos.y - height / 2.0, w, height)
-	var tint: Color = BotRank.rank_color(rank)
-	_card(rect, Palette.with_alpha(tint, 0.16), Palette.with_alpha(tint, 0.85), 2, height / 2.0)
-	UiKit.draw_text(self, rect.get_center(), text, fs, tint, true)
+	RankEmblem.draw_chip(self, rank, pos, height, _time)
 
 
 ## Tyhjä (botti täyttää) paikka.
