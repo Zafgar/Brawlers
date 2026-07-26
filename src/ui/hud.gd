@@ -553,19 +553,16 @@ class PaneHud:
 			5.0 if compact else 7.0), ult_col)
 
 		var slots := _slot_data(hero)
-		var slot_size := 48.0 if narrow else (56.0 if compact else 64.0)
-		var gap := 7.0 if narrow else (14.0 if compact else 16.0)
-		var total := slots.size() * slot_size + (slots.size() - 1) * gap
-		var sx := left + (right - left - total) / 2.0
-		var sy := rect.position.y + (54.0 if compact and not narrow else (52.0 if narrow else 70.0))
+		var slot_rects := _slot_rects()
+		var first_slot: Rect2 = slot_rects[0]
+		var last_slot: Rect2 = slot_rects[slot_rects.size() - 1]
 		for i in range(slots.size()):
-			_draw_ability_slot(Rect2(sx + i * (slot_size + gap), sy, slot_size, slot_size),
-				slots[i], not narrow)
+			_draw_ability_slot(slot_rects[i], slots[i], not narrow)
 
 		# MOBA: lompakko kykyrivin vasemmalla puolella ja 6 itemin minirivi
 		# oikealla puolella (kauppa täyttää; ikonit ItemIconista).
 		if arena != null and arena.mode == "moba":
-			var mini_y := sy + slot_size / 2.0
+			var mini_y := first_slot.get_center().y
 			var wx := left + 8.0
 			_draw_diamond(Vector2(wx, mini_y), 5.0, Palette.glow(Palette.GOLD, 1.2))
 			UiKit.draw_text(self, Vector2(wx + 11.0, mini_y + 4.0),
@@ -602,9 +599,9 @@ class PaneHud:
 						Palette.TEXT_DIM, true, 1)
 			var items_arr: Array = hero.items
 			var ir := 7.0 if narrow else 10.0
-			var avail := right - (sx + total) - 8.0
+			var avail := right - last_slot.end.x - 8.0
 			var istep := minf(ir * 2.0 + 4.0, (avail - ir * 2.0) / 5.0)
-			var ix0 := sx + total + 8.0 + ir
+			var ix0 := last_slot.end.x + 8.0 + ir
 			for s in range(Hero.MAX_ITEMS):
 				var ic := Vector2(ix0 + float(s) * istep, mini_y)
 				if s < items_arr.size():
@@ -662,19 +659,72 @@ class PaneHud:
 						0.65 + 0.35 * sin(_time * 4.0)), true, 2)
 
 
+	## Kykypaikkojen järjestys telakassa ja korteissa (sama kaikkialla).
+	const SLOT_ORDER := ["basic", "a1", "a2", "ult", "dodge"]
+
+
+	## Kykypaikkojen nappilyhenteet pelaajan oman laitteen mukaan, SLOT_ORDERissa.
+	func _slot_keys() -> Array:
+		var pad: bool = bound_hero != null and is_instance_valid(bound_hero) \
+			and bound_hero.profile != null and int(bound_hero.profile.device) >= 0
+		if pad:
+			return ["R2", "R1", "L1", "L2", "X"]
+		return ["M1", "M2", "Q", "E", "SPACE"]
+
+
+	## Miksi kyky ei tottele juuri nyt — yksi sana telakan ruudun alle. Tämä
+	## näkyy AINA, ei vain tietonäkymässä: pelaajan pitää nähdä yhdellä
+	## vilkaisulla onko syy lukko, vaimennus, jäähdytys vai resurssi.
+	func _slot_block_reason(hero, slot: String, cd: float) -> String:
+		if slot == "ult" and not bool(hero.ult_unlocked()):
+			return "LUKOSSA"
+		# Vaimennus estää a1/a2/ultin ja väistön, muttei perushyökkäystä.
+		if slot != "basic" and float(hero.silence_timer) > 0.0:
+			return "VAIMENNETTU"
+		if slot != "ult" and cd > 0.05:
+			return "JÄÄHDYLLÄ"
+		var res_type := str(hero.res_type)
+		if res_type == "":
+			return ""
+		var cost: float = float(hero.res_cost.get(slot, 0.0)) \
+			* float(hero.resource_cost_mult())
+		if cost > 0.0 and float(hero.res) < cost:
+			match res_type:
+				"energy":
+					return "EI ENERGIAA"
+				"rage":
+					return "EI RAIVOA"
+			return "EI MANAA"
+		return ""
+
+
+	## Kykytelakan viiden paikan ruudut. Sama laskenta telakan piirrossa ja
+	## tietonäkymän korteissa, jottei kortti karkaa paikkansa päältä.
+	func _slot_rects() -> Array:
+		var rect := _dock_rect()
+		var compact := _compact()
+		var narrow := _narrow()
+		var left := rect.position.x + (88.0 if narrow else (102.0 if compact else 126.0))
+		var right := rect.end.x - 14.0
+		var slot_size := 48.0 if narrow else (56.0 if compact else 64.0)
+		var gap := 7.0 if narrow else (14.0 if compact else 16.0)
+		var total := 5.0 * slot_size + 4.0 * gap
+		var sx := left + (right - left - total) / 2.0
+		var sy := rect.position.y \
+			+ (54.0 if compact and not narrow else (52.0 if narrow else 70.0))
+		var out: Array = []
+		for i in range(5):
+			out.append(Rect2(sx + float(i) * (slot_size + gap), sy, slot_size, slot_size))
+		return out
+
+
 	func _slot_data(hero) -> Array:
-		var pad: bool = hero.profile.device >= 0
 		var spend: bool = bool(hero._spend_mode_active())
 		var abilities: Dictionary = HeroDef.get_def(hero.hero_id)["abilities"]
-		var keys := {
-			"basic": "R2" if pad else "M1",
-			"a1": "R1" if pad else "M2",
-			"a2": "L1" if pad else "Q",
-			"ult": "L2" if pad else "E",
-			"dodge": "X" if pad else "SPACE",
-		}
+		var key_list := _slot_keys()
 		var out: Array = []
-		for slot in ["basic", "a1", "a2", "ult", "dodge"]:
+		for i in range(SLOT_ORDER.size()):
+			var slot := str(SLOT_ORDER[i])
 			var frac: float
 			var cd := 0.0
 			var col: Color = hero.hero_color()
@@ -687,11 +737,13 @@ class PaneHud:
 				if slot == "dodge":
 					col = Palette.glow(col, 1.18)
 			out.append({
-				"hero_id": hero.hero_id, "slot": slot, "name": str(abilities[slot]["name"]), "key": str(keys[slot]),
+				"hero_id": hero.hero_id, "slot": slot,
+				"name": str(abilities[slot]["name"]), "key": str(key_list[i]),
 				"frac": frac, "cd": cd, "color": col,
 				"rank": int(hero.ability_ranks[slot]), "can_rank": bool(hero.can_rank(slot)),
 				"locked": slot == "ult" and not bool(hero.ult_unlocked()), "spend": spend,
 				"lock_level": (int(hero.ULT_RANK_LEVELS[0]) if slot == "ult" else 0),
+				"reason": _slot_block_reason(hero, slot, cd),
 			})
 		return out
 
@@ -749,7 +801,15 @@ class PaneHud:
 			5.0, 1.0)
 		UiKit.draw_text(self, key_rect.get_center(), str(data["key"]),
 			8 if rect.size.x < 58.0 else 10, Palette.TEXT_MAIN, true, 1)
-		if show_name:
+		var reason := str(data.get("reason", ""))
+		if reason != "":
+			# Estosyy voittaa nimen: pelaaja näkee heti miksi nappi ei tottele.
+			var rcol: Color = Palette.TEXT_DIM
+			if reason == "VAIMENNETTU" or reason.begins_with("EI "):
+				rcol = Palette.BAD
+			UiKit.draw_text(self, Vector2(rect.get_center().x, rect.end.y + 10.0),
+				reason, 8 if _compact() else 10, rcol, true, 2)
+		elif show_name:
 			UiKit.draw_text(self, Vector2(rect.get_center().x, rect.end.y + 10.0),
 				_short_name(str(data["name"]), 11 if _compact() else 14),
 				10 if _compact() else 11, Palette.TEXT_DIM, true, 2)
@@ -1518,12 +1578,14 @@ class PaneHud:
 		var title_h := 16.0 if compact else 22.0
 		var head_h := 13.0 if compact else 18.0
 		var foot_h := 24.0 if compact else 34.0
-		var want_row := 15.0 if compact else 21.0
+		var want_row := 13.0 if compact else 21.0
 		var want_h: float = pad * 2.0 + title_h + head_h + foot_h \
 			+ float(max_rows) * want_row
 		var panel_h: float = minf(want_h, band.size.y)
-		_draw_stats_panel(Rect2(band.position.x, band.end.y - panel_h,
-			band.size.x, panel_h), cols, max_rows)
+		var stats_rect := Rect2(band.position.x, band.end.y - panel_h,
+			band.size.x, panel_h)
+		_draw_inspect_cards(stats_rect.position.y)
+		_draw_stats_panel(stats_rect, cols, max_rows)
 
 
 	## Statipaneeli: otsikko, 3-4 saraketta ja tavarapalkki. Rivikorkeus ja
@@ -1638,6 +1700,224 @@ class PaneHud:
 				Palette.with_alpha(Palette.TEXT_DIM, 0.78), false, 1)
 		_draw_right_text(Vector2(cx + col_w - 7.0, cy + float(value_size) * 0.36),
 			str(row["value"]), value_size, value_col, 2)
+
+
+	## Montako merkkiä mahtuu leveyteen: mitataan fontista, jotta rivitys osuu
+	## oikein myös pienillä fonttikoolla.
+	func _fit_chars(width: float, font_size: int) -> int:
+		var font := ThemeDB.fallback_font
+		var sample := "keskimaarainen kirjainleveys tassa"
+		var sample_w: float = font.get_string_size(sample, HORIZONTAL_ALIGNMENT_LEFT,
+			-1, font_size).x
+		if sample_w <= 0.0:
+			return 24
+		return maxi(int(width * float(sample.length()) / sample_w), 6)
+
+
+	func _card_line(text: String, font_size: int, color: Color) -> Dictionary:
+		return {"text": text, "size": font_size, "color": color}
+
+
+	func _resource_partitive(type: String) -> String:
+		match type:
+			"mana":
+				return "manaa"
+			"energy":
+				return "energiaa"
+			"rage":
+				return "raivoa"
+		return "resurssia"
+
+
+	## Mitä seuraava kykypiste antaa. Askeleet luetaan Heron vakioista, joten
+	## teksti pysyy totuudessa vaikka tasapainoa säädettäisiin.
+	func _next_rank_text(hero, slot: String) -> String:
+		var rank: int = int(hero.ability_ranks.get(slot, 0))
+		if rank >= Hero.RANK_CAP:
+			return "RANKI TÄYNNÄ"
+		if slot == "ult":
+			var need: int = int(Hero.ULT_RANK_LEVELS[rank])
+			if int(hero.level) < need:
+				return "RANKI %d VAATII TASON %d" % [rank + 1, need]
+			if rank == 0:
+				return "RANKI 1 AVAA ULTIN"
+			return "RANKI %d: +%d %% voimaa" % [rank + 1,
+				int(round(Hero.ULT_RANK_POWER_STEP * 100.0))]
+		if slot == "basic":
+			return "RANKI %d: +%d %% voimaa" % [rank + 1,
+				int(round(Hero.RANK_POWER_STEP * 100.0))]
+		return "RANKI %d: +%d %% voimaa, -%d %% perusjäähdytystä" % [rank + 1,
+			int(round(Hero.RANK_POWER_STEP * 100.0)),
+			int(round(Hero.RANK_CD_STEP * 100.0))]
+
+
+	## Kykykortin faktarivit: ranki, jäähdytys tai lataus, resurssihinta ja
+	## seuraavan rankin tuotto. Lukossa oleva ulti kertoo avaustasonsa.
+	func _ability_facts(hero, slot: String) -> Array:
+		var out: Array = []
+		out.append("RANKI %d / %d" % [int(hero.ability_ranks.get(slot, 0)),
+			Hero.RANK_CAP])
+		if slot == "ult":
+			if not bool(hero.ult_unlocked()):
+				out.append("LUKOSSA — AVAUTUU TASOLLA %d" % int(Hero.ULT_RANK_LEVELS[0]))
+			out.append("LATAUS %d %%" % int(round(float(hero.ult_charge))))
+		elif slot == "basic":
+			out.append("ISKUVÄLI %.2f s" % float(hero.cd_max.get(slot, 0.0)))
+		else:
+			var left: float = float(hero.cd.get(slot, 0.0))
+			var full: float = float(hero.cd_max.get(slot, 0.0))
+			if left > 0.05:
+				out.append("JÄÄHDYTYS %.1f / %.1f s" % [left, full])
+			else:
+				out.append("JÄÄHDYTYS %.1f s — VALMIS" % full)
+		var res_type := str(hero.res_type)
+		if res_type != "":
+			var cost: float = float(hero.res_cost.get(slot, 0.0)) \
+				* float(hero.resource_cost_mult())
+			if cost > 0.0:
+				out.append("HINTA %d %s (nyt %d)" % [int(round(cost)),
+					_resource_partitive(res_type), int(hero.res)])
+		out.append(_next_rank_text(hero, slot))
+		return out
+
+
+	## Kumpi kykykortti näytetään kun tilaa on vain yhdelle: tähtäyksessä oleva
+	## paikka voittaa, muuten kortti kiertää paikasta toiseen pidon aikana.
+	func _inspect_slot_index() -> int:
+		var aiming := ""
+		var aiming_v = bound_hero.get("_aiming_slot")
+		if aiming_v != null:
+			aiming = str(aiming_v)
+		var idx: int = SLOT_ORDER.find(aiming)
+		if idx >= 0:
+			return idx
+		return int(_inspect_cycle / 2.4) % SLOT_ORDER.size()
+
+
+	## Kykykortit statipaneelin yllä. Alue saa nousta paneelia ylemmäs vapaan
+	## pelikuvan päälle, mutta se pysyy ottelupaneelin ja buffikellon alapuolella,
+	## KO-syötteen vasemmalla puolella eikä yletä koskaan minikartalle.
+	func _draw_inspect_cards(stats_top: float) -> void:
+		var compact := _compact()
+		var edge := _margin()
+		var left := edge
+		var right: float = minf(size.x - edge, _minimap_rect().position.x - 10.0)
+		if not _feed.is_empty():
+			right = minf(right, size.x - edge - (300.0 if compact else 360.0) - 6.0)
+		var top_limit: float = edge + (96.0 if compact else 130.0)
+		var bottom: float = stats_top - 6.0
+		var avail: float = bottom - top_limit
+		if avail < 52.0 or right - left < 220.0:
+			return
+		var card_h: float = minf(avail, 260.0)
+		var area := Rect2(left, bottom - card_h, right - left, card_h)
+		var slot_rects := _slot_rects()
+		var keys := _slot_keys()
+		if card_h >= 110.0 and area.size.x >= 900.0:
+			# Tilaa kaikille viidelle: kortti kunkin telakkapaikan ylle ja ohut
+			# yhdysviiva kertoo kumpi kortti kuuluu kummalle napille.
+			var gap := 10.0
+			var card_w: float = (area.size.x - gap * 4.0) / 5.0
+			for i in range(SLOT_ORDER.size()):
+				var crect := Rect2(area.position.x + float(i) * (card_w + gap),
+					area.position.y, card_w, card_h)
+				_draw_ability_card(crect, str(SLOT_ORDER[i]), str(keys[i]), false, false)
+				var srect: Rect2 = slot_rects[i]
+				draw_line(Vector2(crect.get_center().x, crect.end.y),
+					Vector2(srect.get_center().x, srect.position.y),
+					Palette.with_alpha(Palette.UI_STROKE, 0.4), 1.5)
+		else:
+			# Kapea ruutu: yksi leveä kortti kerrallaan, ja telakan vastaava
+			# paikka hehkuu, jottei lukija joudu arvaamaan mistä on kyse.
+			var idx := _inspect_slot_index()
+			_draw_ability_card(area, str(SLOT_ORDER[idx]), str(keys[idx]), true, true)
+			var hl: Rect2 = slot_rects[idx]
+			_panel(hl.grow(3.0), Color(0, 0, 0, 0),
+				Palette.with_alpha(Palette.glow(Palette.GOLD, 1.35),
+					0.55 + 0.35 * sin(_time * 6.0)), 12.0, 2.5)
+
+
+	## Yksi kykykortti: paikka ja nappi, kyvyn nimi, faktarivit ja kuvaus.
+	## single = yksi leveä kortti (faktat mahtuvat yhdelle riville).
+	func _draw_ability_card(rect: Rect2, slot: String, key: String,
+			highlight: bool, single: bool) -> void:
+		var hero = bound_hero
+		var abilities: Dictionary = HeroDef.get_def(hero.hero_id)["abilities"]
+		var ability: Dictionary = abilities.get(slot, {})
+		var compact := _compact()
+		var acol: Color = Palette.GOLD if slot == "ult" else hero.hero_color()
+		_panel(Rect2(rect.position + Vector2(0, 4), rect.size), Color(0, 0, 0, 0.45),
+			Color(0, 0, 0, 0), 11.0, 0.0)
+		_panel(rect, Palette.with_alpha(Palette.UI_PANEL, 0.97),
+			Palette.with_alpha(Palette.glow(acol, 1.2), 0.85 if highlight else 0.55),
+			11.0, 2.0)
+		draw_rect(Rect2(rect.position + Vector2(9.0, 0.0),
+			Vector2(rect.size.x - 18.0, 2.5)), Palette.glow(acol, 1.2))
+
+		var pad := 6.0 if compact else 9.0
+		var inner := Rect2(rect.position + Vector2(pad, pad + 2.0),
+			rect.size - Vector2(pad * 2.0, pad * 2.0 + 2.0))
+		var head_size: int = 8 if compact else 10
+		var name_size: int = 11 if compact else 15
+		var body_size: int = 8 if compact else 11
+		var facts := _ability_facts(hero, slot)
+		var slot_label := str(Hero.SLOT_NAMES.get(slot, slot))
+
+		var lines: Array = []
+		if single:
+			var facts_text := "%s  ·  %s" % [slot_label, key]
+			for fact_v in facts:
+				facts_text += "  ·  " + str(fact_v)
+			lines.append(_card_line(facts_text, head_size,
+				Palette.with_alpha(Palette.TEXT_MAIN, 0.96)))
+			lines.append(_card_line(str(ability.get("name", "")), name_size,
+				Palette.glow(acol, 1.15)))
+		else:
+			lines.append(_card_line("%s  ·  %s" % [slot_label, key], head_size,
+				Palette.with_alpha(Palette.TEXT_DIM, 0.95)))
+			lines.append(_card_line(str(ability.get("name", "")), name_size,
+				Palette.glow(acol, 1.15)))
+			for fi in range(facts.size()):
+				lines.append(_card_line(str(facts[fi]), body_size,
+					Palette.GOLD if fi == facts.size() - 1 else Palette.TEXT_MAIN))
+		var chars := _fit_chars(inner.size.x, body_size)
+		var desc_lines := _wrap_text(str(ability.get("desc", "")), chars)
+		if single and desc_lines.size() > 2:
+			desc_lines.resize(2)
+			desc_lines[1] = str(desc_lines[1]) + " …"
+		for desc_v in desc_lines:
+			lines.append(_card_line(str(desc_v), body_size,
+				Palette.with_alpha(Palette.TEXT_MAIN, 0.92)))
+		# "tip" ja "scaling" ovat HeroDefin uudempia kenttiä: luetaan oletuksella,
+		# joten kortti toimii sekä ennen niiden lisäystä että niiden jälkeen.
+		var tip := str(ability.get("tip", ""))
+		if tip != "":
+			for tip_v in _wrap_text("VIHJE: " + tip, chars):
+				lines.append(_card_line(str(tip_v), body_size,
+					Palette.with_alpha(Palette.GOOD, 0.94)))
+		var scaling := str(ability.get("scaling", ""))
+		if scaling != "":
+			for sc_v in _wrap_text("SKAALAUS: " + scaling, chars):
+				lines.append(_card_line(str(sc_v), body_size,
+					Palette.with_alpha(Palette.SHIELD, 0.94)))
+
+		var ly: float = inner.position.y
+		for line_v in lines:
+			var line: Dictionary = line_v
+			var fsize: int = int(line["size"])
+			var step: float = float(fsize) + 3.0
+			if ly + step > inner.end.y:
+				break
+			UiKit.draw_text(self, Vector2(inner.position.x, ly + float(fsize) * 0.86),
+				str(line["text"]), fsize, line["color"], false, 1)
+			ly += step
+		if not single:
+			# Rankkipipsut kortin oikeaan yläkulmaan (yksileveässä ranki on tekstissä).
+			var rank: int = int(hero.ability_ranks.get(slot, 0))
+			for p in range(3):
+				draw_rect(Rect2(inner.end.x - 32.0 + float(p) * 10.0,
+					inner.position.y + 2.0, 8.0, 3.5),
+					Palette.glow(Palette.GOLD, 1.2) if rank > p else Color(1, 1, 1, 0.14))
 
 
 	func _minimap_rect() -> Rect2:
