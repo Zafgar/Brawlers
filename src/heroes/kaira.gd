@@ -9,30 +9,37 @@ const MOLTEN := Color("ff5f1f")     # sula kivi — Kairan pääväri
 const EMBER := Color("ffb03a")      # hehkuva hiillos
 const CORE := Color("fff0a8")       # poran valkohehkuinen kärki
 
+# TASAPAINO (kokoonpanoluotaus 108 ottelua): Kaira teki 1876 vahinkoa/min eli
+# yli 2x otannan keskiarvon (599) ja voitti 88 % peleistään. Trimmi kohdistuu
+# LUKUIHIN, ei mekaniikkoihin: syöksy, jyrä, kuilu ja laava tekevät noin 27 %
+# vähemmän, imu 0.32 -> 0.28. Silmukka (mene päälle, pysy laavassa, pysyt
+# hengissä) on ennallaan. Neutraalikertoimet (jyrä 1.3 -> 1.12, kuilu
+# 1.25 -> 1.10) hidastavat nimenomaan leirifarmia (29.63 clearia/ottelu),
+# eivät sankaritaistelua.
 const BASIC_REACH := 142.0
-const BASIC_DMG := 23.0
+const BASIC_DMG := 20.0
 const BASIC_ARC := 0.42             # osumakartion dot-kynnys
-const LIFESTEAL := 0.32             # osumasta imetty kuumuus -> parannus
+const LIFESTEAL := 0.28             # osumasta imetty kuumuus -> parannus
 
 const CHARGE_DIST := 440.0
 const CHARGE_SPEED := 1480.0
-const CHARGE_DMG := 36.0
+const CHARGE_DMG := 26.0
 const CHARGE_WIDTH := 64.0
 const MAGMA_RADIUS := 88.0
 const MAGMA_DUR := 4.6
 
 const SLAM_RADIUS := 218.0
-const SLAM_DMG := 45.0
+const SLAM_DMG := 33.0
 const SLAM_HEAL := 15.0
 
 const BURROW_SPEED := 1200.0
 const BURROW_TIME := 0.2
 const BURROW_BLAST := 140.0
-const BURROW_DMG := 27.0
+const BURROW_DMG := 20.0
 
 const ULT_LENGTH := 820.0
 const ULT_HALF_WIDTH := 108.0
-const ULT_DMG := 118.0
+const ULT_DMG := 86.0
 const ULT_DELAY := 0.45
 
 var _heat_glow := 0.0               # viimeisimmän osuman hehku (visuaali)
@@ -145,7 +152,7 @@ func _ability1(dir: Vector2) -> void:
 	for i in range(3):
 		var f := (float(i) + 0.5) / 3.0
 		JungleField.spawn(self, from.lerp(finish, f), "magma", {
-			"radius": MAGMA_RADIUS, "dur": MAGMA_DUR, "dps": 26.0, "tick": 0.4,
+			"radius": MAGMA_RADIUS, "dur": MAGMA_DUR, "dps": 19.0, "tick": 0.4,
 			"color": MOLTEN,
 		})
 
@@ -175,7 +182,7 @@ func _ability2(_dir: Vector2) -> void:
 			continue
 		var away := off / dist if dist > 1.0 else Vector2.UP
 		var neutral: bool = enemy is Critter
-		deal_damage_to(enemy, SLAM_DMG * (1.3 if neutral else 1.0),
+		deal_damage_to(enemy, SLAM_DMG * (1.12 if neutral else 1.0),
 			200.0 if neutral else 330.0, away)
 		enemy.apply_slow(0.6, 1.3)
 		hits += 1
@@ -276,7 +283,7 @@ func _open_fissure(origin: Vector2, d: Vector2, span: float) -> void:
 		var neutral: bool = enemy is Critter
 		# Kuilu sinkoaa uhrit sivuun kb_velocity-impulssina.
 		var push := side * (1.0 if across >= 0.0 else -1.0)
-		var dealt := deal_damage_to(enemy, ULT_DMG * (1.25 if neutral else 1.0),
+		var dealt := deal_damage_to(enemy, ULT_DMG * (1.10 if neutral else 1.0),
 			280.0 if neutral else 430.0, push)
 		enemy.apply_slow(0.62, 1.6)
 		healed += dealt * 0.12
@@ -286,7 +293,7 @@ func _open_fissure(origin: Vector2, d: Vector2, span: float) -> void:
 	for i in range(4):
 		var p := origin.lerp(finish, (float(i) + 0.5) / 4.0)
 		JungleField.spawn(self, p, "magma", {
-			"radius": 132.0, "dur": 6.0, "dps": 34.0, "tick": 0.4,
+			"radius": 132.0, "dur": 6.0, "dps": 25.0, "tick": 0.4,
 			"color": MOLTEN,
 		})
 	_act_end()

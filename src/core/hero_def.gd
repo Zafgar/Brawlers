@@ -387,9 +387,9 @@ const HEROES := {
 		"color": Color("ff5f1f"),
 		"color_b": Color("4d1204"),
 		"abilities": {
-			"basic": {"name": "Poranterä", "desc": "Leveä poraisu eteen. Kaira parantuu kolmanneksella tekemästään vahingosta — mitä useampaan osuu, sitä kauemmin pysyy pystyssä.", "cd": 0.52},
-			"a1": {"name": "Sulasyöksy", "desc": "Pidä R1 ja suuntaa: Kaira ryntää pora edellä. Reitillä olevat lentävät sivuun ja maahan jää palava laavavana, jossa Kaira itse parantuu.", "cd": 7.0},
-			"a2": {"name": "Maanjyrä", "desc": "Kuluttaa raivon yhteen maaniskuun. Sulapiikit purkautuvat renkaana: vahinko, sinko ulos ja hidastus — ja Kaira parantuu jokaisesta osumasta.", "cd": 6.5},
+			"basic": {"name": "Poranterä", "desc": "Leveä poraisu eteen. Kaira parantuu reilulla neljänneksellä tekemästään vahingosta — mitä useampaan osuu, sitä kauemmin pysyy pystyssä.", "cd": 0.52},
+			"a1": {"name": "Sulasyöksy", "desc": "Pidä R1 ja suuntaa: Kaira ryntää pora edellä. Reitillä olevat lentävät sivuun ja maahan jää palava laavavana, jossa Kaira itse parantuu.", "cd": 7.5},
+			"a2": {"name": "Maanjyrä", "desc": "Kuluttaa raivon yhteen maaniskuun. Sulapiikit purkautuvat renkaana: vahinko, sinko ulos ja hidastus — ja Kaira parantuu jokaisesta osumasta.", "cd": 7.5},
 			"dodge": {"name": "Kaivautuminen", "desc": "Kaira sukeltaa maan alle (osumaton) ja puhkaisee pinnan uudessa paikassa sulapurkauksena. Väistö on aina myös hyökkäys.", "cd": 7.0},
 			"ult": {"name": "Sulakita", "desc": "Pidä L2 ja suuntaa: Kaira repii maahan pitkän tulikuilun. Viiva telegrafoidaan ennen purkausta; osuma sinkoaa kaiken sivuun ja jättää laavaa koko matkalle.", "cd": 0.0},
 		},
@@ -429,7 +429,7 @@ const HEROES := {
 		"abilities": {
 			"basic": {"name": "Siitepölysyöksy", "desc": "Kevyesti hakeutuva itiöpallo, joka hidastaa hetkeksi. Kun kukkia on maassa, osuma parantaa Myriaa.", "cd": 0.56},
 			"a1": {"name": "Kukkaistutus", "desc": "Pidä R1 ja sijoita orkidea. Se polttaa vihollisia ja parantaa liittolaisia 11 sekunnin ajan. Enintään kolme kerrallaan; neljäs kuihduttaa vanhimman.", "cd": 6.0},
-			"a2": {"name": "Kukinta", "desc": "Kaikki istutetut orkideat puhkeavat kerralla omalla paikallaan: 52 vahinkoa ja hidastus, ja Myria parantuu jokaisesta puhjenneesta kukasta. Ilman kukkia Myria kukkii itse.", "cd": 8.0},
+			"a2": {"name": "Kukinta", "desc": "Kaikki istutetut orkideat puhkeavat kerralla omalla paikallaan: 46 vahinkoa ja hidastus, ja Myria parantuu jokaisesta puhjenneesta kukasta. Ilman kukkia Myria kukkii itse.", "cd": 8.0},
 			"dodge": {"name": "Terälehtiliuku", "desc": "Myria hajoaa terälehdiksi ja liukuu sivuun osumattomana. Puhdistava liike: henki livahtaa kontrollista.", "cd": 5.0},
 			"ult": {"name": "Orkideapuutarha", "desc": "Pidä L2 ja avaa kokonainen puutarha. Iso kenttä polttaa vihollisia ja parantaa liittolaisia, ja kehälle nousee viisi orkideaa — puutarha on myös ladattu Kukinta.", "cd": 0.0},
 		},

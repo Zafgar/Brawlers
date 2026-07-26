@@ -1552,7 +1552,19 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 				# gank-uhri kelpaa kauempaakin — muuten jungleri jäi seisomaan
 				# gank-portille tuijottamaan uhria ~700 px:n päähän.
 				var jungler_reach: float = 900.0 if e == _gank_victim else 620.0
-				return e.global_position.distance_to(pos) <= jungler_reach
+				if e.global_position.distance_to(pos) > jungler_reach:
+					return false
+				# TORNIPORTTI (juurisyy: kaira otti 34 % vahingostaan TORNEILTA).
+				# Laneri ei saa lukittua kohteeseen joka on vetäytynyt vihollis-
+				# tornien taakse (chase_frontier alempana), mutta junglerilta tämä
+				# ehto puuttui kokonaan: gank-latch veti sen 900 px:n päähän tornin
+				# alle ja _tower_diving ehti vain estää kyvyt, ei jahtia. Nyt sama
+				# aaltovaatimus koskee jungleria: tornin suojaaman kohteen saa ottaa
+				# vain kun oma aalto oikeasti tankkaa tornin (_tower_wave_safe).
+				var dive_tower := _enemy_tower_covering(hero, arena, e.global_position)
+				if dive_tower != null and not _tower_wave_safe(hero, arena, dive_tower):
+					return false
+				return true
 			if _moba_lane == "":
 				return e.global_position.distance_to(pos) <= 520.0
 			var mm := arena.map as MapMoba

@@ -9,6 +9,11 @@ const POLE_N := Color("ff5470")     # pohjoisnapa (punainen)
 const POLE_S := Color("5ac8ff")     # etelänapa (sininen)
 const STEEL := Color("c3ccdf")      # kiillotettu magneettiteräs
 
+# TASAPAINO (kokoonpanoluotaus 108 ottelua): Torq teki 1086 vahinkoa/min ja sen
+# ultti oli otannan kovin yksittäinen kyky (475 vahinkoa per käyttö) — liikaa
+# sankarille jonka vahinkoluokitus on 2/5 ja jonka arvo on kontrollissa.
+# Napakentän tikitys 26 -> 21 dps ja Napalukko 25 -> 22; kaikki hallinta
+# (imu, juurrutus, koukku, kilvet) on koskematonta.
 const BASIC_REACH := 148.0
 const BASIC_DMG := 18.0
 const BASIC_ARC := 0.36
@@ -20,7 +25,7 @@ const HOOK_PULL := 900.0
 const HOOK_PULL_CRITTER := 1180.0
 
 const LOCK_RADIUS := 232.0
-const LOCK_DMG := 25.0
+const LOCK_DMG := 22.0
 const LOCK_PULL := 560.0
 const LOCK_ROOT := 0.75
 const LOCK_ROOT_CRITTER := 1.1
@@ -196,7 +201,7 @@ func _ultimate(dir: Vector2) -> void:
 	Fx.ultimate_field(arena, target, POLE_S, Palette.team(team),
 		ULT_RADIUS, ULT_DUR, "torq")
 	JungleField.spawn(self, target, "magnet", {
-		"radius": ULT_RADIUS, "dur": ULT_DUR, "dps": 26.0, "tick": 0.4,
+		"radius": ULT_RADIUS, "dur": ULT_DUR, "dps": 21.0, "tick": 0.4,
 		"color": POLE_S,
 	})
 	# Kaksi vastakkaista napaa kertovat heti että kyseessä on magneettikaivo.

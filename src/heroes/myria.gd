@@ -9,13 +9,16 @@ const ORCHID := Color("c77bff")     # orkidean terälehti
 const NECTAR := Color("ffb3e6")     # medensävy: kukinta ja parannus
 const STEM := Color("7ee08a")       # varsi ja lehdet
 
+# TASAPAINO (kokoonpanoluotaus 108 ottelua): Myria teki 1157 vahinkoa/min, kun
+# tavoiteikkuna junglerille on 900-1100 (vrt. salvo 1009, obsidian 900).
+# Kenttien tikitys ja kukinta -10...-15 %, silmukka ISTUTA - KUKI ennallaan.
 const MAX_ORCHIDS := 3
 const ORCHID_RADIUS := 128.0
 const ORCHID_DUR := 11.0
-const ORCHID_DPS := 17.0
+const ORCHID_DPS := 15.0
 const ORCHID_RANGE := 620.0
 
-const BLOOM_DMG := 52.0
+const BLOOM_DMG := 46.0
 const BLOOM_BLAST := 168.0
 const BLOOM_HEAL := 22.0            # parannus per puhjennut orkidea
 
@@ -123,7 +126,7 @@ func _ability1(dir: Vector2) -> void:
 
 
 ## Kyky 2: Kukinta — kaikki istutetut orkideat puhkeavat kerralla. Jokainen
-## räjähtää omalla paikallaan (52 vahinkoa, 168 px) ja parantaa Myriaa.
+## räjähtää omalla paikallaan (46 vahinkoa, 168 px) ja parantaa Myriaa.
 ## Ilman orkideoita Myria kukkii itse, joten nappi ei ole koskaan kuollut.
 func _ability2(_dir: Vector2) -> void:
 	_prune_orchids()
@@ -210,7 +213,7 @@ func _ultimate(dir: Vector2) -> void:
 	Fx.ultimate_field(arena, target, ORCHID, Palette.team(team),
 		ULT_RADIUS, ULT_DUR, "myria")
 	JungleField.spawn(self, target, "garden", {
-		"radius": ULT_RADIUS, "dur": ULT_DUR, "dps": 26.0, "tick": 0.45,
+		"radius": ULT_RADIUS, "dur": ULT_DUR, "dps": 22.0, "tick": 0.45,
 		"color": ORCHID,
 	})
 	_prune_orchids()
