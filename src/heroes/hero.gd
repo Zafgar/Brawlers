@@ -2424,8 +2424,8 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 		var burst: bool = items.has("maailmanpuu") and _root_burst_cd <= 0.0 \
 			and hp > 0.0 and hp < max_hp * 0.30 and hp + amount >= max_hp * 0.30
 		if frost or burst:
-			var prev_hero = arena._act_hero
-			var prev_slot: String = arena._act_slot
+			var item_prev_hero = arena._act_hero
+			var item_prev_slot: String = arena._act_slot
 			arena._act_hero = null
 			arena._act_slot = ""
 			if frost:
@@ -2441,8 +2441,8 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 					Palette.HEAL, 16)
 				Fx.ring(arena, global_position, Palette.with_alpha(Palette.HEAL, 0.8),
 					radius + 30.0, 0.5, 4.0)
-			arena._act_hero = prev_hero
-			arena._act_slot = prev_slot
+			arena._act_hero = item_prev_hero
+			arena._act_slot = item_prev_slot
 
 	# Elämänimu/loitsuimu: lyöjä parantuu osuudella lopullisesta vahingosta.
 	# Verikuu tuplaa imun kun lyöjä on alle 35 % HP:sta.

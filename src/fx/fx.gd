@@ -655,11 +655,11 @@ class SignatureFx:
 				draw_circle(Vector2.RIGHT.rotated(PI * 1.72) * reach * 0.66, reach * 0.13,
 					Palette.with_alpha(Palette.glow(Color("5ac8ff"), 1.6), alpha))
 				for j in range(8):
-					var a := TAU * j / 8.0 - f * 2.2
+					var ang := TAU * j / 8.0 - f * 2.2
 					var pts := PackedVector2Array()
 					for k in range(5):
 						var kf := float(k) / 4.0
-						pts.append(Vector2.RIGHT.rotated(a + kf * 0.9)
+						pts.append(Vector2.RIGHT.rotated(ang + kf * 0.9)
 							* reach * lerpf(0.92, 0.14, kf))
 					draw_polyline(pts, Palette.with_alpha(team_color, alpha * 0.62), 2.5)
 			_:
