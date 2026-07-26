@@ -4,27 +4,37 @@ extends Hero
 ## (paljon enemmän kuin parantaa), tukahduttaa vihollisten liikkeen ja kyvyt.
 ## Passiivi: lähetä vartioiva kaikupulssi, joka kilpiää haavoittuneimman
 ## liittolaisen tasaisin väliajoin.
+##
+## TASAPAINO (72 ottelun mittaus): Hush vaimensi 1164 ottelussa ja teki 167
+## vahinkoa/min — kontrollituki, jonka kontrolli ei ratkaissut mitään. Kilvet
+## kaksinkertaistettiin ja ne skaalautuvat nyt tasolla ja kykyvahingolla
+## (support_power); kenttä puree kovempaa ja Suuri Vaimennus tainnuttaa
+## pidempään. Ulti pysyy tarkoituksella VAHINGOTTOMANA: identiteetti on
+## kontrolli, ja arvo mitataan CC-sekunneissa.
 
-const SHIELD_AMOUNT := 65.0          # a1: iso kilpi (identiteetti: kilpi >> heal)
-const SHIELD_DUR := 5.0
-const SHIELD_HEAL := 14.0            # a1: pieni paikkaus kilven päälle
+const SHIELD_AMOUNT := 130.0         # a1: iso kilpi (oli 65; identiteetti: kilpi >> heal)
+const SHIELD_DUR := 5.5
+const SHIELD_HEAL := 30.0            # a1: paikkaus kilven päälle (oli 14)
 const SHIELD_RANGE := 520.0
 
-const FIELD_RADIUS := 132.0          # a2: dissonanssikenttä
+const FIELD_RADIUS := 140.0          # a2: dissonanssikenttä
 const FIELD_DUR := 4.5
 const FIELD_SLOW := 0.55
-const FIELD_DPS := 12.0
+const FIELD_DPS := 26.0              # a2: kentän kalvaminen (oli 12)
 
 const ULT_RADIUS := 260.0            # ult: Suuri Vaimennus
 const ULT_RANGE := 560.0
-const ULT_STUN := 0.65
+const ULT_STUN := 0.8                # ult: tainnutus (oli 0.65)
 const ULT_ROOT := 1.25
 const ULT_SILENCE := 3.0
 
 const PULSE_INTERVAL := 3.5          # passiivi: kilpipulssin väli
-const PULSE_SHIELD := 16.0
+const PULSE_SHIELD := 34.0           # passiivi: pulssikilpi (oli 16)
 const PULSE_DUR := 3.0
 const PULSE_RANGE := 260.0
+
+const DODGE_SHIELD := 70.0           # väistö: haamukellon jättämä kilpi (oli 40)
+const BASIC_DMG := 19.0              # perus: kaikuisku (oli 13)
 
 var _pulse_timer := 0.0
 
@@ -73,7 +83,7 @@ func _basic(dir: Vector2) -> void:
 	Fx.spark(arena, global_position + dir * 24.0, Palette.glow(hero_color(), 1.4))
 	Projectile.launch(self, global_position + dir * 28.0, dir, {
 		"speed": 820.0,
-		"dmg": 13.0,
+		"dmg": BASIC_DMG,
 		"radius": 11.0,
 		"life": 0.9,
 		"kb": 90.0,
@@ -92,8 +102,9 @@ func _ability1(_dir: Vector2) -> void:
 	AudioMgr.play("shield")
 	if target != self:
 		Fx.beam(arena, global_position, target.global_position, Palette.glow(hero_color(), 1.3))
-	target.add_shield(SHIELD_AMOUNT, SHIELD_DUR, self)
-	target.heal_hp(SHIELD_HEAL, self)
+	var power := support_power()
+	target.add_shield(SHIELD_AMOUNT * power, SHIELD_DUR, self)
+	target.heal_hp(SHIELD_HEAL * power, self)
 	Fx.ring(arena, target.global_position, Palette.glow(Palette.SHIELD, 1.5), 62.0, 0.4)
 	arena.popup(target.global_position + Vector2(0, -70), "SUOJATTU", Palette.SHIELD, 16)
 
@@ -157,7 +168,7 @@ func _spawn_field(pos: Vector2) -> void:
 func _dodge_action(dir: Vector2) -> void:
 	dash(dir, 780.0, 0.45, true, true)   # iframes koko liu'un ajan = immuniteetti
 	apply_haste(1.35, 1.3)
-	add_shield(40.0, 2.2, self)
+	add_shield(DODGE_SHIELD * support_power(), 2.2, self)
 	AudioMgr.play("dash", 0.1, 4.0)
 	Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.5), 52.0, 0.4)
 	Fx.dust(arena, global_position)
@@ -225,12 +236,13 @@ func _passive_update(delta: float) -> void:
 		return
 	var target: Hero = null
 	var worst := 1.0
+	var amount := PULSE_SHIELD * support_power()
 	for ally in arena.alive_allies(team):
 		if ally.global_position.distance_to(global_position) > PULSE_RANGE:
 			continue
 		# Ohita liittolaiset joilla on jo merkittävä kilpi: add_shield ylikirjoittaa
 		# keston, joten pieni pulssi lyhentäisi Suojasoinnun ison kilven kestoa.
-		if ally.shield_hp >= PULSE_SHIELD:
+		if ally.shield_hp >= amount:
 			continue
 		var frac: float = ally.hp / ally.max_hp
 		if frac < worst:
@@ -240,7 +252,7 @@ func _passive_update(delta: float) -> void:
 		_pulse_timer = PULSE_INTERVAL - 0.25   # ei täyttä nollausta -> kevyt uudelleenyritys, ei joka-framen skannaus
 		return
 	_pulse_timer = 0.0
-	target.add_shield(PULSE_SHIELD, PULSE_DUR, self)
+	target.add_shield(amount, PULSE_DUR, self)
 	Fx.ring(arena, target.global_position, Palette.with_alpha(Palette.SHIELD, 0.8), 40.0, 0.35)
 
 

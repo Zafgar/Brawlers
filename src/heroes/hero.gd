@@ -527,6 +527,16 @@ func combat_damage_mult() -> float:
 	return mult
 
 
+## Tuen anti kasvaa ottelun mittaan samalla logiikalla kuin kantajan vahinko:
+## tasokasvu (level_spell_mult) ja itemien kykyvahinko (ap). Mitattu ongelma
+## oli juuri tämä — parannus skaalautui VAIN kykyrankilla (katto 1.3x), joten
+## tuen panos jäätyi minuutin viiteen samalla kun kantajat kolminkertaistuivat.
+## Kykypaikan ranki ja itemien hoivateho tulevat päälle heal_hp:ssä ja
+## add_shieldissä, joten niitä EI kerrota täällä uudestaan.
+func support_power() -> float:
+	return level_spell_mult * (1.0 + item_stat("ap"))
+
+
 # --- Bottien kykypisteet ---
 
 ## Botin rankkausjärjestys (ylikirjoitetaan sankarissa). Ulti otetaan aina

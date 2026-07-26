@@ -5,17 +5,29 @@ extends Hero
 ## vapauta-alue, joka buffaa sisällä olevien liittolaisten vahinkoa ja vauhtia.
 ## Botit käyttävät säteitä kertapurskeina ja ultin välittömästi.
 
+## TASAPAINO (72 ottelun mittaus): Prisman voitto-% oli 21 — säteet olivat
+## liian pieniä ratkaisemaan mitään. Vahinko ja parannus nostettiin, ja
+## parannus skaalautuu nyt tasolla ja kykyvahingolla (support_power).
+## Loistokehä jättää lisäksi pysyvän hidastusalueen: Prisma on aluetuki, joka
+## päättää MISSÄ taistellaan.
+
 const BEAM_RANGE := 430.0
 const BEAM_WIDTH := 26.0
-const BEAM_DPS := 30.0             # matalampi vahinko (oli 55, aika OP)
-const BEAM_HPS := 46.0
+const BEAM_DPS := 42.0             # polttosäde (oli 30)
+const BEAM_HPS := 78.0             # hoitosäde (oli 46)
 const BEAM_SLOW := 0.5             # voimakkaampi hidastus (0.5 = puolinopeus)
 const BEAM_TICK := 0.15            # vaikutus tikeittäin (ei popup-spämmiä)
 const MANA_DMG_PER_SEC := 30.0     # polttosäde kuluttaa enemmän manaa
-const MANA_HEAL_PER_SEC := 18.0    # hoitosäde kuluttaa vähemmän
+const MANA_HEAL_PER_SEC := 26.0    # hoitosäde: isompi hoito, isompi hinta
+
+const BURST_DMG := 34.0            # botti-vara: polttosäteen kertapurske (oli 13)
+const BURST_HEAL := 80.0           # botti-vara: hoitosäteen kertapurske (oli 30)
+const BASIC_DMG := 18.0            # perus: valonsäde (oli 12)
 
 const ULT_RADIUS := 220.0
 const ULT_DUR := 6.0
+const ULT_SHIELD := 70.0           # ult: kilpi kehän sisällä oleville
+const ULT_SLOW := 0.65             # ult: kehä hidastaa vihollisia koko kestonsa
 
 var _beam_tick := 0.0
 
@@ -41,7 +53,7 @@ func _basic(dir: Vector2) -> void:
 	visual.attack_swing()
 	Projectile.launch(self, global_position + dir * 26.0, dir, {
 		"speed": 920.0,
-		"dmg": 12.0,
+		"dmg": BASIC_DMG,
 		"radius": 9.0,
 		"life": 0.7,
 		"kb": 70.0,
@@ -71,10 +83,11 @@ func _channel_tick(slot: String, delta: float) -> void:
 			enemy.apply_slow(BEAM_SLOW, 0.4)
 			Fx.spark(arena, enemy.global_position, Palette.glow(hero_color(), 1.4))
 	else:
+		var power := support_power()
 		for ally in _beam_targets(0, aim):
 			if ally == self:
 				continue
-			ally.heal_hp(BEAM_HPS * BEAM_TICK, self)
+			ally.heal_hp(BEAM_HPS * BEAM_TICK * power, self)
 
 
 func _channel_end(_slot: String) -> void:
@@ -88,7 +101,7 @@ func _ability1(dir: Vector2) -> void:
 	Fx.beam(arena, global_position + dir * 20.0, global_position + dir * BEAM_RANGE,
 		Palette.glow(hero_color(), 1.4), 8.0)
 	for enemy in _beam_targets(1, dir):
-		deal_damage_to(enemy, 13.0, 0.0)
+		deal_damage_to(enemy, BURST_DMG, 0.0)
 		enemy.apply_slow(BEAM_SLOW, 1.0)
 
 
@@ -104,10 +117,11 @@ func _ability2(_dir: Vector2) -> void:
 	AudioMgr.play("heal", 0.1)
 	Fx.beam(arena, global_position + beam_dir * 20.0, global_position + beam_dir * BEAM_RANGE,
 		Color("6affa0"), 8.0)
+	var power := support_power()
 	for ally in _beam_targets(0, beam_dir):
 		if ally == self:
 			continue
-		ally.heal_hp(30.0, self)
+		ally.heal_hp(BURST_HEAL * power, self)
 
 
 func _beam_targets(rel: int, dir: Vector2) -> Array:
@@ -158,17 +172,28 @@ func _ult_preview_radius() -> float:
 	return ULT_RADIUS
 
 
-## Loistokehä: alueen sisällä olevat liittolaiset saavat lisää vahinkoa ja
-## vauhtia. (Punainen buffi = +vahinko, haste = +nopeus.)
+## Loistokehä: alueen sisällä olevat liittolaiset saavat lisää vahinkoa, vauhtia
+## ja kilven. (Punainen buffi = +vahinko, haste = +nopeus.) Kehä jää maahan
+## hidastusalueeksi: Prisma päättää missä taistelu käydään.
 func _ultimate(_dir: Vector2) -> void:
 	arena.popup(global_position + Vector2(0, -84), "LOISTOKEHÄ!", Palette.glow(hero_color(), 1.5), 26)
 	AudioMgr.play("blessing", 0.05, -2.0)
 	Fx.ring(arena, global_position, Palette.glow(hero_color(), 1.6), ULT_RADIUS, 0.8, 8.0)
 	Fx.burst(arena, global_position, Palette.with_alpha(hero_color(), 0.7), 20, 300.0, 0.6, 6.0)
+	var power := support_power()
 	for ally in arena.heroes_in_circle(global_position, ULT_RADIUS, team):
 		ally.red_buff = maxf(ally.red_buff, ULT_DUR)
 		ally.apply_haste(1.3, ULT_DUR)
+		if ally != self and not ally.is_unit:
+			ally.add_shield(ULT_SHIELD * power, 4.0, self)
 		Fx.ring(arena, ally.global_position, Palette.glow(hero_color(), 1.4), 46.0, 0.5)
+	Zone.spawn(self, global_position, {
+		"type": "slow",
+		"radius": ULT_RADIUS,
+		"dur": ULT_DUR,
+		"slow_f": ULT_SLOW,
+		"color": hero_color(),
+	})
 
 
 ## Tasoskaalaus: sädetuki — säteet skaalautuvat, runko pysyy hauraana.
