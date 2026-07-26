@@ -18,6 +18,7 @@ var detected: Array = []         # säteellä olevat vihollissankarit (PaneHud l
 
 var _time := 0.0
 var _detect_t := 0.0
+var _seen: Dictionary = {}       # instanssi-id -> nähty viime tikillä (reunatunnistus)
 
 
 func setup(p_arena, p_owner) -> void:
@@ -42,6 +43,9 @@ func _physics_process(delta: float) -> void:
 	_time += delta
 	age += delta
 	if age >= LIFETIME:
+		# Vartijan sammuminen on taktinen tieto: se kuuluu omistajalle.
+		if not Game.simulating:
+			AudioMgr.play("ward_expire", 0.05, -9.0, global_position)
 		arena.wards.erase(self)
 		queue_free()
 		return
@@ -50,9 +54,21 @@ func _physics_process(delta: float) -> void:
 	if _detect_t <= 0.0:
 		_detect_t = 0.25
 		detected = []
+		var fresh: Dictionary = {}
+		var new_contact := false
 		for enemy in arena.enemy_heroes(team):
-			if enemy.global_position.distance_to(global_position) <= DETECT_RADIUS:
-				detected.append(enemy)
+			if enemy.global_position.distance_to(global_position) > DETECT_RADIUS:
+				continue
+			detected.append(enemy)
+			var eid: int = enemy.get_instance_id()
+			fresh[eid] = true
+			if not _seen.has(eid):
+				new_contact = true
+		_seen = fresh
+		# Vain UUSI kontakti soi — muuten säteellä seisova vihollinen piippaisi
+		# neljä kertaa sekunnissa.
+		if new_contact and not Game.simulating:
+			AudioMgr.play("ward_spot", 0.0, -8.0)
 	if arena.visual_position_active(global_position, 560.0):
 		queue_redraw()
 

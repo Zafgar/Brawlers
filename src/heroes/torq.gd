@@ -71,7 +71,7 @@ func _basic(dir: Vector2) -> void:
 	Fx.slash(arena, global_position, d, BASIC_REACH, 0.86, Palette.glow(POLE_S, 1.5))
 	Fx.flash(arena, global_position + d * BASIC_REACH * 0.72,
 		Palette.glow(STEEL, 1.5), 32.0, 0.16)
-	AudioMgr.play("titan_punch", 0.08, -8.0, global_position)
+	AudioMgr.play("torq_hammer", 0.08, -8.0, global_position)
 	for enemy in arena.alive_enemies(team):
 		var off: Vector2 = enemy.global_position - global_position
 		var dist := off.length()
@@ -97,7 +97,7 @@ func _ability1(dir: Vector2) -> void:
 		"life": HOOK_RANGE / 1150.0, "kb": 0.0, "color": POLE_S,
 		"visual": "torq_hook", "on_hit": Callable(self, "_hook_hit"),
 	})
-	AudioMgr.play("titan_launch", 0.08, -5.0, global_position)
+	AudioMgr.play("torq_hook", 0.08, -5.0, global_position)
 	controller_rumble(0.22, 0.42, 0.12)
 
 
@@ -118,7 +118,7 @@ func _hook_hit(target: Hero, _projectile: Projectile) -> void:
 	Fx.beam(arena, global_position, target.global_position, Palette.glow(POLE_S, 1.6), 8.0)
 	Fx.flash(arena, target.global_position, Palette.glow(POLE_N, 1.5), 40.0, 0.22)
 	Fx.burst(arena, target.global_position, Palette.glow(STEEL, 1.5), 10, 220.0, 0.3, 3.5)
-	AudioMgr.play("titan_grab", 0.09, -5.0, target.global_position)
+	AudioMgr.play("torq_hook_hit", 0.09, -5.0, target.global_position)
 	controller_rumble(0.4, 0.62, 0.16)
 
 
@@ -129,8 +129,8 @@ func _ability2(_dir: Vector2) -> void:
 	Fx.vortex(arena, global_position, Palette.glow(POLE_S, 1.55), LOCK_RADIUS, 0.6)
 	Fx.ring(arena, global_position, Palette.glow(POLE_N, 1.5), LOCK_RADIUS, 0.5, 7.0)
 	Fx.ring(arena, global_position, Palette.glow(POLE_S, 1.5), LOCK_RADIUS * 0.55, 0.42, 5.0)
-	AudioMgr.play("zap", 0.1, -4.0, global_position)
-	AudioMgr.play("guard_up", 0.08, -9.0, global_position)
+	AudioMgr.play("torq_lock", 0.1, -4.0, global_position)
+	AudioMgr.play("torq_hammer", 0.08, -9.0, global_position)
 	arena.shake(0.22)
 	controller_rumble(0.55, 0.8, 0.22)
 	_field_glow = 1.0
@@ -204,8 +204,8 @@ func _ultimate(dir: Vector2) -> void:
 		Fx.flash(arena, target + Vector2(pole * ULT_RADIUS * 0.62, 0.0),
 			Palette.glow(POLE_N if pole > 0.0 else POLE_S, 1.6), 66.0, 0.45)
 	arena.popup(target + Vector2(0, -ULT_RADIUS - 26), "NAPAKENTTÄ!", POLE_S, 25)
-	AudioMgr.play("ult", 0.12, -2.0, target)
-	AudioMgr.play("zap", 0.09, -4.0, target)
+	AudioMgr.play("torq_well", 0.12, -2.0, target)
+	AudioMgr.play("torq_hook_hit", 0.09, -4.0, target)
 	arena.shake(0.4)
 	controller_rumble(0.7, 0.95, 0.35)
 	_field_glow = 1.0

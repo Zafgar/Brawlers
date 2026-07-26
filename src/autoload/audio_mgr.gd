@@ -520,6 +520,7 @@ func _synth_all() -> void:
 	_deliver_sfx(SoundBank.core_batch())
 	_deliver_sfx(SoundBank.world_batch())
 	_deliver_sfx(SoundBank.hero_batch())
+	_deliver_sfx(SoundBank.extra_batch())
 
 
 ## Musiikkiraita normalisoidaan omaan tavoitteeseensa ja luupataan.

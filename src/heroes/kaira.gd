@@ -81,7 +81,7 @@ func _basic(dir: Vector2) -> void:
 	visual.attack_swing()
 	ability_signature("kaira", 118.0, d)
 	Fx.slash(arena, global_position, d, BASIC_REACH, 0.8, Palette.glow(MOLTEN, 1.55))
-	AudioMgr.play("rock", 0.08, -8.0, global_position)
+	AudioMgr.play("kaira_drill", 0.08, -8.0, global_position)
 	var healed := 0.0
 	for enemy in arena.alive_enemies(team):
 		var off: Vector2 = enemy.global_position - global_position
@@ -119,8 +119,8 @@ func _ability1(dir: Vector2) -> void:
 	Fx.beam(arena, from, finish, Palette.glow(CORE, 1.4), 8.0)
 	Fx.burst(arena, finish, Palette.glow(EMBER, 1.6), 16, 300.0, 0.4, 5.0)
 	Fx.dust(arena, from)
-	AudioMgr.play("titan_launch", 0.08, -3.0, from)
-	AudioMgr.play("fire_whoosh", 0.06, -7.0, from)
+	AudioMgr.play("kaira_charge", 0.08, -3.0, from)
+	AudioMgr.play("kaira_lava", 0.06, -7.0, from)
 	controller_rumble(0.35, 0.62, 0.18)
 	var side := d.orthogonal()
 	var healed := 0.0
@@ -163,8 +163,8 @@ func _ability2(_dir: Vector2) -> void:
 		Fx.beam(arena, global_position + ray * 42.0,
 			global_position + ray * SLAM_RADIUS * 0.94, Palette.glow(EMBER, 1.55), 6.0)
 	Fx.burst(arena, global_position, Palette.glow(MOLTEN, 1.6), 22, 380.0, 0.5, 6.0)
-	AudioMgr.play("quake", 0.1, -4.0, global_position)
-	AudioMgr.play("slam", 0.08, -6.0, global_position)
+	AudioMgr.play("kaira_slam", 0.1, -4.0, global_position)
+	AudioMgr.play("kaira_lava", 0.08, -6.0, global_position)
 	arena.shake(0.32)
 	controller_rumble(0.55, 0.85, 0.22)
 	var hits := 0
@@ -195,7 +195,7 @@ func _dodge_action(dir: Vector2) -> void:
 	ability_signature("kaira", 130.0, d)
 	Fx.dust(arena, global_position)
 	Fx.burst(arena, global_position, Palette.darker(MOLTEN, 0.45), 14, 210.0, 0.4, 5.0)
-	AudioMgr.play("rock", 0.09, -5.0, global_position)
+	AudioMgr.play("kaira_drill", 0.09, -5.0, global_position)
 	controller_rumble(0.3, 0.45, 0.14)
 
 
@@ -204,7 +204,7 @@ func _dodge_action(dir: Vector2) -> void:
 func _burrow_surface() -> void:
 	Fx.ring(arena, global_position, Palette.glow(EMBER, 1.6), BURROW_BLAST, 0.4, 7.0)
 	Fx.burst(arena, global_position, Palette.glow(MOLTEN, 1.6), 16, 300.0, 0.42, 5.5)
-	AudioMgr.play("quake", 0.08, -9.0, global_position)
+	AudioMgr.play("kaira_slam", 0.08, -9.0, global_position)
 	_act("dodge")
 	for enemy in arena.alive_enemies(team):
 		var off: Vector2 = enemy.global_position - global_position
@@ -243,8 +243,8 @@ func _ultimate(dir: Vector2) -> void:
 		Palette.team(team), ULT_HALF_WIDTH, ULT_DELAY)
 	arena.popup(global_position + Vector2(0, -92), "SULAKITA!",
 		Palette.glow(EMBER, 1.6), 26)
-	AudioMgr.play("ult", 0.12, -2.0, global_position)
-	AudioMgr.play("quake", 0.08, -5.0, global_position)
+	AudioMgr.play("kaira_charge", 0.12, -2.0, global_position)
+	AudioMgr.play("kaira_slam", 0.08, -5.0, global_position)
 	controller_rumble(0.8, 1.0, 0.4)
 	_open_fissure(origin, d, origin.distance_to(finish))
 
@@ -257,7 +257,7 @@ func _open_fissure(origin: Vector2, d: Vector2, span: float) -> void:
 	var side := d.orthogonal()
 	var finish := origin + d * span
 	arena.shake(0.6)
-	AudioMgr.play("boulder_ult", 0.05, -1.0, origin)
+	AudioMgr.play("kaira_fissure", 0.05, -1.0, origin)
 	Fx.beam(arena, origin, finish, Palette.glow(MOLTEN, 1.6), 62.0)
 	Fx.beam(arena, origin, finish, Palette.glow(CORE, 1.7), 34.0)
 	for i in range(7):

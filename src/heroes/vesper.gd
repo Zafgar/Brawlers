@@ -76,7 +76,7 @@ func _basic(dir: Vector2) -> void:
 		"kb": 55.0, "color": PHOSPHOR, "visual": "vesper_bolt",
 		"on_hit": Callable(self, "_bolt_hit"),
 	})
-	AudioMgr.play("bow", 0.06, -11.0, global_position)
+	AudioMgr.play("vesper_bolt", 0.06, -11.0, global_position)
 
 
 func _bolt_hit(target: Hero, _projectile: Projectile) -> void:
@@ -98,7 +98,7 @@ func _ability1(dir: Vector2) -> void:
 		"life": SPIKE_RANGE / 1320.0, "kb": 80.0, "pierce": 1, "color": BURN,
 		"visual": "vesper_tracker", "on_hit": Callable(self, "_spike_hit"),
 	})
-	AudioMgr.play("bow_charged", 0.08, -5.0, global_position)
+	AudioMgr.play("vesper_spike", 0.08, -5.0, global_position)
 	controller_rumble(0.18, 0.42, 0.12)
 
 
@@ -112,7 +112,7 @@ func _spike_hit(target: Hero, _projectile: Projectile) -> void:
 	Fx.ring(arena, gp, Palette.glow(PHOSPHOR, 1.5), 52.0, 0.35, 4.0)
 	Fx.beam(arena, gp + Vector2(-30, 0), gp + Vector2(30, 0), Palette.glow(BURN, 1.5), 3.0)
 	Fx.beam(arena, gp + Vector2(0, -30), gp + Vector2(0, 30), Palette.glow(BURN, 1.5), 3.0)
-	AudioMgr.play("mark", 0.07, -6.0, gp)
+	AudioMgr.play("vesper_mark", 0.07, -6.0, gp)
 
 
 ## Kyky 2: Teloitus — raskas fosforipultti, jonka vahinko kasvaa sen mukaan
@@ -127,7 +127,7 @@ func _ability2(dir: Vector2) -> void:
 		"visual": "vesper_exec", "on_hit": Callable(self, "_execute_hit"),
 	})
 	Fx.flash(arena, global_position + d * 26.0, Palette.glow(BURN, 1.7), 34.0, 0.18)
-	AudioMgr.play("bow_charged", 0.06, 0.0, global_position)
+	AudioMgr.play("vesper_execute", 0.06, 0.0, global_position)
 	controller_rumble(0.3, 0.6, 0.16)
 
 
@@ -150,10 +150,10 @@ func _execute_hit(target: Hero, _projectile: Projectile) -> void:
 		# Vain merkityksellinen tapahtuma saa popupin: saalis kaatui.
 		cd.a2 = maxf(cd.a2 - EXEC_REFUND, 0.0)
 		arena.popup(gp + Vector2(0, -70), "TELOITUS!", Palette.glow(BURN, 1.6), 22)
-		AudioMgr.play("mark", 0.06, 2.0, gp)
+		AudioMgr.play("vesper_kill", 0.06, 2.0, gp)
 		controller_rumble(0.45, 0.8, 0.2)
 	else:
-		AudioMgr.play("mark", 0.07, -4.0, gp)
+		AudioMgr.play("vesper_mark", 0.07, -4.0, gp)
 
 
 ## Väistö: Fosforiloikka — pitkä loikka osumattomana. Jahtaaja pitää itse
@@ -165,7 +165,7 @@ func _dodge_action(dir: Vector2) -> void:
 	ability_signature("vesper", 125.0, d)
 	Fx.ring(arena, global_position, Palette.glow(PHOSPHOR, 1.5), 74.0, 0.4, 3.5)
 	Fx.burst(arena, global_position, Palette.with_alpha(BURN, 0.7), 10, 180.0, 0.4, 3.0)
-	AudioMgr.play("blink", 0.08, -7.0, global_position)
+	AudioMgr.play("dash", 0.08, -7.0, global_position)
 	controller_rumble(0.2, 0.3, 0.12)
 
 
@@ -204,8 +204,8 @@ func _ultimate(dir: Vector2) -> void:
 		Palette.with_alpha(BURN, 0.6), 3.0)
 	Fx.beam(arena, origin - side * 26.0, finish - side * 26.0,
 		Palette.with_alpha(BURN, 0.6), 3.0)
-	AudioMgr.play("ult", 0.1, -3.0, global_position)
-	AudioMgr.play("quill_ult", 0.05, -2.0, global_position)
+	AudioMgr.play("vesper_rail", 0.1, -3.0, global_position)
+	AudioMgr.play("vesper_mark", 0.05, -2.0, global_position)
 	arena.shake(0.45)
 	controller_rumble(0.5, 0.85, 0.3)
 	_hunt_glow = 1.0

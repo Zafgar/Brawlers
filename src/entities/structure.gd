@@ -394,11 +394,11 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 		var siege_range: float = NEXUS_LASER_RANGE if kind == Kind.NEXUS else SHOT_RANGE
 		# 1) Kantaman ulkopuolelta ei satu. Piiritys vaatii riskin ottamista.
 		if source.global_position.distance_to(global_position) > siege_range + radius:
-			_siege_feedback("KANTAMAN ULKOPUOLELLA")
+			_siege_feedback("KANTAMAN ULKOPUOLELLA", "siege_blocked")
 			return 0.0
 		# 2) Aluevahinko ei kaada rakennuksia lainkaan.
 		if source.damage_is_aoe:
-			_siege_feedback("EI ALUEVAHINKOA")
+			_siege_feedback("EI ALUEVAHINKOA", "siege_immune")
 			return 0.0
 		# 3) Kyvyt tekevät vain murto-osan — perusisku on piiritysase.
 		if source._cast_context in ["a1", "a2", "ult"]:
@@ -425,11 +425,13 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 ## reunalle, jotta "miksi tämä ei mene rikki" ei jää arvailun varaan. Kuristettu
 ## (SIEGE_FEEDBACK_CD), koska jatkuva tuli kutsuisi tätä kymmeniä kertoja
 ## sekunnissa. Ei piirretä eikä laskettu simulaatiossa.
-func _siege_feedback(text: String) -> void:
+func _siege_feedback(text: String, sound: String) -> void:
 	if Game.simulating or arena == null or _siege_hint_cd > 0.0:
 		return
 	_siege_hint_cd = SIEGE_FEEDBACK_CD
 	arena.popup(global_position + Vector2(0, -radius - 22.0), text, Palette.SHIELD, 15)
+	# Kuiva "thunk" kertoo korvalle saman kuin teksti silmälle.
+	AudioMgr.play(sound, 0.04, -8.0, global_position)
 	Fx.ring(arena, global_position, Palette.with_alpha(Color.WHITE, 0.75),
 		radius + 12.0, 0.32, 3.0)
 
@@ -476,6 +478,8 @@ func _knockout(source: Hero) -> void:
 		if not Game.simulating:
 			AudioMgr.duck_music(10.0, 1.5)
 		AudioMgr.play("nexus_destroy", 0.01, 1.0)
+	elif kind == Kind.CRYSTAL:
+		AudioMgr.play("crystal_break", 0.02, -1.0, global_position)
 	else:
 		AudioMgr.play("tower_destroy", 0.035, -2.0, global_position)
 	arena.shake(0.5)

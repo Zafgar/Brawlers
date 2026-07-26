@@ -86,7 +86,7 @@ func _basic(dir: Vector2) -> void:
 		"kb": 55.0, "homing_rate": 1.2, "color": ORCHID,
 		"visual": "myria_wisp", "on_hit": Callable(self, "_spore_hit"),
 	})
-	AudioMgr.play("light", 0.05, -10.0, global_position)
+	AudioMgr.play("myria_wisp", 0.05, -10.0, global_position)
 
 
 func _spore_hit(target: Hero, _projectile: Projectile) -> void:
@@ -119,7 +119,7 @@ func _ability1(dir: Vector2) -> void:
 		Fx.beam(arena, target, target + ray * ORCHID_RADIUS * 0.62,
 			Palette.with_alpha(ORCHID, 0.7), 4.0)
 	Fx.flash(arena, target, Palette.glow(NECTAR, 1.5), 42.0, 0.3)
-	AudioMgr.play("vine", 0.08, -7.0, target)
+	AudioMgr.play("myria_plant", 0.08, -7.0, target)
 
 
 ## Kyky 2: Kukinta — kaikki istutetut orkideat puhkeavat kerralla. Jokainen
@@ -128,7 +128,7 @@ func _ability1(dir: Vector2) -> void:
 func _ability2(_dir: Vector2) -> void:
 	_prune_orchids()
 	ability_signature("myria", 175.0, aim)
-	AudioMgr.play("luma_bloom", 0.09, -3.0, global_position)
+	AudioMgr.play("myria_bloom", 0.09, -3.0, global_position)
 	controller_rumble(0.4, 0.7, 0.2)
 	_bloom_glow = 1.0
 	var popped := 0
@@ -164,7 +164,7 @@ func _dodge_action(dir: Vector2) -> void:
 	ability_signature("myria", 128.0, d)
 	Fx.ring(arena, global_position, Palette.glow(NECTAR, 1.5), 82.0, 0.42, 4.0)
 	Fx.burst(arena, global_position, Palette.with_alpha(ORCHID, 0.8), 14, 190.0, 0.5, 4.0)
-	AudioMgr.play("pickup", 0.07, -6.0, global_position)
+	AudioMgr.play("myria_drift", 0.07, -6.0, global_position)
 	controller_rumble(0.2, 0.32, 0.12)
 
 
@@ -227,8 +227,8 @@ func _ultimate(dir: Vector2) -> void:
 		_orchids.append(flower)
 		Fx.flash(arena, p, Palette.glow(NECTAR, 1.6), 44.0, 0.35)
 	arena.popup(target + Vector2(0, -ULT_RADIUS - 26), "ORKIDEAPUUTARHA!", ORCHID, 25)
-	AudioMgr.play("ult", 0.12, -3.0, target)
-	AudioMgr.play("luma_bloom", 0.07, -6.0, target)
+	AudioMgr.play("myria_garden", 0.12, -3.0, target)
+	AudioMgr.play("myria_bloom", 0.07, -6.0, target)
 	arena.shake(0.4)
 	controller_rumble(0.6, 0.9, 0.34)
 	_bloom_glow = 1.0

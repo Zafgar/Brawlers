@@ -243,40 +243,40 @@ func _play_cues() -> void:
 			_cue("t1", 0.40, "count_tick", -8.0)
 			_cue("t2", 0.72, "count_tick", -6.0)
 			_cue("t3", 1.02, "count_tick", -4.0)
-			_cue("burst", 1.15, "blessing", -1.0)
-			_cue("banner", 1.40, "crescendo", -3.0)
+			_cue("burst", 1.15, "promo_div_up", -2.0)
+			_cue("banner", 1.40, "rank_hub_confirm", -4.0)
 		"tier":
 			_cue("low", 0.15, "heartbeat", -4.0)
 			_cue("crack", 0.95, "tower_crack", -1.0)
-			_cue("break", 1.55, "tower_destroy", 0.0)
+			_cue("break", 1.55, "crystal_break", -1.0)
 			_cue("light", 1.80, "light", -2.0)
-			_cue("rise", 2.35, "ult_ready", -3.0)
-			_cue("bless", 2.70, "blessing", 0.0)
-			_cue("boom", 3.50, "crescendo", 0.0)
-			_cue("fanfare", 3.64, "score", -3.0)
+			_cue("rise", 2.35, "ult_unlock", -4.0)
+			_cue("bless", 2.70, "promo_tier_up", 0.0)
+			_cue("boom", 3.50, "crescendo", -2.0)
+			_cue("fanfare", 3.64, "promo_slot_win", -4.0)
 		"promo_start":
-			_cue("open", 0.05, "ui_open", -2.0)
+			_cue("open", 0.05, "rank_hub_open", -2.0)
 			_cue("s1", 0.50, "ui_lock", -4.0)
 			_cue("s2", 0.75, "ui_lock", -3.0)
 			_cue("s3", 1.00, "ui_lock", -2.0)
-			_cue("go", 1.40, "blessing", -2.0)
+			_cue("go", 1.40, "rank_hub_confirm", -2.0)
 		"promo_game":
-			_cue("open", 0.05, "ui_open", -4.0)
+			_cue("open", 0.05, "rank_hub_open", -5.0)
 			if bool(_last_game_won()):
-				_cue("snap", 0.55, "ui_lock", 0.0)
+				_cue("snap", 0.55, "promo_slot_win", 0.0)
 				_cue("win", 0.78, "score", -4.0)
 			else:
-				_cue("snap", 0.55, "ui_deny", -2.0)
+				_cue("snap", 0.55, "promo_slot_loss", -1.0)
 		"promo_lost":
-			_cue("open", 0.05, "ui_open", -5.0)
-			_cue("snap", 0.50, "ui_deny", -3.0)
-			_cue("fade", 1.25, "ui_back", -3.0)
+			_cue("open", 0.05, "rank_hub_open", -6.0)
+			_cue("snap", 0.50, "promo_slot_loss", -2.0)
+			_cue("fade", 1.25, "promo_failed", -2.0)
 			_cue("low", 1.40, "heartbeat", -9.0)
 		"demote":
-			_cue("back", 0.30, "ui_back", -2.0)
+			_cue("back", 0.30, "promo_demote", -2.0)
 			_cue("crack", 0.60, "tower_crack", -9.0)
 		"shield":
-			_cue("shield", 0.15, "shield", -2.0)
+			_cue("shield", 0.15, "promo_shield", -2.0)
 
 
 func _last_game_won() -> bool:

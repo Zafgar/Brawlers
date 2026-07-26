@@ -27,7 +27,7 @@ var _top_rank := 0
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	AudioMgr.play_music_pool("menu")
-	AudioMgr.play("ui_open", 0.02, -4.0)
+	AudioMgr.play("rank_hub_open", 0.02, -4.0)
 	var backdrop := MenuBackdrop.new()
 	backdrop.team_glow = true
 	add_child(backdrop)
@@ -38,7 +38,11 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	var target: float = float(int(_user().get("lp", 0)))
+	var before: float = _lp_shown
 	_lp_shown = lerpf(_lp_shown, target, clampf(delta * 4.0, 0.0, 1.0))
+	# LP-palkin täyttyminen tikittää (rekisterin toistoraja hoitaa tiheyden).
+	if absf(_lp_shown - before) > 0.25:
+		AudioMgr.play("rank_hub_lp", 0.6, -6.0)
 	queue_redraw()
 
 
@@ -108,6 +112,7 @@ func _build_buttons() -> void:
 	add_child(row)
 
 	var play := UiKit.button("PELAA RANKED", func(): _play(), 28)
+	play.focus_entered.connect(func(): AudioMgr.play("rank_hub_move", 0.05, -8.0))
 	play.custom_minimum_size = Vector2(430, 58)
 	play.add_theme_color_override("font_color", Palette.GOLD)
 	play.add_theme_color_override("font_hover_color", Palette.glow(Palette.GOLD, 1.3))
@@ -131,6 +136,7 @@ func _play() -> void:
 		AudioMgr.play("ui_deny")
 		Game.go_user_select()
 		return
+	AudioMgr.play("rank_hub_confirm", 0.02, -3.0)
 	Game.start_ranked(str(user.get("id", "")))
 
 

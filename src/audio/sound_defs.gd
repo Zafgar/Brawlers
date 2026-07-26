@@ -230,6 +230,101 @@ const DEFS := {
 	"ambient_orange_base": {"cat": "ambient", "cooldown": 1800},
 	"ambient_baron_pit": {"cat": "ambient", "gain": 1.0, "cooldown": 2200},
 	"ambient_dragon_pit": {"cat": "ambient", "gain": 1.0, "cooldown": 2200},
+
+	# --- Kauppa ---
+	"shop_open": {"cat": "ui", "gain": 1.0, "cooldown": 90},
+	"shop_close": {"cat": "ui", "cooldown": 90},
+	"shop_move": {"cat": "ui", "gain": -3.0, "cooldown": 32, "prio": 1},
+	"shop_buy": {"cat": "econ", "cooldown": 90},
+	"shop_sell": {"cat": "econ", "gain": -1.0, "cooldown": 90},
+	"shop_deny": {"cat": "econ", "gain": -1.0, "cooldown": 140},
+	"shop_legendary": {"cat": "econ", "gain": 2.0, "cooldown": 400, "prio": 3},
+
+	# --- Baronin artefakti ---
+	"artifact_drop": {"cat": "objective", "cooldown": 600, "positional": true},
+	"artifact_pickup": {"cat": "econ", "gain": 1.0, "cooldown": 400, "positional": true},
+	"artifact_lost": {"cat": "objective", "cooldown": 600, "positional": true},
+
+	# --- Vartiolyhty ---
+	"ward_place": {"cat": "econ", "gain": -1.0, "cooldown": 200, "positional": true},
+	"ward_expire": {"cat": "econ", "gain": -4.0, "cooldown": 400, "positional": true},
+	"ward_spot": {"cat": "ui", "gain": -4.0, "cooldown": 900, "prio": 1},
+
+	# --- Häive ---
+	"stealth_in": {"cat": "ability", "gain": -2.0, "cooldown": 200},
+	"stealth_out": {"cat": "ability", "gain": -3.0, "cooldown": 200},
+	"stealth_strike": {"cat": "combat", "gain": 2.0, "cooldown": 150, "prio": 2},
+
+	# --- Eteneminen ---
+	"rank_up": {"cat": "econ", "gain": -2.0, "cooldown": 160, "positional": true},
+	"ult_unlock": {"cat": "alert", "gain": -1.0, "cooldown": 800},
+
+	# --- Piiritys estetty ---
+	"siege_blocked": {"cat": "structure", "gain": -2.0, "cooldown": 500},
+	"siege_immune": {"cat": "structure", "gain": -2.0, "cooldown": 500},
+
+	# --- Kristalli ---
+	"crystal_rise": {"cat": "objective", "cooldown": 900, "positional": true},
+	"crystal_break": {"cat": "objective", "gain": 1.0, "cooldown": 900, "positional": true},
+
+	# --- Superminionit ---
+	"super_wave": {"cat": "alert", "gain": -2.0, "cooldown": 2000},
+
+	# --- Paluukanavointi ---
+	"recall_start": {"cat": "ability", "gain": -3.0, "cooldown": 300},
+	"recall_done": {"cat": "ability", "cooldown": 300},
+	"recall_cancel": {"cat": "ability", "gain": -2.0, "cooldown": 300},
+
+	# --- Lähderegen (hiljainen, toistuva) ---
+	"fountain_regen": {"cat": "ability", "gain": -9.0, "cooldown": 900, "prio": 0},
+
+	# --- Tyrmäyssarjat ---
+	"first_blood": {"cat": "alert", "gain": 1.0, "cooldown": 3000},
+	"multi_kill_2": {"cat": "alert", "cooldown": 1200},
+	"multi_kill_3": {"cat": "alert", "gain": 1.0, "cooldown": 1200},
+	"multi_kill_4": {"cat": "alert", "gain": 2.0, "cooldown": 1200},
+
+	# --- Ranked-ylennykset ja aula ---
+	"promo_div_up": {"cat": "alert", "cooldown": 600},
+	"promo_tier_up": {"cat": "alert", "gain": 2.0, "cooldown": 1500},
+	"promo_slot_win": {"cat": "alert", "gain": -2.0, "cooldown": 250},
+	"promo_slot_loss": {"cat": "alert", "gain": -2.0, "cooldown": 250},
+	"promo_failed": {"cat": "alert", "cooldown": 900},
+	"promo_demote": {"cat": "alert", "cooldown": 900},
+	"promo_shield": {"cat": "alert", "gain": -1.0, "cooldown": 600},
+	"rank_hub_open": {"cat": "ui", "gain": 1.0, "cooldown": 300},
+	"rank_hub_move": {"cat": "ui", "gain": -3.0, "cooldown": 32, "prio": 1},
+	"rank_hub_lp": {"cat": "ui", "gain": -8.0, "cooldown": 55, "prio": 0},
+	"rank_hub_confirm": {"cat": "ui", "gain": 1.0, "cooldown": 200},
+
+	# --- Kaira: repeämä ja laavalammikot ---
+	"kaira_drill": {"cat": "combat", "gain": -1.0, "cooldown": 50},
+	"kaira_charge": {"cat": "ability", "cooldown": 200},
+	"kaira_slam": {"cat": "ability", "gain": 1.0, "cooldown": 200},
+	"kaira_fissure": {"cat": "ability", "gain": 2.0, "cooldown": 400, "prio": 3},
+	"kaira_lava": {"cat": "ability", "gain": -2.0, "cooldown": 220},
+
+	# --- Torq: koukku ja magneettikaivo ---
+	"torq_hammer": {"cat": "combat", "gain": -1.0, "cooldown": 50},
+	"torq_hook": {"cat": "ability", "cooldown": 150},
+	"torq_hook_hit": {"cat": "combat", "gain": 1.0, "cooldown": 150},
+	"torq_lock": {"cat": "ability", "cooldown": 200},
+	"torq_well": {"cat": "ability", "gain": 2.0, "cooldown": 400, "prio": 3},
+
+	# --- Vesper: merkintä, teloitus ja kisko ---
+	"vesper_bolt": {"cat": "combat", "gain": -3.0, "cooldown": 45},
+	"vesper_spike": {"cat": "ability", "gain": -1.0, "cooldown": 120},
+	"vesper_mark": {"cat": "ability", "gain": -2.0, "cooldown": 90},
+	"vesper_execute": {"cat": "ability", "gain": 1.0, "cooldown": 150},
+	"vesper_kill": {"cat": "ability", "gain": 1.0, "cooldown": 200},
+	"vesper_rail": {"cat": "ability", "gain": 2.0, "cooldown": 400, "prio": 3},
+
+	# --- Myria: orkidea ja kukinta ---
+	"myria_wisp": {"cat": "combat", "gain": -3.0, "cooldown": 45},
+	"myria_plant": {"cat": "ability", "gain": -1.0, "cooldown": 120},
+	"myria_drift": {"cat": "ability", "gain": -3.0, "cooldown": 120},
+	"myria_bloom": {"cat": "ability", "gain": 1.0, "cooldown": 180},
+	"myria_garden": {"cat": "ability", "gain": 2.0, "cooldown": 400, "prio": 3},
 }
 
 

@@ -143,7 +143,7 @@ func bloom(dmg: float, blast: float) -> bool:
 		var ray := Vector2.RIGHT.rotated(TAU * i / 6.0 + _age)
 		Fx.beam(arena, global_position + ray * 18.0, global_position + ray * blast * 0.9,
 			Palette.with_alpha(Color("ffb3e6"), 0.75), 6.0)
-	AudioMgr.play("luma_bloom", 0.07, -6.0, global_position)
+	AudioMgr.play("myria_bloom", 0.07, -6.0, global_position)
 	var prev_aoe: bool = source.damage_is_aoe
 	source.damage_is_aoe = true
 	for actor in arena.heroes:

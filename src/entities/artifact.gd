@@ -53,7 +53,7 @@ func _physics_process(delta: float) -> void:
 					_deny_t = 1.0
 					arena.popup(hero.global_position + Vector2(0, -64),
 						"SINULLA ON JO ARTEFAKTI", Palette.BAD, 15)
-					AudioMgr.play("ui_back", 0.05, -8.0)
+					AudioMgr.play("shop_deny", 0.05, -8.0)
 			else:
 				_pickup(hero)
 				return
@@ -73,7 +73,7 @@ func _pickup(hero) -> void:
 	Fx.flash(arena, global_position, Palette.glow(Palette.GOLD, 1.6), 70.0, 0.4)
 	Fx.ring(arena, global_position, Palette.glow(Palette.GOLD, 1.5), 110.0, 0.6, 6.0)
 	Fx.burst(arena, global_position, Palette.glow(Palette.GOLD, 1.6), 18, 320.0, 0.6, 6.0)
-	AudioMgr.play("blessing", 0.04, -2.0, global_position)
+	AudioMgr.play("artifact_pickup", 0.03, -2.0, global_position)
 	queue_free()
 
 

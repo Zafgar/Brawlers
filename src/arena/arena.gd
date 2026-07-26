@@ -109,6 +109,10 @@ var _moba_camp_queue: Array = []
 var _moba_camps_active := false
 var _crystal_lanes: Dictionary = {}    # "team:lane" -> {team, lane, spot, timer, crystal}
 var super_minions_spawned := [0, 0]    # telemetria: superminionit per joukkue
+var _super_wave_pending := false       # tämä aalto sisälsi superminionin (äänicue)
+# Moninkertaiset tyrmäykset: tappajan instanssi-id -> [määrä, viimeisin aika].
+const MULTI_KILL_WINDOW := 10.0        # s: sarja katkeaa tämän jälkeen
+var _multi_kills: Dictionary = {}
 var crystals_broken := [0, 0]          # telemetria: murskatut kristallit per murtajajoukkue
 var first_wave_crash_time := -1.0
 var _dragon_critter = null
@@ -816,7 +820,10 @@ func _spawn_artifact(pos: Vector2, from_baron: bool) -> void:
 			"Poimi se ja rakenna legendaarinen esine kaupassa", 2.6)
 		hud.ko_feed("Legendaarinen artefakti putosi!")
 		if not Game.simulating:
-			AudioMgr.play("crescendo", 0.04, -6.0, pos)
+			AudioMgr.play("artifact_drop", 0.03, -4.0, pos)
+	elif not Game.simulating:
+		# Kantajan kaatuminen pudottaa artefaktin — aiemmin täysin mykkä hetki.
+		AudioMgr.play("artifact_lost", 0.03, -5.0, pos)
 	_sim_event("Artefakti putosi (%s)" % ("baron" if from_baron else "kantaja"))
 
 
@@ -962,8 +969,11 @@ func _moba_physics(delta: float) -> void:
 			_spawn_wave(0, lane_id)
 			_spawn_wave(1, lane_id)
 		# Oma pieni sotatorvi rytmittää laning-vaihetta ilman UI-piippausta.
+		# Superminioniaalto saa raskaamman torven: se on eri uhka.
 		if not Game.simulating:
-			AudioMgr.play("minion_wave", 0.025, -8.0)
+			AudioMgr.play("super_wave" if _super_wave_pending else "minion_wave",
+				0.025, -6.0 if _super_wave_pending else -8.0)
+		_super_wave_pending = false
 	# Varakatto: jos nexusta ei tuhota, ratkaise vähemmän vaurioituneen nexuksen
 	# eduksi.
 	time_left -= delta
@@ -1321,6 +1331,7 @@ func _spawn_wave(team: int, lane_id: String = MapMoba.BOTTOM) -> void:
 		heroes.append(sm)
 		minions.append(sm)
 		super_minions_spawned[team] += 1
+		_super_wave_pending = true
 
 
 ## Rakennus tuhottu: torni avaa nexuksen kun molemmat kaatuneet; nexus = voitto.
@@ -1489,7 +1500,7 @@ func _spawn_crystal(entry: Dictionary) -> void:
 		"Kristalli suojaa %s nexusta ja pysäyttää superminionit — tuhoa se" % Game.team_name(team), 2.4)
 	hud.ko_feed("%s sai %s-kristallin suojakseen" % [Game.team_name(team), lane])
 	if not Game.simulating:
-		AudioMgr.play("tower_guard", 0.03, -4.0, spot)
+		AudioMgr.play("crystal_rise", 0.02, -3.0, spot)
 	Fx.ring(self, spot, Palette.glow(Palette.team(team), 1.5), 150.0, 0.8, 7.0)
 	_sim_event("%s %s kristalli nousi" % [Game.team_name(team), lane])
 
@@ -1868,6 +1879,7 @@ func _start_round_intro() -> void:
 	buffs.clear()
 	artifacts.clear()
 	wards.clear()
+	_multi_kills.clear()
 	relic.reset_to_home()
 	if mode == "koth":
 		relic.control_team = -1
@@ -2001,17 +2013,48 @@ func on_hero_ko(hero: Hero, source: Hero) -> void:
 				source.profile.add_score(20.0)
 				break
 		hud.ko_feed("%s tyrmäsi %s" % [source.profile.display_name, hero.profile.display_name])
+		_register_multi_kill(source)
 		if not _first_blood:
 			_first_blood = true
 			hud.show_banner("ENSIVERI!",
 				"%s avasi tyrmäystilin" % source.profile.display_name, 1.8)
 			if not Game.simulating:
-				AudioMgr.play("crescendo", 0.05, -5.0)
+				AudioMgr.play("first_blood", 0.02, -3.0)
 			_sim_event("Ensiveri: %s (%s) tyrmäsi %s (%s)" % [
 				Game.team_name(source.team), source.hero_id,
 				Game.team_name(hero.team), hero.hero_id])
 	else:
 		hud.ko_feed("%s poistui hetkeksi" % hero.profile.display_name)
+
+
+## Moninkertainen tyrmäys: saman tappajan peräkkäiset tapot MULTI_KILL_WINDOW:n
+## sisällä nostavat sarjaa. 2/3/4+ saavat oman kiihtyvän cuen ja bannerin.
+func _register_multi_kill(source: Hero) -> void:
+	if mode != "moba" and mode != "jungle":
+		return
+	if source.is_unit or source is Structure:
+		return
+	var sid: int = source.get_instance_id()
+	var entry: Array = _multi_kills.get(sid, [0, -999.0])
+	var count: int = int(entry[0])
+	var last_t: float = float(entry[1])
+	count = count + 1 if match_elapsed - last_t <= MULTI_KILL_WINDOW else 1
+	_multi_kills[sid] = [count, match_elapsed]
+	if count < 2:
+		return
+	var titles: Dictionary = {2: "KAKSOISTAPPO!", 3: "KOLMOISTAPPO!"}
+	var title: String = String(titles.get(count, "TEURASTUS!"))
+	hud.show_banner(title, "%s — %d tyrmäystä putkeen" % [
+		source.profile.display_name, count], 1.6)
+	_sim_event("%s: %s x%d" % [title, source.hero_id, count])
+	if Game.simulating:
+		return
+	var key: String = "multi_kill_2"
+	if count == 3:
+		key = "multi_kill_3"
+	elif count >= 4:
+		key = "multi_kill_4"
+	AudioMgr.play(key, 0.02, -3.0)
 
 
 func on_hero_respawn(_hero: Hero) -> void:

@@ -482,7 +482,11 @@ func rank_up(slot: String) -> bool:
 		Fx.ring(arena, global_position, Palette.with_alpha(Palette.GOLD, 0.85),
 			radius + 24.0, 0.4, 4.0)
 		if profile != null and profile.is_human():
-			AudioMgr.play("blessing", 0.04, -5.0, global_position)
+			# Ultin ensimmäinen avautuminen on eri tapahtuma kuin tavallinen rankki.
+			if slot == "ult" and new_rank == 1:
+				AudioMgr.play("ult_unlock", 0.02, -3.0)
+			else:
+				AudioMgr.play("rank_up", 0.04, -5.0, global_position)
 	# Täysi lataus odotti vain avausta -> "ulti valmis" heti avattaessa.
 	if slot == "ult" and new_rank == 1 and ult_charge >= 100.0:
 		_announce_ult_ready()
@@ -991,7 +995,10 @@ func _tick_status(delta: float) -> void:
 	# Itemiaktiivit: sisäiset jäähdytykset, häive ja väijytyskritin ikkuna.
 	for active_id in item_active_cd:
 		item_active_cd[active_id] = maxf(float(item_active_cd[active_id]) - delta, 0.0)
+	var was_stealth: bool = stealth_timer > 0.0
 	stealth_timer = maxf(stealth_timer - delta, 0.0)
+	if was_stealth and stealth_timer <= 0.0 and not Game.simulating:
+		AudioMgr.play("stealth_out", 0.05, -7.0, global_position)
 	_stealth_strike_t = maxf(_stealth_strike_t - delta, 0.0)
 	if _stealth_strike_t <= 0.0:
 		stealth_strike = false
@@ -1620,6 +1627,8 @@ func _fountain_regen(delta: float) -> void:
 	_fountain_popup_t -= delta
 	if _fountain_fx_t <= 0.0:
 		_fountain_fx_t = 0.45
+		if profile != null and profile.is_human():
+			AudioMgr.play("fountain_regen", 0.05, -10.0, global_position)
 		Fx.heal_sparkle(arena, global_position
 			+ Vector2(randf_range(-radius, radius), randf_range(-8.0, 8.0)))
 		Fx.ring(arena, global_position,
@@ -1667,7 +1676,7 @@ func _update_recall(delta: float) -> void:
 		arena.popup(global_position + Vector2(0, -radius - 34.0), "PALUU...",
 			Palette.glow(Palette.team(team), 1.3), 16)
 		if not Game.simulating:
-			AudioMgr.play("blessing", 0.04, -8.0, global_position)
+			AudioMgr.play("recall_start", 0.04, -6.0, global_position)
 	_recall_t += delta
 	_recall_fx_t -= delta
 	if _recall_fx_t <= 0.0:
@@ -1686,6 +1695,8 @@ func _recall_interrupt() -> void:
 	if arena != null:
 		arena.popup(global_position + Vector2(0, -radius - 34.0), "PALUU KESKEYTYI",
 			Palette.BAD, 14)
+		if not Game.simulating:
+			AudioMgr.play("recall_cancel", 0.04, -8.0, global_position)
 
 
 ## Paluu valmis: teleportti omalle lähteelle, välähdys molemmissa päissä.
@@ -1705,7 +1716,7 @@ func _finish_recall(mm: MapMoba) -> void:
 	Fx.ring(arena, dest, Palette.with_alpha(Palette.HEAL, 0.7), radius + 40.0, 0.6, 4.0)
 	arena.popup(dest + Vector2(0, -radius - 34.0), "KOTONA",
 		Palette.glow(team_col, 1.3), 16)
-	AudioMgr.play("respawn", 0.05, -4.0, dest)
+	AudioMgr.play("recall_done", 0.05, -4.0, dest)
 
 
 # --- Itemit ja kauppa (MOBA) ---
@@ -1768,12 +1779,12 @@ func _open_shop() -> void:
 		shop = ShopMenu.new()
 	shop.open_for(self)
 	shop_open = true
-	AudioMgr.play("ui_open", 0.03, -8.0)
+	AudioMgr.play("shop_open", 0.03, -6.0)
 
 
 func _close_shop() -> void:
 	shop_open = false
-	AudioMgr.play("ui_back", 0.03, -8.0)
+	AudioMgr.play("shop_close", 0.03, -6.0)
 
 
 ## Kauppa auki -frame: valikko saa syötteet eikä mikään vuoda toiminnoiksi.
@@ -1847,7 +1858,7 @@ func _use_item_active(id: String, active: String) -> void:
 				Palette.glow(Palette.team(team), 1.25), 15)
 			Fx.ring(arena, global_position, Palette.with_alpha(Palette.GOLD, 0.8),
 				radius + 26.0, 0.45, 4.0)
-			AudioMgr.play("light", 0.05, -6.0, global_position)
+			AudioMgr.play("ward_place", 0.05, -5.0, global_position)
 		"varjo":
 			# Varjoviitta: 3 s häive. Katkeaa hyökkäykseen (lataa varman kritin),
 			# castiin ja vahingon ottamiseen; tornit näkevät häiveen läpi.
@@ -1857,7 +1868,7 @@ func _use_item_active(id: String, active: String) -> void:
 			Fx.ring(arena, global_position, Palette.with_alpha(Color("b48aff"), 0.7),
 				radius + 22.0, 0.5, 4.0)
 			Fx.burst(arena, global_position, Color(0.4, 0.35, 0.6, 0.5), 10, 160.0, 0.4, 5.0)
-			AudioMgr.play("smoke", 0.06, -4.0, global_position)
+			AudioMgr.play("stealth_in", 0.06, -4.0, global_position)
 	controller_rumble(0.2, 0.1, 0.15)
 
 
@@ -2281,6 +2292,8 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 					if forced_crit:
 						source.stealth_strike = false
 						source._stealth_strike_t = 0.0
+						if not Game.simulating:
+							AudioMgr.play("stealth_strike", 0.03, -3.0, global_position)
 					amount *= 1.7
 					# Ei popup-solmuja simulaatiossa: kritejä tulee tuhansia 32x-ajossa.
 					if not Game.simulating:
@@ -2386,6 +2399,8 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 
 	hp -= amount
 	since_damage = 0.0
+	if stealth_timer > 0.0 and not Game.simulating:
+		AudioMgr.play("stealth_out", 0.05, -9.0, global_position)
 	stealth_timer = 0.0   # vahingon ottaminen rikkoo häiveen
 	_recall_interrupt()   # vahinko keskeyttää paluukanavoinnin
 	profile.stats.taken += amount

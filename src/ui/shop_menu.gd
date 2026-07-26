@@ -267,13 +267,13 @@ func _switch_tab(hero, d: int) -> void:
 	_cache_key = ""
 	_refresh_columns(hero)
 	col = _first_column()
-	AudioMgr.play("ui_move", 0.04, -10.0)
+	AudioMgr.play("shop_move", 0.05, -8.0)
 
 
 ## Valinnan siirto: sarakkeet kiertävät (tyhjät ohitetaan), pystysuunnassa
 ## ruudukon yli mennään omaan inventaarioon (myyntirivi) ja siitä takaisin.
 func _move_selection(dx: int, dy: int) -> void:
-	AudioMgr.play("ui_move", 0.03, -14.0)
+	AudioMgr.play("shop_move", 0.03, -12.0)
 	if in_inventory:
 		if dy != 0:
 			in_inventory = false
@@ -302,7 +302,7 @@ func _try_buy(hero) -> void:
 	if in_inventory:
 		flash_t = -0.35
 		flash_msg = "OSTA RUUDUKOSTA — ALARIVI MYY"
-		AudioMgr.play("ui_back", 0.05, -8.0)
+		AudioMgr.play("shop_deny", 0.05, -6.0)
 		return
 	var id := selected_id(hero)
 	if id == "":
@@ -310,11 +310,16 @@ func _try_buy(hero) -> void:
 	if bool(hero.buy_item(id)):
 		flash_t = 0.35
 		flash_msg = ""
-		AudioMgr.play("blessing", 0.04, -8.0)
+		# Legendan osto on ottelun harvinaisin hankinta -> oma juhlava cue.
+		var item: Dictionary = ItemDef.get_item(id)
+		if String(item.get("tier", "common")) == "legendary":
+			AudioMgr.play("shop_legendary", 0.02, -4.0)
+		else:
+			AudioMgr.play("shop_buy", 0.04, -6.0)
 	else:
 		flash_t = -0.35
 		flash_msg = _fail_reason(hero, id)
-		AudioMgr.play("ui_back", 0.05, -6.0)
+		AudioMgr.play("shop_deny", 0.05, -5.0)
 
 
 func _try_sell(hero) -> void:
@@ -322,7 +327,7 @@ func _try_sell(hero) -> void:
 	if not in_inventory or inv_index >= items.size():
 		flash_t = -0.35
 		flash_msg = "VALITSE MYYTÄVÄ ALARIVILTÄ"
-		AudioMgr.play("ui_back", 0.05, -8.0)
+		AudioMgr.play("shop_deny", 0.05, -6.0)
 		return
 	var id := str(items[inv_index])
 	if bool(hero.sell_item(id)):
@@ -330,10 +335,11 @@ func _try_sell(hero) -> void:
 		flash_msg = ""
 		var remaining: Array = hero.items
 		inv_index = clampi(inv_index, 0, maxi(remaining.size() - 1, 0))
+		AudioMgr.play("shop_sell", 0.04, -6.0)
 	else:
 		flash_t = -0.35
 		flash_msg = "MYYNTI EI ONNISTU"
-		AudioMgr.play("ui_back", 0.05, -6.0)
+		AudioMgr.play("shop_deny", 0.05, -5.0)
 
 
 ## Oston eston syy (sama järjestys kuin Hero.buy_item tarkistaa).
