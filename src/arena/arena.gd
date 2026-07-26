@@ -82,6 +82,13 @@ const MINION_REWARD_RADIUS := 850.0
 const MINION_PROXIMITY_GOLD := 9
 const MINION_LAST_HIT_BONUS := 14
 const MINION_LAST_HIT_XP_SHARE := 0.35   # osuus minionin xp_valuesta viimeistelijälle
+# TUKIPALKKA (kokoonpanoluotauksen juurisyykorjaus): tuki ei last hittaa koskaan,
+# joten se jäi kokonaan viimeistelytalouden ulkopuolelle — mitattu 146 kultaa ja
+# 116 XP minuutissa, loppupelin taso 3.4, eli ULTTI EI AUENNUT KOSKAAN (taso 4).
+# Nämä maksavat carryn vierellä seisomisesta ilman että vievät CS:ää keneltäkään:
+# viimeistelybonuksen pienoismalli tuen omalle taloudelle.
+const MINION_SUPPORT_GOLD := 3           # lisäkulta tuelle kun aalto kaatuu vieressä
+const MINION_SUPPORT_XP_SHARE := 0.12    # osuus minionin xp_valuesta tuelle (vrt. 0.35 viimeistelijä)
 const JUNGLE_XP_ASSIST_RADIUS := 720.0
 const JUNGLE_XP_ASSIST_SHARE := 0.35
 const MAJOR_XP_ASSIST_SHARE := 0.55
@@ -1121,7 +1128,12 @@ func _xp_role_multiplier(hero: Hero, source_kind: String, shared: bool) -> float
 	match source_kind:
 		"lane":
 			if role == "support":
-				return 0.82
+				# Tuki JAKAA aina aaltonsa carryn kanssa (share_mult 0.75/0.60) eikä
+				# saa viimeistely-XP:tä lainkaan. 0.82 rankaisi siis samasta asiasta
+				# kahdesti ja pysäytti tasokäyrän tasolle 3–4 (ultti ei auennut).
+				# Yli 1.0:n kerroin kompensoi juuri jaon: 0.75 * 1.10 = 0.83 minionin
+				# arvosta — yhä selvästi alle carryn (1.0 + viimeistelyosuus 0.35).
+				return 1.10
 			if role == "jungle":
 				return 0.70
 		"jungle":
@@ -1226,6 +1238,16 @@ func on_minion_ko(minion: Minion, source: Hero) -> void:
 		h.profile.stats.proximity_gold += MINION_PROXIMITY_GOLD
 		_grant_moba_xp(h, xp_share, "lane", recipients.size() > 1)
 		_record_buff_economy(h, MINION_PROXIMITY_GOLD, 0.0)
+		# TUKIPALKKA: tukivuorossa oleva sankari, joka EI viimeistellyt, saa
+		# silti pienen kulta- ja XP-tipan. Näin carryn vieressä seisominen on
+		# oma tulonlähteensä eikä tuen tasokäyrä riipu CS:stä, jota se ei saa
+		# ottaa. Kirjautuu läheisyys-/linjatalouteen (ei uutta raporttikenttää).
+		if h != source and _progression_role(h) == "support":
+			h.profile.stats.gold += MINION_SUPPORT_GOLD
+			h.profile.stats.proximity_gold += MINION_SUPPORT_GOLD
+			_grant_moba_xp(h, float(minion.xp_value) * MINION_SUPPORT_XP_SHARE,
+				"lane", true)
+			_record_buff_economy(h, MINION_SUPPORT_GOLD, 0.0)
 		_update_economy_milestones(h)
 	# Palkkio (kolikkotalismaani): lähellä kaatuva minioni antaa omistajalle
 	# +2 kultaa vaikkei last hit osuisi (ei vie CS:ää).
