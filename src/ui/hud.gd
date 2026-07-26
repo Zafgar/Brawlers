@@ -207,6 +207,7 @@ class PaneHud:
 	func _draw() -> void:
 		if arena == null or size.x < 2.0 or size.y < 2.0:
 			return
+		_hints.clear()
 		_draw_edge_shading()
 		_draw_pane_frame()
 		_draw_match_panel()
@@ -218,6 +219,8 @@ class PaneHud:
 			_draw_minimap()
 			_draw_inspect()
 			_draw_shop_prompt()
+			_draw_inspect_hint()
+			_draw_hints()
 			if bool(bound_hero.shop_open):
 				_draw_shop()
 		_draw_banner()
@@ -620,12 +623,10 @@ class PaneHud:
 			UiKit.draw_text(self, badge + Vector2(0, 1), "+%d" % int(hero.skill_points),
 				10 if compact else 12, Palette.TEXT_DARK, true, 2)
 			var pad_hint: bool = hero.profile.device >= 0
-			var hint := "KEHITÄ: PIDÄ D-PAD YLÖS + KYKYNAPPI" if pad_hint \
-				else "KEHITÄ: PIDÄ T + KYKYNAPPI"
-			UiKit.draw_text(self, Vector2(rect.get_center().x, rect.position.y - 12.0), hint,
-				10 if compact else 12,
-				Palette.with_alpha(Palette.glow(Palette.GOLD, 1.2), 0.7 + 0.3 * sin(_time * 5.0)),
-				true, 2)
+			_push_hint("KEHITÄ: PIDÄ D-PAD YLÖS + KYKYNAPPI" if pad_hint \
+				else "KEHITÄ: PIDÄ T + KYKYNAPPI",
+				Palette.with_alpha(Palette.glow(Palette.GOLD, 1.2),
+					0.7 + 0.3 * sin(_time * 5.0)), 0)
 
 		if hero.carrying:
 			var gem := rect.position + Vector2(18, 18)
@@ -1103,14 +1104,10 @@ class PaneHud:
 			return
 		if not bool(arena.map.is_in_own_sanctuary(hero.global_position, hero.team)):
 			return
-		var rect := _dock_rect()
 		var pad: bool = hero.profile.device >= 0
-		# Kykypistevihje käyttää saman kohdan -> nosta kauppavihje sen ylle.
-		var y := rect.position.y - (30.0 if int(hero.skill_points) > 0 else 12.0)
-		UiKit.draw_text(self, Vector2(rect.get_center().x, y),
-			"KAUPPA: YMPYRÄ" if pad else "KAUPPA: F", 10 if _compact() else 12,
+		_push_hint("KAUPPA: YMPYRÄ" if pad else "KAUPPA: F",
 			Palette.with_alpha(Palette.glow(Palette.GOLD, 1.15),
-				0.65 + 0.35 * sin(_time * 4.0)), true, 2)
+				0.65 + 0.35 * sin(_time * 4.0)), 1)
 
 
 	## Koko ruudun kauppa-overlay TÄLLE pelaajalle (per-pane, kuten spend-tila).
@@ -1918,6 +1915,52 @@ class PaneHud:
 				draw_rect(Rect2(inner.end.x - 32.0 + float(p) * 10.0,
 					inner.position.y + 2.0, 8.0, 3.5),
 					Palette.glow(Palette.GOLD, 1.2) if rank > p else Color(1, 1, 1, 0.14))
+
+
+	## Telakan ylle pinottava vihjerivi. prio 0 = lähimpänä telakkaa.
+	func _push_hint(text: String, color: Color, prio: int) -> void:
+		_hints.append({"text": text, "color": color, "prio": prio})
+
+
+	## Löydettävyys: tietonäkymän nappi kerrotaan ottelun ensimmäiset 40 s ja
+	## aina kun kykypisteitä on käyttämättä — juuri silloin kortit kannattaa
+	## lukea ennen pisteen käyttöä.
+	func _draw_inspect_hint() -> void:
+		var hero = bound_hero
+		if arena == null or Game.simulating or scoreboard_open:
+			return
+		if hero == null or not is_instance_valid(hero) or hero.profile == null:
+			return
+		if not bool(hero.profile.is_human()) or bool(hero.shop_open) or not hero.alive:
+			return
+		if _inspect_held():
+			return
+		if float(arena.match_elapsed) >= 40.0 and int(hero.skill_points) <= 0:
+			return
+		var pad: bool = int(hero.profile.device) >= 0
+		_push_hint("PIDÄ D-PAD OIKEA = TIEDOT" if pad else "PIDÄ C = TIEDOT",
+			Palette.with_alpha(Palette.TEXT_MAIN, 0.55 + 0.3 * sin(_time * 3.0)), 2)
+
+
+	## Vihjerivit telakan yllä yhtenä pinona, jotta kauppa-, kykypiste- ja
+	## tietovihje eivät koskaan piirry päällekkäin. Tietonäkymän ollessa auki
+	## vihjeet vaikenevat: statipaneeli varaa saman kaistan telakan yltä.
+	func _draw_hints() -> void:
+		if _hints.is_empty() or _inspect_active():
+			return
+		var rect := _dock_rect()
+		var step := 15.0 if _compact() else 18.0
+		var row := 0
+		for prio in range(3):
+			for hint_v in _hints:
+				var hint: Dictionary = hint_v
+				if int(hint["prio"]) != prio:
+					continue
+				UiKit.draw_text(self, Vector2(rect.get_center().x,
+					rect.position.y - 12.0 - float(row) * step),
+					str(hint["text"]), 10 if _compact() else 12,
+					hint["color"], true, 2)
+				row += 1
 
 
 	func _minimap_rect() -> Rect2:
