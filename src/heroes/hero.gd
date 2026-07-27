@@ -2680,7 +2680,15 @@ func add_shield(amount: float, duration: float, source: Hero, record := true) ->
 	# samalla kertoimella kuin kyvyn kilpi.
 	if source != null and is_instance_valid(source) and source != self:
 		amount *= 1.0 + source.item_stat("heal_power")
-	shield_hp = maxf(shield_hp, amount)
+	# KIRJAUSVIRHE (löytyi tukitavaroiden kulta-tehoa tarkistettaessa): rivi oli
+	# shield_hp = maxf(shield_hp, amount), mutta shield_timer ja shield_source
+	# ylikirjoitettiin AINA. Pieni aurapulssi (Kolikkotalismaani 55, vartija 45)
+	# siis lyhensi kyvyn ison kilven keston omakseen JA siirsi koko kilven
+	# vaimennuskirjaukset (prevented) väärälle antajalle. Nyt heikompi kilpi ei
+	# koske vahvempaan: vahvempi jatkaa omalla kestollaan ja omalla antajallaan.
+	if amount < shield_hp:
+		return
+	shield_hp = amount
 	shield_timer = duration
 	shield_source = source
 	# Kirjaa antajan aktiivinen kykypaikka -> imetty vahinko osataan kohdistaa

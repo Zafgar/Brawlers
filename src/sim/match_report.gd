@@ -40,8 +40,9 @@ const TIER_CAPABILITIES := [
 const ITEM_MIN_N := 8              # pienin otanta jolla itemi ylipäätään liputetaan
 const ITEM_STRONG_WR := 62.0       # haltijan voitto% >= -> "vahva?"
 const ITEM_WEAK_WR := 38.0         # haltijan voitto% <= -> "heikko?"
-const ITEM_EFF_LOW := 0.60         # kultatehokkuus alle 60 % keskiarvosta -> TEHOTON
-const ITEM_EFF_HIGH := 1.50        # kultatehokkuus yli 150 % keskiarvosta -> YLIVOIMAINEN
+const ITEM_EFF_LOW := 0.60         # kultatehokkuus alle 60 % vertailupohjasta -> TEHOTON
+const ITEM_EFF_HIGH := 1.50        # kultatehokkuus yli 150 % vertailupohjasta -> YLIVOIMAINEN
+const ITEM_ROLE_MIN_N := 12        # pienin roolin otanta jolla rooli kelpaa vertailupohjaksi
 const FIRST_EPIC_DOMINANT := 35.0  # yhden ensiepicin osuus %-yksikköinä -> avaus dominoi
 const EARLY_EPIC_T := 600.0        # "aikainen" ensiepic: valmis ennen 10:00
 const WALLET_HOARD := 1000.0       # roolin käyttämätön kulta ottelun lopussa -> hamstraus
@@ -1090,6 +1091,9 @@ static func _section_items(lines: Array, results: Array, opts: Dictionary) -> vo
 	lines.append("  Haltijan voitto% = ostajan joukkue voitti (tasapelit ohitettu).")
 	lines.append("  osto% = rakennettiin / ne sankariottelut joissa kulta olisi riittänyt hintaan.")
 	lines.append("  kulta-teho = (vahinko + parannus + vaimennettu) / (haltijan käyttämä kulta / 1000).")
+	lines.append("  TEHOTON/YLIVOIMAINEN vertaa itemiä SAMAN ROOLIVIHJEEN keskiarvoon, ei koko otantaan:")
+	lines.append("  luvun osoittaja on haltijan koko tuotos ja nimittäjä haltijan koko kulta, joten se")
+	lines.append("  mittaa ROOLIA jos vertailupohja on roolien sekoitus (tuen vahinko-osuus on 6.5 %).")
 	lines.append("  vah-os% = haltijan osuus oman joukkueen kokonaisvahingosta.")
 	lines.append("  vah/GPM = kerroin samojen ottelujen kaikkien sankarien keskiarvoon.")
 	# Hinnasto kerran: poimintaosuuden nimittäjä tarvitsee itemin kokonaishinnan.
@@ -1287,8 +1291,10 @@ static func _section_items(lines: Array, results: Array, opts: Dictionary) -> vo
 		a["wr"] = 100.0 * float(a["wins"]) / maxf(float(a["decided"]), 1.0)
 		a["eff"] = 1000.0 * float(a["val_sum"]) / maxf(float(a["spent_sum"]), 1.0)
 	rows.sort_custom(func(x, y): return float(x["wr"]) > float(y["wr"]))
+	var role_eff: Dictionary = _role_eff_means(rows, mean_eff)
 	lines.append("")
 	lines.append("  -- (a) epicit ja legendat (otannan kulta-tehon keskiarvo %d) --" % int(mean_eff))
+	lines.append("  vertailupohjat rooleittain: " + _role_eff_text(role_eff, mean_eff))
 	lines.append("  itemi                | tieri     |   n | osto% | valm. ka | voitto% | kulta-teho | vah-os% |  KDA  |  vah   |  GPM   | tuomio")
 	for a_v in rows:
 		var a: Dictionary = a_v
@@ -1305,7 +1311,7 @@ static func _section_items(lines: Array, results: Array, opts: Dictionary) -> vo
 			float(a["kda_sum"]) / maxf(float(n), 1.0),
 			float(a["dmg_sum"]) / maxf(float(a["dmg_base"]), 1.0),
 			float(a["gpm_sum"]) / maxf(float(a["gpm_base"]), 1.0),
-			_item_verdict(a, iname, mean_eff, flags)])
+			_item_verdict(a, iname, float(role_eff.get(_item_role(id), mean_eff)), flags)])
 	if rows.is_empty():
 		lines.append("  Yhtään epic/legendary-itemiä ei valmistunut otannassa.")
 	# Rare-lohko tiiviinä: sama tuomiologiikka, mutta oma kulta-tehon keskiarvo
@@ -1316,6 +1322,7 @@ static func _section_items(lines: Array, results: Array, opts: Dictionary) -> vo
 		a["wr"] = 100.0 * float(a["wins"]) / maxf(float(a["decided"]), 1.0)
 		a["eff"] = 1000.0 * float(a["val_sum"]) / maxf(float(a["spent_sum"]), 1.0)
 	rare_rows.sort_custom(func(x, y): return int(x["n"]) > int(y["n"]))
+	var role_eff_rare: Dictionary = _role_eff_means(rare_rows, mean_eff_rare)
 	lines.append("")
 	lines.append("  -- raret tiiviisti (oma kulta-tehon keskiarvo %d) --" % int(mean_eff_rare))
 	lines.append("  itemi                |   n | osto% | valm. ka | voitto% | kulta-teho | tuomio")
@@ -1329,7 +1336,8 @@ static func _section_items(lines: Array, results: Array, opts: Dictionary) -> vo
 		lines.append("  %-20s | %3d | %4.0f%% | %8s | %-7s | %10d | %s" % [
 			iname, n, 100.0 * float(a["hm"]) / maxf(float(chances), 1.0),
 			_fmt(float(a["t_sum"]) / maxf(float(n), 1.0)), wr_text, int(float(a["eff"])),
-			_item_verdict(a, iname, mean_eff_rare, flags)])
+			_item_verdict(a, iname,
+				float(role_eff_rare.get(_item_role(id), mean_eff_rare)), flags)])
 	if rare_rows.is_empty():
 		lines.append("  Ei rare-ostoja otannassa.")
 	# Perusitemien suosio: mihin common-kulta oikeasti valuu.
@@ -1434,6 +1442,75 @@ static func _section_items(lines: Array, results: Array, opts: Dictionary) -> vo
 		% (flags.size() - flag_start))
 
 
+## Itemin roolivihje katalogista ("" -> "any"). Kulta-tehon vertailupohja
+## ryhmitellään tällä.
+static func _item_role(id: String) -> String:
+	var role: String = str(ItemDef.get_item(id).get("role_hint", ""))
+	return "any" if role == "" else role
+
+
+## Kulta-tehon ROOLIKOHTAISET vertailupohjat (rooli -> painotettu keskiarvo).
+##
+## MITTAUSVIRHE JOKA TÄMÄ KORJAA (sama laji kuin junglerin vahinkohälytys):
+## rivin kulta-teho on HALTIJAN koko tuotos (vahinko + parannus + vaimennettu)
+## jaettuna HALTIJAN koko kulankäytöllä — se ei ole itemin ominaisuus vaan
+## sankarin. Kun vertailupohjana oli koko otannan keskiarvo, jokainen tukitavara
+## liputtui TEHOTTOMAKSI riippumatta siitä mitä se tekee: otannan osoittajasta
+## yli 90 % on vahinkoa ja tuen vahinko-osuus on suunnitellusti 6.5 %.
+## Mitattu esimerkki: Airutlyhty 1383, Kolikkotalismaani 1103, Vartiolyhty 1047
+## vs. otannan keskiarvo 3113 -> kaikki TEHOTON, vaikka samojen itemien
+## voitto% oli korjausten jälkeen 42.6 / 46.8 / 62.5.
+##
+## Nyt vertailu tehdään saman roolivihjeen sisällä: "TEHOTON" tarkoittaa
+## huonompaa kuin oman roolin muut itemit. Roolit EIVÄT ole vertailukelpoisia
+## keskenään, joten roolikeskiarvoja ei liputeta — ne tulostetaan
+## vertailupohjariville, jotta koko roolin romahdus näkyisi silmällä.
+## Alle ITEM_ROLE_MIN_N havainnon roolit käyttävät otannan keskiarvoa (pieni
+## ryhmä vertaisi itemiä lähinnä itseensä).
+static func _role_eff_means(rows: Array, overall: float) -> Dictionary:
+	var acc: Dictionary = {}
+	for a_v in rows:
+		var a: Dictionary = a_v
+		var role: String = _item_role(str(a["id"]))
+		if not acc.has(role):
+			acc[role] = {"val": 0.0, "spent": 0.0, "n": 0, "items": 0}
+		var g: Dictionary = acc[role]
+		g["val"] = float(g["val"]) + float(a["val_sum"])
+		g["spent"] = float(g["spent"]) + float(a["spent_sum"])
+		g["n"] = int(g["n"]) + int(a["n"])
+		g["items"] = int(g["items"]) + 1
+	var out: Dictionary = {}
+	for role_v in acc:
+		var rname: String = str(role_v)
+		var grp: Dictionary = acc[rname]
+		# Yhden itemin rooli vertaisi itemiä ITSEENSÄ (raja ei laukeaisi
+		# koskaan), ja liian pieni otanta olisi kohinaa -> otannan keskiarvo.
+		if int(grp["items"]) < 2 or int(grp["n"]) < ITEM_ROLE_MIN_N \
+				or float(grp["spent"]) <= 0.0:
+			out[rname] = overall
+		else:
+			out[rname] = 1000.0 * float(grp["val"]) / maxf(float(grp["spent"]), 1.0)
+	return out
+
+
+## Vertailupohjarivi: "carry 3800 · support 1150 · tank* 3113" (aakkosjärjestys,
+## jotta rivi on vakaa ajosta toiseen). Tähti = roolilla ei ole omaa pohjaa
+## (alle 2 itemiä tai alle ITEM_ROLE_MIN_N havaintoa) -> otannan keskiarvo.
+static func _role_eff_text(role_eff: Dictionary, overall: float) -> String:
+	var names: Array = role_eff.keys()
+	names.sort()
+	var parts: Array = []
+	for rname_v in names:
+		var rname: String = str(rname_v)
+		var value: float = float(role_eff[rname])
+		var mark := "*" if is_equal_approx(value, overall) else ""
+		parts.append("%s%s %d" % [rname, mark, int(value)])
+	if parts.is_empty():
+		return "-"
+	return " · ".join(PackedStringArray(parts)) \
+		+ "   (* = ei omaa pohjaa, käytetään otannan keskiarvoa)"
+
+
 ## Yhden itemirivin tuomio + liputus. Otanta n on rakennuskerrat; voitto%:n
 ## liputus vaatii lisäksi ratkenneita otteluita, jotta pelkät tasapelit eivät
 ## näytä itemiä heikolta.
@@ -1451,10 +1528,10 @@ static func _item_verdict(a: Dictionary, iname: String, mean_eff: float, flags: 
 		var eff: float = float(a["eff"])
 		if eff < mean_eff * ITEM_EFF_LOW:
 			parts.append(_flag(flags, "itemi", iname,
-				"TEHOTON: kultatehokkuus alle 60 % keskiarvosta"))
+				"TEHOTON: kultatehokkuus alle 60 % vertailupohjasta"))
 		elif eff > mean_eff * ITEM_EFF_HIGH:
 			parts.append(_flag(flags, "itemi", iname,
-				"YLIVOIMAINEN: kultatehokkuus yli 150 %"))
+				"YLIVOIMAINEN: kultatehokkuus yli 150 % vertailupohjasta"))
 	if parts.is_empty():
 		return ""
 	return " + ".join(PackedStringArray(parts))
