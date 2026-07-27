@@ -156,6 +156,13 @@ class PaneHud:
 	var _mm_camps: Array = []
 	var _mm_sancta: Array = []     # [{rect, shop, team}]
 	var _mm_doors: Array = []      # [{center, team}]
+	# Leirien elävä tila haetaan olennoilta, mutta itse olento etsitään VAIN
+	# kerran: _mm_camp_nodes on _mm_camps:n rinnakkaistaulukko (Critter tai null).
+	# Sen jälkeen ruutupäivitys on pelkkiä kenttälukuja eikä uusia taulukoita tai
+	# sanakirjoja synny lainkaan — tärkeää 32x simunopeudella.
+	var _mm_camp_nodes: Array = []
+	var _mm_camp_unbound := true   # onko vielä leirejä joita ei ole sidottu
+	var _mm_camp_bind_at := 0.0    # seuraavan sidontayrityksen ajanhetki
 
 
 	func bind_hero(hero, count: int) -> void:
@@ -2012,10 +2019,72 @@ class PaneHud:
 					_mm_doors.append({"center": gr.get_center(), "team": team})
 
 
+	## Päivittää leirimerkkien elävän tilan paikan päällä: olemassa oleviin
+	## sanakirjoihin kirjoitetaan vain uudet arvot, joten piirtopolulla ei
+	## allokoida mitään. Baron ja Dragon luetaan Arenan laskurista, koska niillä
+	## on ennen ensimmäistä heräämistä oma ilmestymisajastin.
+	func _minimap_camps_sync() -> void:
+		if _mm_camps.is_empty():
+			return
+		if _mm_camp_nodes.size() != _mm_camps.size():
+			_mm_camp_nodes.resize(_mm_camps.size())
+		# Leirit syntyvät vasta ensimmäisen aallon kohtaamisessa, joten sidontaa
+		# yritetään uudelleen puolen sekunnin välein kunnes kaikki löytyvät.
+		if _mm_camp_unbound and _time >= _mm_camp_bind_at:
+			_mm_camp_bind_at = _time + 0.5
+			_minimap_camps_bind()
+		for i in range(_mm_camps.size()):
+			var marker: Dictionary = _mm_camps[i]
+			var kind: String = marker["kind"]
+			if kind == "baron" or kind == "dragon":
+				var timer: Vector2 = arena.objective_respawn_in(kind)
+				marker["alive"] = timer.x <= 0.0
+				marker["left"] = timer.x
+				marker["total"] = timer.y
+				continue
+			var camp := _mm_camp_nodes[i] as Critter
+			if camp == null or not is_instance_valid(camp):
+				# Leiriä ei ole vielä olemassa: merkki piirtyy normaalisti, jotta
+				# viidakon muoto näkyy jo ennen ensimmäistä spawnia.
+				marker["alive"] = true
+				marker["left"] = 0.0
+				continue
+			marker["alive"] = camp.alive
+			marker["left"] = 0.0 if camp.alive else maxf(camp.respawn_timer, 0.0)
+			marker["total"] = maxf(camp.respawn_delay, 1.0)
+
+
+	## Sitoo jokaisen leirimerkin sitä vastaavaan olentoon kotipisteen perusteella.
+	## Baron ja Dragon ohitetaan: ne tulevat Arenan laskurista.
+	func _minimap_camps_bind() -> void:
+		_mm_camp_unbound = false
+		for i in range(_mm_camps.size()):
+			var marker: Dictionary = _mm_camps[i]
+			var kind: String = marker["kind"]
+			if kind == "baron" or kind == "dragon":
+				continue
+			var bound := _mm_camp_nodes[i] as Critter
+			if bound != null and is_instance_valid(bound):
+				continue
+			var home: Vector2 = marker["pos"]
+			var found: Critter = null
+			for c in arena.critters:
+				var camp := c as Critter
+				if camp == null or not is_instance_valid(camp):
+					continue
+				if camp.home.distance_squared_to(home) < 4.0:
+					found = camp
+					break
+			_mm_camp_nodes[i] = found
+			if found == null:
+				_mm_camp_unbound = true
+
+
 	func _draw_minimap() -> void:
 		if arena.map == null:
 			return
 		_minimap_static_init()
+		_minimap_camps_sync()
 		var rect := _minimap_rect()
 		var compact := _compact()
 		var pcol: Color = bound_hero.profile.color()
@@ -2091,6 +2160,7 @@ class PaneHud:
 
 		# Leirit ja major objectivet ovat näkyvissä jo ennen spawnia, jotta
 		# suurta viidakkoa voi lukea nopeasti myös kahden pelaajan splitissä.
+		# Kaadetulta leiriltä piste katoaa ja tilalle jää täyttyvä herätysrengas.
 		for marker in _mm_camps:
 			var cp := _map_point(marker.pos, map_origin, world_size, scale_map)
 			var kind: String = marker.kind
@@ -2112,8 +2182,12 @@ class PaneHud:
 			elif kind == "dragon":
 				ccol = Color("49d7c5")
 				cr += 2.0
-			draw_circle(cp, cr, ccol)
-			draw_arc(cp, cr + 1.5, 0, TAU, 14, Palette.with_alpha(Color.WHITE, 0.55), 1.0)
+			var wait_left: float = marker.left
+			if bool(marker.alive) or wait_left <= 0.0:
+				draw_circle(cp, cr, ccol)
+				draw_arc(cp, cr + 1.5, 0, TAU, 14, Palette.with_alpha(Color.WHITE, 0.55), 1.0)
+			else:
+				_draw_camp_respawn(cp, cr, ccol, kind, wait_left, float(marker.total), compact)
 
 		# Base: fountain/sanctuary, tuleva shop ja oman tiimin jungle-oikotiet.
 		for sanct in _mm_sancta:
@@ -2221,6 +2295,50 @@ class PaneHud:
 	func _map_point(world_pos: Vector2, origin: Vector2, world_size: Vector2,
 			scale_map: float) -> Vector2:
 		return origin + (world_pos + world_size / 2.0) * scale_map
+
+
+	## Kaadetun leirin herätysmittari minikartalla. Piste on poissa — tilalle jää
+	## himmeä kehä, jonka päälle piirtyy leirin värinen kaari sitä pidemmälle mitä
+	## lähempänä herätys on. Pienillä leireillä pelkkä rengas riittää, koska luku
+	## ei olisi luettavissa jaetun ruudun minikartalla. Baron ja Dragon saavat
+	## lisäksi sekuntilukeman, ja viimeisen 10 sekunnin ajan koko mittari
+	## kirkastuu ja sykkii — ne ovat ne tavoitteet joiden ympäri peli kääntyy.
+	func _draw_camp_respawn(cp: Vector2, cr: float, ccol: Color, kind: String,
+			left: float, total: float, compact: bool) -> void:
+		var major := kind == "baron" or kind == "dragon"
+		var ring := cr + (1.6 if major else 1.2)
+		var arc_w := 2.0 if major else 1.4
+		var done := clampf(1.0 - left / maxf(total, 1.0), 0.0, 1.0)
+		var urgent := left <= 10.0
+		var pulse := 0.5 + 0.5 * sin(_time * 7.0)
+		var col := ccol
+		if urgent:
+			col = Palette.glow(ccol.lerp(Palette.GOLD, 0.45), 1.2)
+		# Tyhjä kehä pitää leirin paikan luettavana vaikka piste on poissa.
+		draw_arc(cp, ring, 0.0, TAU, 18, Palette.with_alpha(ccol, 0.28), arc_w)
+		draw_arc(cp, ring, -PI / 2.0, -PI / 2.0 + TAU * done, 24,
+			Palette.with_alpha(col, 0.95 if urgent else 0.7), arc_w)
+		if urgent:
+			var halo := ring + (1.2 + 1.6 * pulse) * (1.6 if major else 1.0)
+			draw_arc(cp, halo, 0.0, TAU, 20,
+				Palette.with_alpha(col, (0.6 if major else 0.4) * (1.0 - pulse)), 1.5)
+		if not major:
+			return
+		# Baron ylös ja Dragon alas: lukemat eivät mene päällekkäin kapeallakaan
+		# minikartalla, koska pitit ovat kartan keskellä vastakkain.
+		var gap := ring + (6.0 if compact else 7.5)
+		var label_y := -gap if kind == "baron" else gap
+		var font := (9 if compact else 11) + (1 if urgent else 0)
+		UiKit.draw_text(self, cp + Vector2(0, label_y), _respawn_clock(left), font,
+			Palette.with_alpha(col, 1.0 if urgent else 0.92), true, 3)
+
+
+	## Minikartan herätyslukema: yli minuutti "2:14", alle sen pelkät sekunnit.
+	func _respawn_clock(left: float) -> String:
+		var secs := int(ceil(maxf(left, 0.0)))
+		if secs >= 60:
+			return "%d:%02d" % [secs / 60, secs % 60]
+		return str(secs)
 
 
 	func _draw_banner() -> void:
