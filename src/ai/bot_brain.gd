@@ -38,6 +38,14 @@ const FIGHT_SCAN := 820.0
 # Piiritys on "kesken" kun murrettava rakenne on tämän osuuden alle HP:staan:
 # puolikkaalta tornilta ei lähdetä kauppaan eikä paluukanavointiin.
 const SIEGE_FINISH_HP := 0.5
+# SEISONTAVAHTI (rank-neutraali, ks. _tick_stall_guard). Ikkuna ja matka on
+# valittu niin, että normaali pelaaminen ei koskaan laukaise vahtia: hitainkin
+# asemointi (piiritysseisonta aallon takana, leirin odotus, kiting) siirtää
+# sankaria selvästi yli STALL_DIST:n STALL_WINDOW:n aikana.
+const STALL_WINDOW := 7.0        # sekuntia ilman todellista etenemistä
+const STALL_DIST := 150.0        # px: tätä lyhyempi siirtymä ei ole etenemistä
+const STALL_ESCALATE := 2        # monesko peräkkäinen laukeama ohjaa pyhäkköön
+const STALL_GOAL_TIME := 6.0     # kuinka kauan pakotettu maali on voimassa
 
 var level := 1                  # vanha 6-portainen taso (telemetria: ai_level)
 var rank := 13                  # ranking-porras 0..31 (BotRank: Wood IV .. Challenger I)
@@ -187,6 +195,16 @@ var _stuck_t := 0.0              # aika ilman etenemistä kohti kaukaista maalia
 var _via_point := Vector2.INF    # tilapäinen kiertopiste jumin/tyhjäkäynnin purkuun
 var _via_t := 0.0                # kiertopisteen jäljellä oleva voimassaolo
 var _idle_t := 0.0               # aika ilman mitään tekemistä (tyhjäkäyntivahti)
+# SEISONTAVAHTI: viimeinen turvaverkko. Mittaa TODELLISTA etenemistä maastossa
+# (ei liikevektoria eikä maalietäisyyttä), joten se laukeaa myös silloin kun
+# botti "liikkuu" koko ajan mutta pysyy paikallaan — esim. kaksi toisiaan
+# seuraavaa sankaria, seinään puskeva kiertokulma tai maali oman jalkojen
+# juuressa. Sankari ei saa koskaan viettää koko ottelua tekemättä mitään.
+var _stall_anchor := Vector2.INF # piste josta todellista etenemistä mitataan
+var _stall_t := 0.0              # aika ilman todellista etenemistä
+var _stall_hits := 0             # peräkkäiset laukeamiset (porrastus pyhäkköön)
+var _unstick_goal := Vector2.INF # vahdin pakottama maali (ohittaa tilan maalin)
+var _unstick_t := 0.0            # pakotetun maalin jäljellä oleva voimassaolo
 
 # Lyhyt hero-kohtainen kombomuisti. Se estää kohteen vaihtamisen kesken avauksen
 # ja antaa seuraavalle päätökselle etusijan oikeaan jatkokykyyn.
@@ -667,6 +685,7 @@ func update(hero: Hero, delta: float) -> void:
 	_update_attack(hero, delta)
 	_update_abilities(hero, arena, bb, decided)
 	_update_dodge(hero, arena, delta)
+	_tick_stall_guard(hero, arena, delta)
 	# TYHJÄKÄYNTIVAHTI (rank-neutraali): elossa oleva botti ei saa seisoa
 	# pyhäkön ulkopuolella yli 3 s ilman liikettä, hyökkäystä tai muuta
 	# tarkoitusta. Pakota asemointitavoite (aallon mukana / aallon varjostus)
@@ -2022,6 +2041,17 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, delta: float) -> vo
 		Mode.FIGHT, Mode.ATTACK_CARRIER:
 			goal = _combat_goal(hero, arena, bb, pos)
 
+	# SEISONTAVAHDIN PAKKOMAALI: ohittaa tilan oman maalin kunnes se saavutetaan
+	# tai ikkuna umpeutuu. Ajetaan ennen jumin kiertopistettä, jotta seinänkierto
+	# toimii myös pakkomaalia kohti — ja ennen tornihätää, joka voittaa yhä.
+	if _unstick_t > 0.0:
+		_unstick_t -= delta
+		if _unstick_t <= 0.0 or pos.distance_to(_unstick_goal) < 110.0:
+			_unstick_t = 0.0
+			_unstick_goal = Vector2.INF
+		else:
+			goal = _unstick_goal
+
 	# Jumiutumisen tunnistus + tilapäinen kiertopiste. Ajetaan ENNEN tornihätää,
 	# jotta hätäpoistuminen voittaa aina vanhentuneen kiertopisteen.
 	goal = _apply_stuck_repath(hero, arena, goal, delta)
@@ -2081,6 +2111,84 @@ func _update_movement(hero: Hero, arena, bb: TeamBlackboard, delta: float) -> vo
 		desired = _steer_around(hero, pos, desired, delta)
 
 	_move = desired.limit_length(1.0)
+
+
+## SEISONTAVAHTI (rank-neutraali, viimeinen turvaverkko). Kaikki muut vahdit
+## katsovat AIKOMUSTA — liikevektoria (_idle_t) tai etäisyyttä maaliin
+## (_apply_stuck_repath) — joten ne ovat sokeita tilanteelle jossa botilla on
+## maali, se liikkuu sitä kohti ja maali seuraa bottia. Tämä vahti mittaa
+## TODELLISTA sijaintia: jos elossa oleva sankari ei ole siirtynyt STALL_DIST
+## päähän STALL_WINDOW sekunnissa eikä seisonnalle ole syytä (paluukanavointi,
+## tainnutus, kauppa, ohjustila, tähtäyspito, lähdeparannus), päätös pakotetaan
+## uusiksi ja sankari ohjataan takaisin peliin: ensin asemointitavoitteeseen
+## (oma aalto/linja), ja jos sekään ei auta, omaan pyhäkköön josta normaali
+## logiikka lähtee aina uudelleen liikkeelle.
+##
+## Vahti on tarkoituksella rank-neutraali: "en jää seisomaan koko otteluksi" ei
+## ole taitoerottelua vaan pelin perusvaatimus. Kustannus per ruutu on yksi
+## etäisyysvertailu, joten se kestää 32x simulaationopeuden.
+func _tick_stall_guard(hero: Hero, arena, delta: float) -> void:
+	var pos: Vector2 = hero.global_position
+	if arena.mode != "moba" or hero.is_unit or not hero.alive:
+		_stall_anchor = pos
+		_stall_t = 0.0
+		_stall_hits = 0
+		return
+	# Paikallaan olo on näissä tiloissa tarkoituksellista.
+	if _recall or hero.shop_open or hero.piloting or hero.frozen > 0.0 \
+			or hero.stun_timer > 0.0 or hero.root_timer > 0.0 \
+			or float(_aim_hold.a1) > 0.0 or float(_aim_hold.a2) > 0.0:
+		_stall_anchor = pos
+		_stall_t = 0.0
+		return
+	# Paikallaan TEKEMINEN on sallittua: tuore taisteluvahinko tai oikeasti
+	# lyöntietäisyydellä oleva kohde (piiritys, leiri, aallon farmi) tarkoittaa
+	# että sankari tuottaa jotain. Vahti puuttuu vain tyhjään seisontaan.
+	if hero.since_damage < 3.0:
+		_stall_anchor = pos
+		_stall_t = 0.0
+		return
+	if _target != null and is_instance_valid(_target) and bool(_target.alive) \
+			and pos.distance_to(_target.global_position) <= _basic_range + 60.0:
+		_stall_anchor = pos
+		_stall_t = 0.0
+		return
+	var mm := arena.map as MapMoba
+	# Lähteellä parantuminen ja ostaminen on oikeaa toimintaa; TÄYSISSÄ voimissa
+	# pyhäkössä seisominen ei ole (juuri siihen vanha tyhjäkäyntivahti sokeutui).
+	if mm != null and hero.hp < hero.max_hp \
+			and mm.is_in_own_sanctuary(pos, hero.team):
+		_stall_anchor = pos
+		_stall_t = 0.0
+		return
+	if not is_finite(_stall_anchor.x) or pos.distance_to(_stall_anchor) >= STALL_DIST:
+		_stall_anchor = pos
+		_stall_t = 0.0
+		_stall_hits = 0
+		return
+	_stall_t += delta
+	if _stall_t < STALL_WINDOW:
+		return
+	# Seisonta todettu: nollaa kaikki paikallaan pitävät tilat ja pakota päätös.
+	_stall_t = 0.0
+	_stall_anchor = pos
+	_stall_hits += 1
+	_decision_timer = 0.0
+	_lurk = false
+	_cover_pos = Vector2.INF
+	_via_t = 0.0
+	_via_point = Vector2.INF
+	var goal := Vector2.INF
+	if _stall_hits < STALL_ESCALATE:
+		goal = _activity_goal(hero, arena)
+	if not is_finite(goal.x) and mm != null:
+		# Viimeinen oljenkorsi: oma pyhäkkö. Sieltä sankari parantuu, ostaa ja
+		# lähtee normaalilla lane-logiikalla takaisin peliin.
+		goal = mm.fountain_spot(hero.team)
+		_stall_hits = 0
+	if is_finite(goal.x) and pos.distance_to(goal) > 90.0:
+		_unstick_goal = goal
+		_unstick_t = STALL_GOAL_TIME
 
 
 ## JUMIUTUMISEN TUNNISTUS (rank-neutraali): jos liikemaali on kaukana
