@@ -29,6 +29,15 @@ const LATE_PUSH_TIME := 840.0
 # plinkkaisi tyhjää loputtomiin. Piiritysasemointi leikataan tällä marginaalilla
 # kehän sisäpuolelle, jotta pieni liike ei työnnä ulos vahinkoalueelta.
 const SIEGE_STANDOFF := 40.0
+# VOITETUN TAISTELUN IKKUNA sekunteina: kuinka kauan kaadetun vastustajan
+# jälkeen rakenne on käytännössä ilmainen. Ikkuna on sama kaikilla rankeilla —
+# ero syntyy siitä KÄYTTÄÄKÖ botti sen (convert_skill).
+const CONVERT_WINDOW := 7.0
+# Säde jolta vihollissankarit lasketaan taisteluikkunan seurantaan.
+const FIGHT_SCAN := 820.0
+# Piiritys on "kesken" kun murrettava rakenne on tämän osuuden alle HP:staan:
+# puolikkaalta tornilta ei lähdetä kauppaan eikä paluukanavointiin.
+const SIEGE_FINISH_HP := 0.5
 
 var level := 1                  # vanha 6-portainen taso (telemetria: ai_level)
 var rank := 13                  # ranking-porras 0..31 (BotRank: Wood IV .. Challenger I)
@@ -59,6 +68,17 @@ var macro_obedience := 1.0      # todennäköisyys totella joukkuekutsuja (apu/b
 var defense_delay := 0.0        # sekunteja ennen kuin nimetty puolustaja reagoi kriisiin
 var siege_focus := 1.0          # pysyykö botti rakennuskohteessa vai lähteekö puolustajan perään
 var cover_skill := 0.0          # ottaako melee suojaa minioniaallon takaa kaukopokea vastaan
+
+# VOITTOEHTOKERROS (win condition). Mitattu vika: ranking jakoi HENGISSÄ
+# SÄILYMISEN ennen VOITTAMISTA. Perääntyminen, kauppareissut, väistö ja
+# objektiivikierrokset vetävät botin POIS rakenteilta, kun taas Wood seisoo
+# linjassa ja hakkaa tornia — joten alempi rank kaatoi ladderissa ENEMMÄN
+# rakenteita ja voitti pareittain ylemmän. Nämä kolme säädintä antavat jokaiselle
+# portaalle oman, alempaa PAREMMAN tavan muuttaa etu rakenteiksi. Ne eivät lisää
+# vahinkoa: ne ratkaisevat MISSÄ botti seisoo ja MILLOIN se lähtee pois.
+var push_skill := 0.0           # tunnistaako ilmaisen rakenteen ja jatkaako piiritystä
+var convert_skill := 0.0        # kääntyykö voitetusta taistelusta suoraan rakenteeseen
+var tempo_discipline := 0.0     # lähteekö linjalta vain kun poistuminen maksaa vähemmän kuin tuo
 
 # DIVISIOONAKERROS: keskittymiskatkot. Jokainen päätöstikki arpoo virheen, ja
 # osuma vie botin lyhyeen katkokseen (_lapse_t): ei kykyjä, harva perusisku,
@@ -128,6 +148,13 @@ var _aim_lock := Vector2.ZERO
 var _aim_lock_t := 0.0
 var _hold_seen_t := -1.0        # viimeisin päivityshetki (kuolema nollaa pidot)
 var _shop_trip_cd := 0.0        # kauppareissujen välinen jäähdytys (MOBA)
+# VOITETUN TAISTELUN IKKUNA: kun lähellä näkyneet vihollissankarit ovat
+# kaatuneet eikä uusia näy, rakenne on hetken ilmainen. _fight_foes on
+# edellisen päätöksen näkymä, jotta "ne kaatuivat" voidaan havaita ilman
+# tapahtumakytkentää (BotBrain ei kuuntele areenan signaaleja).
+var _convert_t := 0.0           # ikkunaa jäljellä sekunteina (0 = ei ikkunaa)
+var _fight_foes: Array = []     # edellisellä päätöksellä lähellä näkyneet viholliset
+var _fight_scan_t := -99.0      # edellisen skannauksen peliaika (vanhentumisvahti)
 # Leirin puhdistuksen kannattavuusseuranta. Sweep-data paljasti että tuki-
 # sankarit (maestro 0.17 puhdistusta/ottelu @ 124 s taistelua, hush 0.11,
 # luma 0.05) hakkasivat leiriä jota eivät pysty tappamaan — siitä tuli 30-38 %
@@ -239,6 +266,15 @@ func _init(p_level: int, p_rank := -1) -> void:
 	# ole vielä lyöntietäisyydellä (ei jää imemään ilmaista kaukopokea tornin
 	# viereen); matala rank seisoo avoimena ja soakkaa — juuri se on taitoeroa.
 	cover_skill = pow(t, 1.0)
+	# VOITTOEHTOTAIDOT: jaettu KOKO tikapuulle, ei vasta Goldista ylöspäin. Wood
+	# työntää yhä (kohteenvalinta on rank-neutraali), mutta HUONOSTI: se ei
+	# tunnista ilmaista tornia, ei jatka piiritystä puolustajan ilmestyessä eikä
+	# käänny voitetusta taistelusta rakenteeseen. Eksponentit ovat loivia (0.5 —
+	# 0.7), koska juuri pohjapäässä (Wood/Bronze/Silver) ladder meni ristiin:
+	# siellä portaiden pitää erottua eniten.
+	push_skill = pow(t, 0.5)
+	convert_skill = pow(t, 0.7)
+	tempo_discipline = pow(t, 0.6)
 	# Joukkuepeli: matala rank ei kuule kutsuja eikä ehdi puolustamaan ajoissa.
 	# Tämä erottaa rankit pelin SULKEMISESSA (ryhmätyöntö/Baron/puolustusreaktio)
 	# eikä vain mekaniikassa — tasaväkiset aikakattopelit olivat kolikonheittoa.
@@ -274,15 +310,21 @@ func _init(p_level: int, p_rank := -1) -> void:
 ## Portit vain LEIKKAAVAT alempia tasoja (minf / *-kertoimet / nollaukset), eivät
 ## koskaan nosta — monotonisuus rankin suhteen säilyy automaattisesti.
 ##
-## Mitä kukin taso AVAA (sama taulukko tulostuu simraportin tier-yhteenvedossa):
+## Mitä kukin taso AVAA (sama taulukko tulostuu simraportin tier-yhteenvedossa;
+## MatchReport.TIER_CAPABILITIES on tämän tekstipeili — pidä ne synkassa):
 ##   Wood      — ei mitään: ei väistöä, ei kitetystä, ei suojaa, ei keskitettyä
 ##               tulta, ei komboja, tuskin last hittejä, ei perääntymistä, ei
-##               kauppareissuja, ei objektiiveja, ei makroa.
-##   Bronze    — LAST HIT + PERÄÄNTYMINEN + kauppareissut (70 s välein).
-##               Yhä: ei kitetystä, ei suojaa, tuskin keskitettyä tulta.
-##   Silver    — VÄISTÖ + DRAGON + kohtuullinen keskitetty tuli.
-##               Yhä: heikko kitetys/suoja, ei Baronia.
-##   Gold      — KITETYS + SUOJAUTUMINEN + BARON + linjarotaatiot.
+##               kauppareissuja, ei objektiiveja, ei makroa. TYÖNTÄÄ SILTI, mutta
+##               sokeasti: ei tunnista ilmaista tornia, ei jatka piiritystä
+##               puolustajan tullessa, ei käänny voitosta rakenteeseen.
+##   Bronze    — LAST HIT + PERÄÄNTYMINEN + kauppareissut (70 s) + ENSIMMÄINEN
+##               VOITTOEHTOTAITO: kaadetun vastustajan jälkeen se osaa joskus
+##               kääntyä torniin. Yhä: ei kitetystä, ei suojaa, tuskin
+##               keskitettyä tulta, hatara piirityskuri.
+##   Silver    — VÄISTÖ + DRAGON + kohtuullinen keskitetty tuli + parempi
+##               piirityskuri. Yhä: heikko kitetys/suoja, ei Baronia.
+##   Gold      — KITETYS + SUOJAUTUMINEN + BARON + linjarotaatiot + täysi
+##               voitetun taistelun muunto objektiiviksi.
 ##   Platinum  — täysi keskitetty tuli ja kombot, ei leikkauksia.
 ##   Diamond+  — vain käyrät (ja Champion IV:stä alkava huijausramppi).
 func _apply_tier_gates(tier: int) -> void:
@@ -299,6 +341,12 @@ func _apply_tier_gates(tier: int) -> void:
 			jungle_focus *= 0.3          # ei objektiiveja
 			buff_focus = 0.0
 			siege_focus *= 0.5
+			# Wood työntää sokeasti. Nämä ovat TAITOJA, eivät vahinkoleikkauksia:
+			# Wood hakkaa tornia yhä täydellä teholla, se ei vain tunnista ilmaista
+			# kohdetta, ei pysy piirityksessä eikä käänny voitosta rakenteeseen.
+			push_skill = 0.0
+			convert_skill = 0.0
+			tempo_discipline = minf(tempo_discipline, 0.05)
 			can_dragon = false
 			can_baron = false
 			shop_random_chance = 0.40    # ostaa mitä sattuu, ei buildia
@@ -311,6 +359,8 @@ func _apply_tier_gates(tier: int) -> void:
 			combo_skill *= 0.4
 			macro_obedience = minf(macro_obedience, 0.35)
 			jungle_focus *= 0.6
+			push_skill *= 0.75           # piirityskuri vielä hatara
+			convert_skill *= 0.6         # kääntyy torniin vain joskus
 			can_dragon = false
 			can_baron = false
 			shop_random_chance = 0.20
@@ -319,12 +369,15 @@ func _apply_tier_gates(tier: int) -> void:
 			kite_skill *= 0.35
 			cover_skill *= 0.3
 			focus_fire *= 0.6
+			push_skill *= 0.9
+			convert_skill *= 0.8
 			can_dragon = true
 			can_baron = false
 			shop_random_chance = 0.05
 			shop_trip_cooldown = 50.0
 		3:  # --- Gold: kitetys, suojautuminen ja Baron (hitaammin kuin Platinum) ---
 			cover_skill *= 0.7
+			convert_skill *= 0.9
 			can_dragon = true
 			can_baron = true
 			shop_random_chance = 0.0
@@ -339,6 +392,19 @@ func _apply_tier_gates(tier: int) -> void:
 ## Onko botti juuri nyt keskittymiskatkossa (divisioonakerros).
 func in_lapse() -> bool:
 	return _lapse_t > 0.0
+
+
+## Voittoehtotaidon TEHOLLINEN arvo juuri nyt. Keskittymiskatko nollaa sen ja
+## mokatodennäköisyys leikkaa sitä suhteessa. Tämä on divisioona-akselin puuttunut
+## puolisko: ennen mistake_chance heilutti vain mekaniikkaa (tähtäys, kykyjen
+## käyttö, liikkeen harha), joten Diamond IV ja Diamond I kaatoivat rakenteita
+## täsmälleen yhtä hyvin eikä divisioonaparilla ollut voittajaa. Nyt keskittymis-
+## katko maksaa nimenomaan VOITTOEHTOA: piiritys katkeaa ja objektiivi-ikkuna
+## menee ohi.
+func _wc_skill(base: float) -> float:
+	if _lapse_t > 0.0:
+		return 0.0
+	return base * (1.0 - mistake_chance)
 
 
 ## Keskittymiskatkon tikitys ja arvonta. Katko EI koskaan ala kun botti on
@@ -357,8 +423,16 @@ func _tick_lapse(hero: Hero, arena, delta: float, decided: bool) -> void:
 	if mm != null and mm.is_in_own_sanctuary(hero.global_position, hero.team):
 		return
 	if randf() < mistake_chance:
-		_lapse_t = randf_range(0.35, 0.9)
+		# Katkon KESTO skaalautuu samalla akselilla kuin sen todennäköisyys:
+		# heikompi keskittyminen ei vain katkea useammin vaan myös palautuu
+		# hitaammin. Näiden yhteisvaikutus on divisioona-akselin varsinainen
+		# purenta tehokkaaseen peliaikaan (Wood IV ~0,89 s, Diamond I ~0,46 s).
+		var span: float = 0.35 + 1.6 * mistake_chance
+		_lapse_t = randf_range(span * 0.55, span * 1.45)
 		_lapse_drift = deg_to_rad(randf_range(-35.0, 35.0))
+		# Katko syö myös objektiivi-ikkunan: ajatus katkeaa juuri kun pitäisi
+		# kääntyä torniin. Juuri tästä divisioonaero syntyy voittoehdossa.
+		_convert_t = 0.0
 
 
 func _setup_role(hero: Hero) -> void:
@@ -545,6 +619,7 @@ func update(hero: Hero, delta: float) -> void:
 		_setup_role(hero)
 	_combo_timer = maxf(_combo_timer - delta, 0.0)
 	_shop_trip_cd = maxf(_shop_trip_cd - delta, 0.0)
+	_convert_t = maxf(_convert_t - delta, 0.0)
 	_track_camp_progress(hero, delta)
 	if _combo_timer <= 0.0 or _combo_target == null or not is_instance_valid(_combo_target) \
 			or not _combo_target.alive:
