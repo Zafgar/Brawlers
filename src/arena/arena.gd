@@ -1894,6 +1894,27 @@ func _spawn_buff(type: String, team: int, pos: Vector2) -> void:
 	buffs.append(buff)
 
 
+## Baronin ja Dragonin herätyslaskuri minikartalle. x = jäljellä olevat sekunnit,
+## y = koko odotuksen pituus (herätysrenkaan täyttöä varten). Nolla tarkoittaa
+## että tavoite on hereillä eikä laskuria näytetä. Ennen ensimmäistä heräämistä
+## luetaan ilmestymisajastin, sen jälkeen olennon oma respawn-kello.
+func objective_respawn_in(objective: String) -> Vector2:
+	if state != State.PLAY:
+		return Vector2.ZERO
+	var is_baron := objective == "baron"
+	var spawned_once: bool = _boss_spawned_once if is_baron else _dragon_spawned_once
+	if not spawned_once:
+		var left: float = _boss_timer if is_baron else _dragon_timer
+		var full: float = DRAGON_FIRST
+		if is_baron:
+			full = BARON_FIRST if mode == "moba" else BOSS_FIRST
+		return Vector2(maxf(left, 0.0), maxf(full, 1.0))
+	var critter := (_boss_critter if is_baron else _dragon_critter) as Critter
+	if critter == null or critter.alive:
+		return Vector2.ZERO
+	return Vector2(maxf(critter.respawn_timer, 0.0), maxf(critter.respawn_delay, 1.0))
+
+
 ## Aika seuraavaan buffiaaltoon sekunneissa (HUD-laskuri). -1 = ei näytetä.
 func next_buff_in() -> float:
 	if state != State.PLAY or mode == "jungle" or mode == "moba":

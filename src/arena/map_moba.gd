@@ -534,19 +534,29 @@ func tower_spots(team: int, lane_id: String = BOTTOM) -> Array:
 	return _towers[team][lane_id].duplicate()
 
 
+## Minikartan leiri- ja tavoitemerkit. Sijainnit ovat staattisia, mutta merkkiin
+## kuuluu myös elävä tila: "alive" kertoo onko leiri pystyssä, "left" montako
+## sekuntia herätykseen on jäljellä ja "total" koko odotuksen pituuden (siitä
+## piirtyy täyttyvä herätysrengas). Kartta ei omista olentoja, joten HUD päivittää
+## nämä kolme avainta paikan päällä Critterin tilasta. Avaimet luodaan valmiiksi
+## jo tässä, jotta minikartan päivitys ei kasvata sanakirjoja piirtosilmukassa.
 func camp_markers() -> Array:
 	var result: Array = []
 	for p in _red_camps:
-		result.append({"pos": p, "kind": "red"})
+		result.append(_camp_marker(p, "red"))
 	for p in _blue_camps:
-		result.append({"pos": p, "kind": "blue"})
+		result.append(_camp_marker(p, "blue"))
 	for p in _small_camps:
-		result.append({"pos": p, "kind": "small"})
+		result.append(_camp_marker(p, "small"))
 	for p in _lane_wildlife:
-		result.append({"pos": p, "kind": "lane"})
-	result.append({"pos": _baron, "kind": "baron"})
-	result.append({"pos": _dragon, "kind": "dragon"})
+		result.append(_camp_marker(p, "lane"))
+	result.append(_camp_marker(_baron, "baron"))
+	result.append(_camp_marker(_dragon, "dragon"))
 	return result
+
+
+func _camp_marker(pos: Vector2, kind: String) -> Dictionary:
+	return {"pos": pos, "kind": kind, "alive": true, "left": 0.0, "total": 0.0}
 
 
 func terrain_mult(pos: Vector2) -> float:
