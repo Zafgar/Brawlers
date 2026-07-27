@@ -1080,8 +1080,6 @@ func _shop_trip_ready(hero: Hero, bb: TeamBlackboard, was_recalling: bool) -> bo
 	# harvemmin (shop_trip_cooldown). Talousetu vaatii ostamisen, ei vain kullan.
 	if shop_trip_cooldown >= 900.0:
 		return false
-	if hero.items.size() >= 6:
-		return false
 	if not was_recalling and _shop_trip_cd > 0.0:
 		return false
 	# Baron-/ryhmätyöntökutsua ei hylätä ostosreissun takia.
@@ -1093,6 +1091,14 @@ func _shop_trip_ready(hero: Hero, bb: TeamBlackboard, was_recalling: bool) -> bo
 	var wallet: int = int(hero.profile.wallet())
 	var nxt: String = ItemDef.next_purchase(goal, hero.items, wallet)
 	if nxt == "":
+		return false
+	# TELAKKAPORTTI: reissu kannattaa vain jos ostos oikeasti mahtuu. Sama
+	# sääntö kuin Hero.buy_itemissä (yhdistelmä vapauttaa komponenttien paikat),
+	# joten kuusi valmista epicia hylkää reissun mutta kesken oleva runko ei.
+	# Vanha portti katsoi pelkkää items.size() >= 6:tta ja hylkäsi silloin myös
+	# yhdistelmän, joka olisi vapauttanut paikkoja.
+	var consumed: int = ItemDef.components_consumed(nxt, hero.items).size()
+	if hero.items.size() - consumed + 1 > Hero.MAX_ITEMS:
 		return false
 	if ItemDef.combine_cost(nxt, hero.items) < 700 and wallet < 1500:
 		return false
@@ -1122,9 +1128,33 @@ func _shop_goal(hero: Hero) -> String:
 		# koska se säästi jo legendaan. Peilaa Hero._bot_shop-porttia.
 		if leg != "" and not hero.items.has(leg):
 			return leg
-	for g in _item_build():
+	var build: Array = _item_build()
+	for g in build:
 		if not hero.items.has(str(g)):
 			return str(g)
+	# JATKOBUILD MYÖS REISSUPÄÄTÖKSEEN (juurisyy: viidakko ja tuki istuivat
+	# kullan päällä vielä jatkobuildin lisäämisen jälkeenkin — jungle 1717 ->
+	# 1574 g, tuki 1232 -> 1467 g eli PÄINVASTOIN kuin lanerit 1024 -> 878 ja
+	# 951 -> 868). Jatkobuild lisättiin vain OSTOPOLKUUN (Hero._bot_shop);
+	# tämä portti tunsi yhä pelkän kolmen itemin rungon, joten rungon
+	# valmistuttua _shop_goal palautti "" -> _shop_trip_ready hylkäsi reissun
+	# eikä botti enää KOSKAAN lähtenyt varta vasten ostoksille. Sen jälkeen
+	# ostaa ehti vain sattumalta: kuolleena respawnia odottaessa tai matalan
+	# HP:n paluukanavoinnilla. Ne osuvat lanereihin (kuolevat ja pakittavat
+	# jatkuvasti) muttei junglereihin (leirit parantavat: JungleHero
+	# .on_jungle_camp_defeated + riistanraatelija) eikä tukiin. Tuki jopa
+	# TAANTUI, koska jatkobuildin ensimmäiset ei-omat tavoitteet ovat
+	# tankkiepicit: mitä enemmän se ehti ostaa, sitä harvemmin se kuoli — eli
+	# sitä harvemmin se pääsi ostamaan lisää. Nyt tavoitelista on sama
+	# molemmissa päissä, joten jokainen rooli lähtee ostoksille niin kauan kuin
+	# telakassa on täytettävää.
+	if build.is_empty():
+		return ""
+	var role: String = str(ItemDef.get_item(str(build[0])).get("role_hint", ""))
+	for extra_v in ItemDef.extended_build(role):
+		var extra: String = str(extra_v)
+		if not hero.items.has(extra):
+			return extra
 	return ""
 
 
