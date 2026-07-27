@@ -1638,10 +1638,35 @@ func _moba_can_see(observer: Hero, target: Hero, arena) -> bool:
 	return space.intersect_ray(query).is_empty()
 
 
+## Junglerin kohdekehä. KUOLLUT VYÖHYKE (juurisyy sille, että Vesper päätti
+## ottelunsa tasolla 2-3 ilman omaa tuloa): junglerin kohdeportit kirjoitettiin
+## lähitaistelijajunglerille (kaira _pref_range 108, torq 96), mutta junglerin
+## PÄÄTÖKSET skannaavat sankarit sankarin oman taisteluetäisyyden mukaan:
+## _decide_moba engage_scan = clampf(_pref_range + 180, 360, 700) ja
+## _moba_push_target hero_scan = clampf(_pref_range + 150, 280, 700).
+## Vesper on ainoa jungleri jonka _pref_range (520) nostaa nuo skannit portin
+## yli: engage 700 ja push 670 vastaan kiinteä 620. Vyöhykkeellä 620-700 px
+## kävi näin: engage_scan NÄKEE vihollissankarin -> _decide_moba palaa heti
+## eikä _pick_moba_objectivea kutsuta lainkaan (leiritavoite jää nulliksi) ->
+## _update_target suodattaa saman sankarin POIS 620 px:n portilla -> varakohde
+## haettiin _moba_unit_relevantin 420 px:n kehältä, joka on Vesperin oman
+## 520 px asemointietäisyyden SISÄPUOLELLA eli sekin jäi tyhjäksi. Lopputulos:
+## ei leiriä, ei sankaria, ei yksikköä — jungleri seisoi elossa tekemättä
+## mitään niin kauan kuin vihollinen viipyi vyöhykkeellä, ja koska junglerin
+## koko XP tulee leireistä, taso jäi kahteen ja kulta lompakkoon.
+## Portti johdetaan nyt samasta luvusta kuin skanni, joten ne eivät voi enää
+## ajautua erilleen. Lähijunglereille (skanni 360) arvo on ennallaan 620.
+func _jungler_engage_reach() -> float:
+	return maxf(620.0, clampf(_pref_range + 180.0, 360.0, 700.0))
+
+
 func _moba_unit_relevant(hero: Hero, unit: Hero) -> bool:
 	var d: float = hero.global_position.distance_to(unit.global_position)
 	if _moba_job == "jungle":
-		return d <= 420.0
+		# Varakohteen kehä on vähintään junglerin oma taisteluetäisyys: kaukojungleri
+		# seisoo tarkoituksella 520 px päässä leiristään, joten 420 px:n kiinteä kehä
+		# hylkäsi juuri sen leirin jota se oli ampumassa (ks. _jungler_engage_reach).
+		return d <= maxf(420.0, _pref_range + 60.0)
 	if unit is Minion:
 		return (unit as Minion).lane_id == _moba_lane and d <= 620.0
 	if unit is Structure:
@@ -1895,7 +1920,8 @@ func _update_target(hero: Hero, arena, bb: TeamBlackboard) -> void:
 				# lähimpään sankariin toisella puolella koko karttaa. Lukittu
 				# gank-uhri kelpaa kauempaakin — muuten jungleri jäi seisomaan
 				# gank-portille tuijottamaan uhria ~700 px:n päähän.
-				var jungler_reach: float = 900.0 if e == _gank_victim else 620.0
+				var jungler_reach: float = 900.0 if e == _gank_victim \
+					else _jungler_engage_reach()
 				if e.global_position.distance_to(pos) > jungler_reach:
 					return false
 				# TORNIPORTTI (juurisyy: kaira otti 34 % vahingostaan TORNEILTA).
