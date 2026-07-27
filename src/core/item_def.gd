@@ -389,6 +389,49 @@ static func get_item(id: String) -> Dictionary:
 	return item
 
 
+## Tierin itemit roolivihjeen mukaan, halvin ensin (tasatilanne katalogin
+## järjestyksessä = determinismi). role_hint = "" palauttaa koko tierin.
+static func tier_ids(tier: String, role_hint := "") -> Array:
+	var out: Array = []
+	for id_v in ITEMS:
+		var id: String = str(id_v)
+		var item: Dictionary = ITEMS[id]
+		if str(item.get("tier", "")) != tier:
+			continue
+		if role_hint != "" and str(item.get("role_hint", "")) != role_hint:
+			continue
+		out.append(id)
+	out.sort_custom(func(x, y): return int(get_item(str(x)).get("cost", 0)) \
+		< int(get_item(str(y)).get("cost", 0)))
+	return out
+
+
+## TALOUSKORJAUS (130 ottelun ladder: käyttämätön kulta ottelun lopussa top
+## 1024 / jungle 1717 / bottom 951 / support 1232 g). Bottien runkobuild
+## (BotBrain._item_build) on vain KOLME epicia = 6400–7000 g, mutta telakassa
+## on kuusi paikkaa ja ottelun tulot ovat moninkertaiset. Kun runko valmistui,
+## ostotavoite tyhjeni ja botti lopetti ostamisen kokonaan. Sama näkyy
+## mittauksessa: mitä halvempi rungon hinta, sitä enemmän kultaa jäi käteen
+## (halvin tuki 6400 g -> 1232 g, kallein carry 7000 g -> 951 g).
+##
+## Jatkobuild täyttää loput kolme paikkaa: ensin roolin omat epicit, sitten
+## TANKKIEPICIT (HP/panssari/taikavastus hyödyttää jokaista roolia) ja lopuksi
+## carry-/ap-epicit. Tuki- ja viidakkoepicit jätetään pois muilta rooleilta:
+## niiden arvo (kultatulo, avustuskulta, leirivahinko) ei realisoidu väärässä
+## roolissa, joten ne olisivat vain toisenlainen tapa hukata kulta.
+static func extended_build(role_hint: String) -> Array:
+	var out: Array = []
+	for group in [role_hint, "tank", "carry", "ap"]:
+		var group_role: String = str(group)
+		if group_role == "":
+			continue
+		for id_v in tier_ids("epic", group_role):
+			var id: String = str(id_v)
+			if not out.has(id):
+				out.append(id)
+	return out
+
+
 static func all_ids() -> Array:
 	return ITEMS.keys()
 

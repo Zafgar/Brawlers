@@ -2052,6 +2052,18 @@ func _bot_shop() -> void:
 		if leg != "" and not items.has(leg) and _free_slot_for_legendary(leg):
 			goals.append(leg)
 	goals.append_array(build)
+	# TALOUDEN VUOTO (mitattu: käyttämätön kulta ottelun lopussa top 1024 /
+	# jungle 1717 / bottom 951 / support 1232 g): runkobuild on vain KOLME
+	# itemiä, telakassa on kuusi paikkaa. Kun runko valmistui, goal jäi tyhjäksi
+	# ja botti lopetti ostamisen kokonaan — loppupelin tulot jäivät lompakkoon.
+	# Jatkobuild (ItemDef.extended_build) täyttää loput paikat.
+	var role := ""
+	if not build.is_empty():
+		role = str(ItemDef.get_item(str(build[0])).get("role_hint", ""))
+	for extra_v in ItemDef.extended_build(role):
+		var extra: String = str(extra_v)
+		if not goals.has(extra):
+			goals.append(extra)
 	var guard := 0
 	while guard < 12:
 		guard += 1
@@ -2075,7 +2087,19 @@ func _bot_shop() -> void:
 		if goal == "":
 			return
 		var pick := ItemDef.next_purchase(goal, items, profile.wallet())
-		if pick == "" or not buy_item(pick):
+		if pick == "":
+			return
+		# TELAKKAVARAUS: keskeneräinen yhdistelmä tarvitsee komponenteilleen
+		# tilaa. Jos PALA täyttäisi viimeisen paikan ilman että tavoite
+		# valmistuu, botti jumittuisi lopullisesti — seuraava komponentti ei
+		# mahdu eikä yhdistelmä valmistu ilman sitä. Säästetään mieluummin koko
+		# hintaan: valmiin itemin saa yhteen paikkaan kerralla.
+		if pick != goal:
+			var after: int = items.size() \
+				- ItemDef.components_consumed(pick, items).size() + 1
+			if after >= MAX_ITEMS:
+				return
+		if not buy_item(pick):
 			return
 
 
