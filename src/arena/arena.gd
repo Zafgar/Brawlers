@@ -75,6 +75,9 @@ const CRYSTAL_RESPAWN := 300.0
 const DRAGON_FIRST := 90.0
 const BARON_FIRST := 180.0
 const PASSIVE_GOLD_PER_SEC := 1.5
+# Baronin artefaktin kantajan lisätulo. Legenda maksaa 2400 g; ilman aarretta
+# se on 2.4 min säästöä 1000 GPM:n tulovirralla, aarteen kanssa noin 1.8 min.
+const ARTIFACT_GOLD_PER_SEC := 3.0
 const MINION_REWARD_RADIUS := 850.0
 # Last hit on taito joka erottaa pelaajat: viimeistelijä saa kunnon kulta-
 # bonuksen JA osuuden XP:tä päälle. Pelkkä läheisyys-XP tasoitti kaikki samalle
@@ -839,7 +842,7 @@ func _spawn_artifact(pos: Vector2, from_baron: bool) -> void:
 	Fx.ring(self, pos, Palette.glow(Palette.GOLD, 1.5), 120.0, 0.7, 6.0)
 	if from_baron:
 		hud.show_banner("LEGENDAARINEN ARTEFAKTI PUTOSI!",
-			"Poimi se ja rakenna legendaarinen esine kaupassa", 2.6)
+			"Poimi se — legendan voi takoa missä tahansa, kun kulta riittää", 2.6)
 		hud.ko_feed("Legendaarinen artefakti putosi!")
 		if not Game.simulating:
 			AudioMgr.play("artifact_drop", 0.03, -4.0, pos)
@@ -1048,6 +1051,14 @@ func _tick_moba_economy(delta: float) -> void:
 		var income := PASSIVE_GOLD_PER_SEC * delta
 		# Itemit: kultatulo (gold_per_sec) lasketaan passiivituloon.
 		income += float(h.item_stat("gold_per_sec")) * delta
+		# BARONIN AARRE: artefaktin kantaja saa lisätuloa. Ilman tätä poiminta
+		# ei tehnyt mitään ennen ostoa, ja legendan 2400 g piti säästää
+		# kokonaan pudotuksen JÄLKEEN — mitattu valmistumisaika 18:10 eli
+		# ottelun (17:42) viimeinen minuutti. Aarre lyhentää säästöajan noin
+		# neljänneksellä ja tekee kantamisesta itsessään palkitsevaa (samalla
+		# kantaja on maalitaulu, joten riski ja palkkio ovat tasapainossa).
+		if bool(h.legendary_artifact):
+			income += ARTIFACT_GOLD_PER_SEC * delta
 		h.profile.stats.gold += income
 		h.profile.stats.passive_gold += income
 		_record_buff_economy(h, income, 0.0)

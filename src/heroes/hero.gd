@@ -935,6 +935,11 @@ func _physics_process(delta: float) -> void:
 	# palautumista, jotta teleportti ja lähdeparannus näkyvät samassa framessa.
 	_update_recall(delta)
 	_fountain_regen(delta)
+	# ARTEFAKTIPAJA: artefaktin kantaja voi takoa legendan siellä missä seisoo,
+	# joten ostotikki ajetaan myös lähteen ulkopuolella. Ks. buy_item.
+	# _can_shop() erottaa tämän lähdekäynnistä, jottei tikki kulu kahdesti.
+	if legendary_artifact and not _can_shop():
+		_bot_shop_tick(delta)
 
 	# Palautuminen. Itemit: hp_regen vahvistaa; elonlähteen elinvoima pitää
 	# palautumisen käynnissä taistelussakin puolella teholla.
@@ -1934,9 +1939,18 @@ func _use_item_active(id: String, active: String) -> void:
 ## komponentit kuluvat yhdistelmään ja yhdistelmähinta hyvittää ne.
 func buy_item(id: String) -> bool:
 	var item := ItemDef.get_item(id)
-	if item.is_empty() or not _can_shop():
+	if item.is_empty() or arena == null or arena.mode != "moba" \
+			or is_unit or profile == null:
 		return false
-	if bool(item.get("require_artifact", false)) and not legendary_artifact:
+	if bool(item.get("require_artifact", false)):
+		if not legendary_artifact:
+			return false
+		# ARTEFAKTI ON PAJA: legendan saa taottua siellä missä artefakti on.
+		# Aiemmin kantajan piti kävellä kartan vaarallisimmalta alueelta omalle
+		# lähteelle, ja kaatuminen matkalla PUDOTTAA artefaktin
+		# (Arena.on_hero_ko) — myös kaikki sitä varten säästetty kulta meni
+		# hukkaan. Jännite säilyy: 2400 g on yhä säästettävä hengissä.
+	elif not _can_shop():
 		return false
 	var consumed := ItemDef.components_consumed(id, items)
 	if items.size() - consumed.size() + 1 > MAX_ITEMS:
@@ -2006,27 +2020,38 @@ func _bot_shop_tick(delta: float) -> void:
 
 ## Botin ostokierros: kävele roolibuildin tavoitteet järjestyksessä ja osta
 ## nykyisen keskeneräisen tavoitteen halvin ostettava pala niin kauan kuin
-## lompakko riittää. Baron-artefakti nostaa roolin legendan listan kärkeen.
+## lompakko riittää. Baron-artefakti nostaa roolin legendan listan kärkeen ja
+## SÄÄSTÄÄ siihen; runkobuildin loputtua jatketaan roolin muilla epiceillä.
 func _bot_shop() -> void:
 	if not (controller is BotBrain):
 		return
 	# Täysi build: 6 valmista epic/legendary-itemiä -> ei enää ostettavaa.
+	# Poikkeus: artefakti hallussa -> legenda pitää yhä päästä ostamaan (paikka
+	# vapautetaan myymällä), muuten pudotus valuu hukkaan juuri niiltä boteilta
+	# joilla on eniten kultaa.
 	var finished := 0
 	for id in items:
 		var tier := str(ItemDef.get_item(str(id)).get("tier", ""))
 		if tier == "epic" or tier == "legendary":
 			finished += 1
-	if finished >= MAX_ITEMS:
+	if finished >= MAX_ITEMS and not legendary_artifact:
 		return
+	var build: Array = controller._item_build()
 	var goals: Array = []
 	if legendary_artifact:
-		# Artefakti hallussa: roolin legenda listan kärkeen heti kun siihen on
-		# varaa (muuten jatketaan normaalia buildia, ei jäädä säästämään).
+		# ARTEFAKTIN JUURISYYKORJAUS (130 ottelun ladder: 119 pudotusta, 3
+		# legendaa, 96 % hukkaan). Aiemmin legenda otettiin tavoitelistalle vain
+		# jos KOKO hinta oli jo lompakossa. Ostosilmukka kuitenkin valuttaa
+		# lompakon joka tikillä runkobuildin 300–1050 g:n paloihin, joten 2400 g
+		# ei kertynyt käytännössä koskaan -> legendaa ei ostettu ikinä.
+		# Nyt legenda on AINOA tavoite kunnes se on ostettu: next_purchase
+		# palauttaa "" (builds_from on tyhjä), silmukka poistuu ja lompakko
+		# kasvaa legendaa kohti. Artefaktin kantajan lisätulo (Arena
+		# ARTIFACT_GOLD_PER_SEC) lyhentää säästöajan noin 1.5–2 minuuttiin.
 		var leg: String = controller._item_legendary()
-		if leg != "" and not items.has(leg) \
-				and profile.wallet() >= ItemDef.combine_cost(leg, items):
+		if leg != "" and not items.has(leg) and _free_slot_for_legendary(leg):
 			goals.append(leg)
-	goals.append_array(controller._item_build())
+	goals.append_array(build)
 	var guard := 0
 	while guard < 12:
 		guard += 1
@@ -2034,7 +2059,12 @@ func _bot_shop() -> void:
 		# katalogista buildin sijaan. Ostos on aina LAILLINEN (varaa riittää,
 		# paikat kunnossa) — se on vain huono valinta, ja juuri se on taitoeroa:
 		# Woodin kuusi itemiä eivät tue sen roolia, Goldin tukevat.
-		var rnd_chance: float = float(controller.shop_random_chance)
+		# Artefakti hallussa -> ei umpimähkää: satunnaisosto valuttaisi juuri sen
+		# lompakon jota legenda odottaa. Baronin taito-osuus on jo mallinnettu
+		# ylempänä (BotBrain.can_baron estää Baron-kutsun matalilta tasoilta),
+		# joten tämä ei syö rank-eroa vaan poistaa kohinan.
+		var rnd_chance: float = 0.0 if legendary_artifact \
+			else float(controller.shop_random_chance)
 		if rnd_chance > 0.0 and randf() < rnd_chance and _bot_buy_random():
 			continue
 		var goal := ""
@@ -2047,6 +2077,31 @@ func _bot_shop() -> void:
 		var pick := ItemDef.next_purchase(goal, items, profile.wallet())
 		if pick == "" or not buy_item(pick):
 			return
+
+
+## Legendan paikka telakassa: artefakti hallussa ja kulta kasassa, mutta kaikki
+## kuusi paikkaa täynnä -> myy halvin runkobuildiin kuulumaton item, jotta
+## legenda mahtuu (buy_item hylkää: items.size() + 1 > MAX_ITEMS). Myydään vain
+## kun osto oikeasti onnistuu heti, jottei botti myy itseään tyhjäksi turhaan.
+func _free_slot_for_legendary(leg: String) -> bool:
+	if items.size() < MAX_ITEMS:
+		return true
+	if profile.wallet() < ItemDef.combine_cost(leg, items):
+		return false
+	var build: Array = controller._item_build()
+	var worst := ""
+	var worst_cost := 0
+	for id_v in items:
+		var id: String = str(id_v)
+		if build.has(id):
+			continue
+		var cost: int = int(ItemDef.get_item(id).get("cost", 0))
+		if worst == "" or cost < worst_cost:
+			worst = id
+			worst_cost = cost
+	if worst == "":
+		return false
+	return sell_item(worst)
 
 
 ## Umpimähkäinen mutta laillinen ostos: satunnainen katalogin item johon on

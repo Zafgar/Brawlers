@@ -67,7 +67,7 @@ func _pickup(hero) -> void:
 	hero.legendary_artifact = true
 	arena.artifacts.erase(self)
 	arena.hud.show_banner("%s POIMI ARTEFAKTIN!" % str(hero.profile.display_name),
-		"Legendaarinen esine on nyt ostettavissa kaupassa", 2.2)
+		"Legendan voi takoa kentällä heti kun kultaa on tarpeeksi", 2.2)
 	arena.hud.ko_feed("%s poimi artefaktin!" % str(hero.profile.display_name))
 	hero.controller_rumble(0.4, 0.25, 0.3)
 	Fx.flash(arena, global_position, Palette.glow(Palette.GOLD, 1.6), 70.0, 0.4)

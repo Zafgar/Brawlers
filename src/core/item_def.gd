@@ -8,8 +8,20 @@ class_name ItemDef
 ## osuuksia ellei toisin mainita; armor/mr ovat KIINTEITÄ pisteitä ja
 ## hp/gold_per_sec kiinteitä arvoja.
 ##
-## Legendat vaativat Baron-artefaktin (require_artifact) — Phase B toteuttaa
-## poiminnan; osto kuluttaa artefaktin.
+## Legendat vaativat Baron-artefaktin (require_artifact) — poiminta on
+## LegendaryArtifactissa; osto kuluttaa artefaktin.
+##
+## LEGENDOJEN HINTA ON TARKISTETTU EIKÄ SITÄ MUUTETTU (130 ottelun ladder:
+## 119 artefaktipudotusta, 3 valmistunutta legendaa, 96 % hukkaan). Laskelma
+## oikeilla kultakäyrillä: sankarin GPM on tierin mukaan 850–1400, joten 2400 g
+## on 1.7–2.8 minuutin tulo. Ottelun keskipituus on 17:42 ja Baron herää 3:00,
+## joten hinta EI ole pullonkaula — pullonkaula oli se, ettei ostologiikka
+## säästänyt legendaan lainkaan (Hero._bot_shop otti legendan tavoitelistalle
+## vain jos koko 2400 g sattui jo olemaan lompakossa, mutta runkobuild valutti
+## lompakon joka sekunti 300–1050 g:n paloihin). Hinnan laskeminen olisi vain
+## siirtänyt saman virheen halvemmaksi. Legendan statiarvo commonien
+## yksikköhinnoilla on 2400–3300 g, eli 2400 g + kiistelty tavoite on jo
+## reilusti pelaajan puolella oleva hinta.
 ##
 ## TALOUS -> VOIMA (mitattu ongelma: ottelut päättyivät aikakattoon vaikka
 ## voittava puoli johti kultaa 11-33 %): epicien ja legendojen HYÖKKÄYSrivit
