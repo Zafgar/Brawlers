@@ -60,6 +60,18 @@ const SNOWBALL_LOW := 55.0         # iso johto voittaa alle tämän -> johdolla 
 const BARON_SKIP_SHARE := 30.0     # % otteluista joissa Baronia ei kaadettu lainkaan
 const BUILD_DOMINANT := 80.0       # yhden lopullisen buildin osuus %-yksikköinä
 
+# --- Seisontatarkistus: pelasiko sankari ottelussa lainkaan ----------------
+# Järjestelmätason vahti sille bottivialle, jossa sankari jää jumiin (esim.
+# kaksi toisiaan seuraavaa tukea kävelee kartan reunaan) eikä osallistu
+# otteluun ollenkaan. Tällainen sankari päättää ottelun naurettavan matalalla
+# tasolla ja käytännössä ilman omaa tuloa — molemmat ehdot vaaditaan, jotta
+# rehellisesti huonosti mennyt (mutta pelattu) ottelu ei liputu.
+const STALL_MIN_MATCH := 240.0     # lyhyempää ottelua ei arvioida lainkaan
+const STALL_MAX_EARNED := 400.0    # oma tulo (passiivi pois) alle tämän = ei pelannut
+const STALL_FLOOR_STEP := 210.0    # sekuntia per tasolattian porras
+const STALL_FLOOR_MIN := 3         # tasolattia lyhyimmässä arvioitavassa ottelussa
+const STALL_FLOOR_MAX := 7         # tasolattian katto pitkissä otteluissa
+
 # --- Sweepin ristiintaulukot: "mikä on itemin rooli tässä kaikessa" ---------
 # Nämä vastaavat kysymyksiin joita pelkät itemi- ja sankaritaulukot eivät
 # vastaa: mitä KUKIN ROOLI rakentaa, mitä KOVIMMAT/KEVEIMMÄT sankarit avaavat
@@ -2456,6 +2468,11 @@ static func _section_match_health(lines: Array, results: Array, opts: Dictionary
 	var mit_sum := 0.0
 	var taken_sum := 0.0
 	var hero_obs := 0
+	# Seisontatarkistus: sankariottelut jotka päättyivät ilman että sankari
+	# käytännössä pelasi lainkaan (jumissa oleva botti).
+	var stall_obs := 0
+	var stall_n := 0
+	var stall_names: Dictionary = {}
 	for snap_v in snapshots:
 		var snap: Dictionary = snap_v
 		var winner: int = int(snap.get("winner", -1))
@@ -2484,6 +2501,16 @@ static func _section_match_health(lines: Array, results: Array, opts: Dictionary
 			if v10 >= 0.0 and (ht == 0 or ht == 1):
 				g10[ht] = float(g10[ht]) + v10
 				g10_n[ht] = int(g10_n[ht]) + 1
+			# Seisoiko sankari koko ottelun? Tasolattia JA oma tulo yhdessä.
+			if elapsed >= STALL_MIN_MATCH:
+				stall_obs += 1
+				var own_income: float = float(hh.get("gold", 0.0)) \
+					- float(hh.get("passive_gold", 0.0))
+				if int(hh.get("level", 1)) < _stall_level_floor(elapsed) \
+						and own_income < STALL_MAX_EARNED:
+					stall_n += 1
+					var stall_id: String = str(hh.get("hero_id", "?"))
+					stall_names[stall_id] = int(stall_names.get(stall_id, 0)) + 1
 			# Talouden lähteet rooleittain.
 			var role: String = str(hh.get("progression_role", hh.get("role", "unknown")))
 			if role == "":
@@ -2655,6 +2682,24 @@ static func _section_match_health(lines: Array, results: Array, opts: Dictionary
 	if erows.is_empty():
 		lines.append("  Ei talousaineistoa otannassa.")
 
+	# --- Seisovat sankarit (järjestelmätarkistus) ---
+	lines.append("")
+	lines.append("  -- Seisovat sankarit (pelasiko sankari ottelussa lainkaan) --")
+	lines.append("  Seisoja = loppitaso alle kestolattian (%d–%d) JA oma tulo alle %d g (passiivi pois)." % [
+		STALL_FLOOR_MIN, STALL_FLOOR_MAX, int(STALL_MAX_EARNED)])
+	if stall_obs <= 0:
+		lines.append("  Ei vähintään %d s otteluita otannassa — tarkistus ohitettu." % int(STALL_MIN_MATCH))
+	else:
+		var stall_pct: float = 100.0 * float(stall_n) / float(stall_obs)
+		lines.append("  Sankariotteluita %d | seisojia %d (%.1f %%) | useimmin: %s" % [
+			stall_obs, stall_n, stall_pct, _top_counts(stall_names)])
+		if stall_n > 0:
+			lines.append("  " + _flag(flags, "järjestelmä", "seisojat",
+				"TARKISTA: %d sankariottelua (%.1f %%) päättyi ilman peliä — botti jumissa?" % [
+					stall_n, stall_pct]))
+		else:
+			lines.append("  Jokainen sankari pelasi ottelunsa — ei jumeja otannassa.")
+
 	# --- CC ja vaimennus ---
 	lines.append("")
 	lines.append("  -- CC ja vaimennus (per sankari per ottelu; tankki-itemien järkitarkistus) --")
@@ -2693,6 +2738,29 @@ static func _summary_box(lines: Array, results: Array, opts: Dictionary) -> void
 		lines.append("  TUOMIO: TASAPAINO OK — yksikään mittari ei ylittänyt hälytysrajaa.")
 	else:
 		lines.append("  TUOMIO: %d TARKISTUSKOHDETTA — yksityiskohdat osioissa alla." % flags.size())
+
+
+## Tasolattia ottelun kestolle: kuinka matalalle tasolle oikeasti pelannut
+## sankari EI voi jäädä. Tarkoituksella hyvin varovainen — 20 minuutin
+## ottelussa normaali sankari on tasolla 12+, joten katto 7 ei liputa edes
+## pahasti hävinnyttä linjaa, vain sankarin joka ei pelannut lainkaan.
+static func _stall_level_floor(elapsed: float) -> int:
+	return clampi(2 + int(elapsed / STALL_FLOOR_STEP), STALL_FLOOR_MIN, STALL_FLOOR_MAX)
+
+
+## Kolme yleisintä nimeä laskuritaulukosta, muodossa "nimi (n)".
+static func _top_counts(counts: Dictionary) -> String:
+	var rows: Array = []
+	for name_v in counts:
+		rows.append({"name": str(name_v), "n": int(counts[name_v])})
+	if rows.is_empty():
+		return "-"
+	rows.sort_custom(func(x, y): return int(x["n"]) > int(y["n"]))
+	var parts: Array = []
+	for i in range(mini(rows.size(), 3)):
+		var r: Dictionary = rows[i]
+		parts.append("%s (%d)" % [str(r["name"]), int(r["n"])])
+	return ", ".join(PackedStringArray(parts))
 
 
 ## Kolme eniten liputettua nimeä annetusta liputusluokasta, muodossa "nimi (n)".
