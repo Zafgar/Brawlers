@@ -77,13 +77,22 @@ func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2,
 
 	match kind:
 		Kind.TOWER:
-			max_hp = 1450.0 if lane_tier == 2 else (1250.0 if lane_tier == 1 else 1100.0)
+			# HP-käyrä laskettiin (base 1450->1250, sisä 1250->1000, uloin
+			# 1100->900) osana piirityksen läpivirtauskorjausta: ks.
+			# SIEGE_DECAY_* alla. Tornia EI suojaa sen HP-altaan koko vaan
+			# kantamaimmuniteetti + 83.8 DPS:n vastatuli, joten altaan
+			# pienentäminen ei tee varhaisesta sukelluksesta ilmaista.
+			max_hp = 1250.0 if lane_tier == 2 else (1000.0 if lane_tier == 1 else 900.0)
 			radius = 52.0 if lane_tier == 2 else 46.0
 			gold_value = 260 if lane_tier == 2 else (210 if lane_tier == 1 else 160)
 			xp_value = 340 if lane_tier == 2 else (280 if lane_tier == 1 else 220)
 			_charge = randf_range(0.0, 0.6)   # porrasta aloituslataus
 		Kind.NEXUS:
-			max_hp = 2200.0                   # kovempi linnake (ei kaadu 7 min)
+			# 2200 -> 1800: base-tornin kaato antaa vain 75 s ikkunan ennen
+			# kristallin nousua, ja 2200 HP ei mahtunut siihen ikkunaan kuin
+			# taydella joukkueella. Nyt "mursimme base-tornin" muuttuu
+			# oikeasti voitoksi eikä uudeksi kristallikierrokseksi.
+			max_hp = 1800.0                   # kovin linnake, mutta suljettavissa
 			radius = 72.0
 			_invuln = true
 			gold_value = 0
@@ -92,7 +101,7 @@ func setup_structure(p_arena, p_kind: int, p_team: int, pos: Vector2,
 			# Kristallikello (inhibiittori-suoja): EI hyökkää — se vain palauttaa
 			# nexuksen suojaan niin kauan kuin se seisoo. Kohtuu-HP, jotta
 			# superminioniaalto + sankari murtavat sen järkevässä ajassa.
-			max_hp = 900.0
+			max_hp = 750.0
 			radius = 40.0
 			gold_value = 150
 			xp_value = 180
@@ -358,6 +367,49 @@ const STRUCT_ATTACK_SCALE := 0.75   # perusvahinkoitemien kerroin rakennuksiin
 const STRUCT_AP_SCALE := 0.5        # kykyvahinkoitemien kerroin rakennuksiin
 
 
+## === LOPPUPELIN ESKALAATIO: LINNOITUS RAPISTUU ===
+## Mitattu vika (kolme peräkkäistä ladder-ajoa, 72/130/78 ottelua): vain
+## 45.8 / 49.2 / 48.7 % otteluista päättyi nexukseen, loput 20:00 aikakattoon.
+## Syy on puhdasta aritmetiikkaa, ei bottien käyttäytymistä:
+##   voiton tiellä yhdellä linjalla seisoi 1100 + 1250 + 1450 + 2200 = 6000 HP
+##   mitattu joukkueen rakennusläpivirtaus oli 3,7–4,8 HP/s (3,5–4,5 rakennusta)
+##   -> sulkemisaika 21:03–27:04, kun katto on 20:00.
+## Aikakatto osui siis KESKELLE hajontaa: noin puolet otteluista ehti, puolet ei.
+##
+## Korjaus ei ole "tornit ovat aina heikkoja" — se tekisi jokaisesta pelistä
+## kymmenen minuutin rynnäkön. Sen sijaan linnoitus rapistuu AJAN myötä:
+## ensimmäiset kymmenen minuuttia ovat täysin ennallaan (laning-vaihe säilyy),
+## minkä jälkeen rakennukset ottavat asteittain enemmän vahinkoa.
+##   t <= 10:00  ->  x1.00   (ei muutosta)
+##   t  = 13:00  ->  x1.32
+##   t  = 15:00  ->  x1.54
+##   t >= 17:00  ->  x1.75   (katto: tehollinen HP -43 %)
+## Rapistuma koskee molempia joukkueita samalla tavalla — se ei ratkaise
+## KUKA voittaa, vaan takaa että ottelu PÄÄTTYY.
+const SIEGE_DECAY_START := 600.0    # 10:00 — rapistuma alkaa
+const SIEGE_DECAY_FULL := 1020.0    # 17:00 — rapistuma täydessä
+const SIEGE_DECAY_MAX := 0.75       # +75 % vahinkoa rakennuksiin lopussa
+
+## Baronin siunaus rakennuksiin: buffattu sankari repii rakennuksia
+## selvästi nopeammin. Ilman tätä Baron oli 45 sekunnin sankaribuffi joka
+## ei näkynyt kaadetuissa torneissa lainkaan — objektiivivoitto ei siis
+## muuttunut ottelun sulkemiseksi. Aallon puoli hoidetaan Minion.bless().
+const BARON_SIEGE_MULT := 1.35
+
+
+## Rapistumakerroin juuri nyt (1.0 = ennallaan). Julkinen, koska HUD/visuaali
+## näyttää sen pelaajalle ja aikakaton piiritysvertailu lukee samaa käyrää.
+func siege_decay() -> float:
+	if arena == null:
+		return 1.0
+	var now: float = float(arena.match_elapsed)
+	if now <= SIEGE_DECAY_START:
+		return 1.0
+	var span: float = maxf(SIEGE_DECAY_FULL - SIEGE_DECAY_START, 1.0)
+	var ramp: float = clampf((now - SIEGE_DECAY_START) / span, 0.0, 1.0)
+	return 1.0 + SIEGE_DECAY_MAX * ramp
+
+
 ## === PIIRITYSSÄÄNTÖ ===
 ## Piiritys ei saa olla ilmaista. Aiemmin pitkän kantaman sankari (Scout 1050,
 ## Quill 560+) pokettti tornin nurin tornin OMAN kantaman (440) ulkopuolelta,
@@ -410,6 +462,12 @@ func take_damage(amount: float, source: Hero, kb := 0.0, kb_dir := Vector2.ZERO)
 		var ap: float = source.item_stat("ap")
 		if atk > 0.0 or ap > 0.0:
 			amount *= 1.0 + STRUCT_ATTACK_SCALE * atk + STRUCT_AP_SCALE * ap
+		# BARONIN SIUNAUS: objektiivivoitto muuttuu piiritysvoimaksi.
+		if source.baron_buff > 0.0:
+			amount *= BARON_SIEGE_MULT
+	# LOPPUPELIN RAPISTUMA: koskee kaikkia vahingonlähteitä (myös minioneja),
+	# koska aalto on ainoa piiritysvoima joka ei vaadi sankarin kosketusta.
+	amount *= siege_decay()
 	var dealt := super.take_damage(amount, source, kb, kb_dir)
 	if alive and dealt > 0.0 and not Game.simulating:
 		var frac := hp / maxf(max_hp, 1.0)
@@ -877,6 +935,13 @@ class StructureVisual:
 		elif s.kind == Structure.Kind.CRYSTAL:
 			UiKit.draw_text(self, Vector2(0, by - 28.0),
 				"SUOJAA NEXUSTA — TUHOA", 11, Palette.BAD, true, 2)
+		# Loppupelin rapistuma näkyy lukuna: pelaajan pitää tietää että sama
+		# torni kaatuu nyt nopeammin kuin kymmenen minuuttia sitten.
+		var decay: float = s.siege_decay()
+		if decay > 1.01:
+			UiKit.draw_text(self, Vector2(0, by + 13.0),
+				"LINNOITUS RAPISTUNUT −%d %%" % int(round((1.0 - 1.0 / decay) * 100.0)),
+				10, Palette.glow(Color("ff8a4a"), 1.2), true, 2)
 		draw_rect(Rect2(-bw / 2.0, by, bw, 7.0), Color(0, 0, 0, 0.6))
 		draw_rect(Rect2(-bw / 2.0, by, bw * frac, 7.0), Palette.glow(col, 1.15))
 		draw_rect(Rect2(-bw / 2.0, by, bw, 7.0), Palette.with_alpha(Color.WHITE, 0.25), false, 1.0)

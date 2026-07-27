@@ -55,12 +55,29 @@ const SNOWBALL_SAMPLE_T := 600.0
 const WAVE_INTERVAL := 18.0       # lyhyempi tyhjä jakso edellisen aallon jälkeen
 const WAVE_FIRST := 1.5           # ensimmäinen aalto lähtee lähes heti
 const WAVE_SIZE := 5              # 3 melee + 2 ranged per linja per joukkue
-# Loppupelin työntöapu: 14 min jälkeen joka aalto saa +1 etuvartion. Kolmen
-# tornin ketju per linja (aiemmin kaksi) pidensi piirityksiä niin, että ottelut
-# päättyivät aikakattoon nexustuhon sijaan — isompi loppuaalto crashaa torneille
-# useammin ja vie pelit maaliin.
-const LATE_WAVE_TIME := 840.0
-const MINION_CAP := 96
+# LOPPUPELIN AALTOESKALAATIO (piirityksen läpivirtauskorjaus).
+# Aiemmin: yksi porras 14:00 kohdalla (+1 etuvartio) ja vakiotahti 18 s koko
+# ottelun ajan. Mitattuna se tarkoitti, että aalto uhkasi tornia vasta kun
+# ottelu oli jo käytännössä ohi aikakattoon. Nyt kolme porrasta:
+#   11:00  aalto 6 yksikköä (4 melee) JA tahti 18 s -> 15 s
+#   16:00  aalto 7 yksikköä (5 melee)
+# Portaat on tahallaan loivia: liian jyrkkä hyppy kaataisi ulkotornit
+# pelkällä aallolla ja lyhentäisi ottelut kymmeneen minuuttiin.
+# Aalto on ainoa piiritysvoima joka ei vaadi sankarin kosketusta
+# rakennukseen, joten sen tiheys ja koko ovat suorin vipu sulkemiseen.
+const LATE_WAVE_TIME := 660.0     # 11:00: +1 etuvartio ja nopeampi tahti
+const SIEGE_WAVE_TIME := 960.0    # 16:00: vielä +1 etuvartio
+const LATE_WAVE_INTERVAL := 15.0  # loppupelin aaltoväli
+# Katto nostettiin 96 -> 120, koska 15 sekunnin tahdilla vanha katto olisi
+# alkanut niellä kokonaisia loppupelin aaltoja (kumpikin joukkue saa puolet).
+const MINION_CAP := 120
+# BARONIN SIUNAUS: kaadon jälkeen tämän ajan verran joukkueen aallot
+# marssivat vahvistettuina (Minion.bless). Ikkuna on tahallaan pidempi kuin
+# sankaribuffi (BOSS_BOOST 45 s), jotta Baron ehtii oikeasti muuttua
+# kaadetuksi torniksi eikä jää voitetuksi taisteluksi.
+const BARON_WAVE_TIME := 75.0
+const BARON_WAVE_HP := 1.55
+const BARON_WAVE_DMG := 1.45
 # Kristallikello (LoL-inhibiittori käänteisenä): base-tornin kaaduttua murtaja
 # saa +1 superminionin per aalto sillä linjalla, kunnes puolustajan kristalli
 # nousee tornin paikalle (FIRST_RISE-viive). Elossa oleva kristalli pysäyttää
@@ -124,6 +141,7 @@ var _super_wave_pending := false       # tämä aalto sisälsi superminionin (ä
 const MULTI_KILL_WINDOW := 10.0        # s: sarja katkeaa tämän jälkeen
 var _multi_kills: Dictionary = {}
 var crystals_broken := [0, 0]          # telemetria: murskatut kristallit per murtajajoukkue
+var _baron_wave_until := [-1.0, -1.0]  # mihin asti joukkueen aallot ovat siunattuja
 var first_wave_crash_time := -1.0
 var _dragon_critter = null
 var _dragon_timer := DRAGON_FIRST
@@ -806,6 +824,9 @@ func _grant_blue_buff(source) -> void:
 
 
 func _grant_boss_boost(team: int) -> void:
+	# Aallon siunaus on joukkuetason palkinto: se jatkuu vaikka buffin saanut
+	# sankari kuolisi heti. Ilman tätä Baron katosi ensimmäisessä taistelussa.
+	_baron_wave_until[team] = match_elapsed + BARON_WAVE_TIME
 	for ally in alive_allies(team):
 		ally.red_buff = maxf(ally.red_buff, BOSS_BOOST)
 		ally.blue_buff = maxf(ally.blue_buff, BOSS_BOOST)
@@ -897,6 +918,7 @@ func _setup_moba() -> void:
 	_crystal_lanes.clear()
 	super_minions_spawned = [0, 0]
 	crystals_broken = [0, 0]
+	_baron_wave_until = [-1.0, -1.0]
 	for cpos in mm.red_camps():
 		_moba_camp_queue.append([Critter.Kind.RED_CAMP, cpos])
 	for cpos in mm.blue_camps():
@@ -992,7 +1014,7 @@ func _moba_physics(delta: float) -> void:
 	# Minioniaallot molemmille joukkueille.
 	_wave_timer -= delta
 	if _wave_timer <= 0.0:
-		_wave_timer = WAVE_INTERVAL
+		_wave_timer = _wave_interval()
 		for lane_id in [MapMoba.TOP, MapMoba.BOTTOM]:
 			_spawn_wave(0, lane_id)
 			_spawn_wave(1, lane_id)
@@ -1009,6 +1031,13 @@ func _moba_physics(delta: float) -> void:
 		time_left = 0.0
 		_end_reason = "aikakatto"
 		_end_moba(_moba_leader())
+
+
+## Aaltojen tahti: kiristyy loppupeliä kohti (18 s -> 13 s). Aalto on ainoa
+## piiritysvoima joka ei vaadi sankarin kosketusta rakennukseen, joten sen
+## tiheys on suora vipu ottelun sulkeutumiseen.
+func _wave_interval() -> float:
+	return LATE_WAVE_INTERVAL if match_elapsed >= LATE_WAVE_TIME else WAVE_INTERVAL
 
 
 ## Aktivoi jungle campit täsmälleen ensimmäisen top- tai bottom-aallon
@@ -1351,13 +1380,19 @@ func _spawn_wave(team: int, lane_id: String = MapMoba.BOTTOM) -> void:
 		if p1 != base:
 			lead = (p1 - base).normalized()
 	var side: Vector2 = lead.orthogonal()
-	# Loppupelissä (LATE_WAVE_TIME) aalto kasvaa yhdellä etuvartiolla: piiritys-
-	# paine nousee ja base-tornit murtuvat ennen aikakattoa (ks. vakion selitys).
+	# Loppupelin portaat (ks. LATE_WAVE_TIME / SIEGE_WAVE_TIME): aalto kasvaa
+	# kahdesti, jotta piirityspaine nousee ja base-tornit murtuvat ennen
+	# aikakattoa. Tahti kiristyy samalla _wave_intervalissa.
 	var wave_size := WAVE_SIZE
 	var melee_count := 3
 	if match_elapsed >= LATE_WAVE_TIME:
 		wave_size += 1
 		melee_count += 1
+	if match_elapsed >= SIEGE_WAVE_TIME:
+		wave_size += 1
+		melee_count += 1
+	# Baronin siunaus koskee koko aaltoa (myös superminionia).
+	var blessed: bool = match_elapsed < float(_baron_wave_until[team])
 	for i in range(wave_size):
 		var m := Minion.new()
 		# Kilpisoturit muodostavat oikean etulinjan, kaksi sädevahtia jää
@@ -1370,6 +1405,8 @@ func _spawn_wave(team: int, lane_id: String = MapMoba.BOTTOM) -> void:
 			if m_kind == Minion.Kind.MELEE else (-24.0 + float(rank_i) * 48.0)
 		var offset: Vector2 = lead * forward_offset + side * side_offset
 		m.setup_minion(self, team, base + offset, path, lane_id, m_kind)
+		if blessed:
+			m.bless(BARON_WAVE_HP, BARON_WAVE_DMG)
 		add_child(m)
 		heroes.append(m)
 		minions.append(m)
@@ -1378,6 +1415,8 @@ func _spawn_wave(team: int, lane_id: String = MapMoba.BOTTOM) -> void:
 	if _lane_super_active(team, lane_id):
 		var sm := Minion.new()
 		sm.setup_minion(self, team, base + lead * 60.0, path, lane_id, Minion.Kind.SUPER)
+		if blessed:
+			sm.bless(BARON_WAVE_HP, BARON_WAVE_DMG)
 		add_child(sm)
 		heroes.append(sm)
 		minions.append(sm)

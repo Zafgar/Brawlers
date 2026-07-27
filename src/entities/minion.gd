@@ -18,8 +18,13 @@ var xp_value := 42
 # waves must genuinely threaten towers, or sieges stall and every match
 # drifts to the time cap (ladder-testi: 0/10 nexus-lopetusta liian miedolla
 # skaalauksella 0.28/0.22).
-const LATE_HP_SCALE := 0.55
-const LATE_DMG_SCALE := 0.45
+# Mitattu (78 ottelun ajo): aalto teki tornille 10,9 DPS:n verran 18 s
+# syklissä alussa ja vain 37,3 DPS lopussa — aalto ei siis koskaan
+# uhannut tornia ilman että sankari seisoi vieressä. Aalto on kuitenkin
+# AINOA piiritysvoima joka ei vaadi sankarin kosketusta rakennukseen,
+# joten sen loppupelin kasvu on suorin vipu ottelun sulkemiseen.
+const LATE_HP_SCALE := 0.80
+const LATE_DMG_SCALE := 0.80
 const MOBA_SCALE_TIME := 1200.0
 
 
@@ -108,6 +113,18 @@ func setup_minion(p_arena, p_team: int, pos: Vector2, waypoints: Array,
 	add_child(vis)
 
 	global_position = pos
+
+
+## BARONIN SIUNAUS (LoL:n "Hand of Baron"): Baronin kaataneen joukkueen
+## seuraavat aallot marssivat vahvistettuina. Tämä on se mekanismi joka
+## muuttaa objektiivivoiton piiritysvoimaksi ilman että bottien pitää
+## tehdä mitään eri tavalla — siunattu aalto elää tornin tulessa pidempään
+## ja hakkaa kovempaa. Kutsutaan heti setup_minionin jälkeen.
+func bless(hp_mult: float, dmg_mult: float) -> void:
+	max_hp *= hp_mult
+	hp = max_hp
+	attack_dmg *= dmg_mult
+	_color = Palette.glow(_color.lerp(Color("ffd76d"), 0.32), 1.2)
 
 
 func hero_color() -> Color:
