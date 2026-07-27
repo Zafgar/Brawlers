@@ -171,6 +171,9 @@ var jungle_clear_events: Array = []
 var objective_events: Array = []
 var _moba_telemetry_accum := 0.0
 var _end_reason := ""
+# Millä perusteella aikakattopeli ratkesi (banneri + telemetria). Tyhjä
+# kunnes _moba_leader on ajettu.
+var _cap_reason := ""
 var _first_blood := false
 
 # Kykytelemetrian aktiivikonteksti: kuka/mikä kykypaikka juuri aiheuttaa
@@ -919,6 +922,7 @@ func _setup_moba() -> void:
 	super_minions_spawned = [0, 0]
 	crystals_broken = [0, 0]
 	_baron_wave_until = [-1.0, -1.0]
+	_cap_reason = ""
 	for cpos in mm.red_camps():
 		_moba_camp_queue.append([Critter.Kind.RED_CAMP, cpos])
 	for cpos in mm.blue_camps():
@@ -1029,11 +1033,15 @@ func _moba_physics(delta: float) -> void:
 	time_left -= delta
 	if time_left <= 0.0:
 		time_left = 0.0
-		_end_reason = "aikakatto"
-		_end_moba(_moba_leader())
+		# Ratkaisuperuste selviää vasta vertailussa, joten _end_reason
+		# täydennetään _moba_leaderin asettamalla syyllä.
+		var cap_winner: int = _moba_leader()
+		_end_reason = ("aikakatto: %s" % _cap_reason) if _cap_reason != "" \
+			else "aikakatto"
+		_end_moba(cap_winner)
 
 
-## Aaltojen tahti: kiristyy loppupeliä kohti (18 s -> 13 s). Aalto on ainoa
+## Aaltojen tahti: kiristyy loppupeliä kohti (18 s -> 15 s). Aalto on ainoa
 ## piiritysvoima joka ei vaadi sankarin kosketusta rakennukseen, joten sen
 ## tiheys on suora vipu ottelun sulkeutumiseen.
 func _wave_interval() -> float:
@@ -1646,33 +1654,90 @@ func _refresh_nexus_protection(team: int) -> void:
 		_sim_event("%s nexus suojattu (kristalli)" % Game.team_name(team))
 
 
-## Aikakaton ratkaisu ilman sokeaa sinisen suosintaa. Järjestys:
-##  1) suurempi oma nexus-hp, 2) enemmän vihollistorneja kaadettu,
-##  3) enemmän pisteitä (leirit/pomo), 4) enemmän tienattua kultaa
-##  (CS + tapot + objektiivit = "pelasi paremmin"), 5) enemmän tappoja.
-## Aito tasapeli on tämän jälkeen käytännössä mahdoton — pelkkä tornilaskuri
-## teki tasaväkisistä aikakattopeleistä kolikonheittoa ladder-testissä.
+## Kuinka pitkällä joukkue oli VIHOLLISEN linnoituksen murtamisessa. Yksi luku,
+## joka vastaa kysymykseen "kumpi oli oikeasti voittamassa": syvyyspainotettu
+## edistymä, jossa jokainen rakennus painaa sitä enemmän mitä lähempänä nexusta
+## se on ja jossa myös OSITTAIN puretut rakennukset lasketaan mukaan.
+##
+## Painot: uloin 1, sisä 2, base 3 (eli 6 per linja, 12 kahdelta linjalta),
+## murrettu kristalli 1,5 ja vihollisnexuksesta purettu osuus 6.
+## Maksimi ~19,5, ja käytännössä 18 tarkoittaa jo voittoa.
+func _siege_progress(team: int) -> float:
+	var foe: int = 1 - team
+	var score := 0.0
+	for lane_id in [MapMoba.TOP, MapMoba.BOTTOM]:
+		var lane_list: Array = _lane_towers[foe].get(lane_id, [])
+		for i in range(lane_list.size()):
+			var tw := lane_list[i] as Structure
+			if tw == null or not is_instance_valid(tw):
+				continue
+			score += float(i + 1) * _structure_broken(tw)
+		# Pystyssä olevan kristallin osittainen purku lasketaan; murretut
+		# kristallit tulevat crystals_broken-laskurista (solmu kierrätetään).
+		var cs := _lane_crystal(foe, lane_id)
+		if cs != null:
+			score += 1.5 * _structure_broken(cs)
+	score += 1.5 * float(crystals_broken[team])
+	var nx := _nexus[foe] as Structure
+	if nx != null and is_instance_valid(nx):
+		score += 6.0 * _structure_broken(nx)
+	return score
+
+
+## Rakennuksesta purettu osuus 0..1 (tuhottu = 1). Kaadettu rakennus voi jäädä
+## negatiiviselle HP:lle, joten arvo kiinnitetään välille.
+func _structure_broken(s: Structure) -> float:
+	if s == null or not is_instance_valid(s):
+		return 0.0
+	if not s.alive:
+		return 1.0
+	return clampf(1.0 - s.hp / maxf(s.max_hp, 1.0), 0.0, 1.0)
+
+
+## === AIKAKATON RATKAISU ===
+## Vanha järjestys oli: 1) oma nexus-HP, 2) jäljellä olevien vihollistornien
+## LUKUMÄÄRÄ, 3) pisteet, 4) kulta, 5) tapot. Kaksi ensimmäistä askelta olivat
+## mitatussa aineistossa käytännössä rikki:
+##   * aikakattopelissä kumpaakaan nexusta ei ollut edes avattu, joten kohta 1
+##     oli aina tasan eikä ratkaissut mitään;
+##   * pelkkä tornilaskuri piti kahta kaadettua ULKOtornia samanarvoisena kuin
+##     yhden linjan täyttä läpimurtoa (uloin+sisä+base), vaikka jälkimmäinen on
+##     yhden rakennuksen päässä voitosta. Se ei myöskään nähnyt lainkaan tornia
+##     joka oli 5 %:ssa kun kello loppui.
+## Uusi järjestys mittaa samaa asiaa kuin voittoehto: kuka oli lähempänä
+## vihollisnexusta.
+##  1) piiritysetu (_siege_progress: syvyyspainotettu + osittaiset purut)
+##  2) rakennuksiin syötetty vahinko (piirityspaine ilman viimeistä osumaa)
+##  3) objektiivipisteet (leirit/Baron/Dragon)
+##  4) tienattu kulta  5) tapot
+## Aito tasapeli on tämän jälkeen käytännössä mahdoton.
 func _moba_leader() -> int:
-	var h0: float = _nexus_hp(0)
-	var h1: float = _nexus_hp(1)
-	if absf(h0 - h1) > 1.0:
-		return 0 if h0 > h1 else 1
-	var orange_towers: int = _towers[1].size()   # jäljellä -> sininen kaatanut vähemmän
-	var blue_towers: int = _towers[0].size()
-	if orange_towers != blue_towers:
-		return 0 if orange_towers < blue_towers else 1
+	var s0: float = _siege_progress(0)
+	var s1: float = _siege_progress(1)
+	if absf(s0 - s1) > 0.05:
+		_cap_reason = "suurempi piiritysetu"
+		return 0 if s0 > s1 else 1
+	var d0 := _team_stat_sum(0, "structure_damage")
+	var d1 := _team_stat_sum(1, "structure_damage")
+	if absf(d0 - d1) > 50.0:
+		_cap_reason = "enemmän vahinkoa rakennuksiin"
+		return 0 if d0 > d1 else 1
 	var p0: float = relic_points[0]
 	var p1: float = relic_points[1]
 	if absf(p0 - p1) > 0.5:
+		_cap_reason = "enemmän objektiivipisteitä"
 		return 0 if p0 > p1 else 1
 	var g0 := _team_stat_sum(0, "gold")
 	var g1 := _team_stat_sum(1, "gold")
 	if absf(g0 - g1) > 5.0:
+		_cap_reason = "enemmän tienattua kultaa"
 		return 0 if g0 > g1 else 1
 	var k0 := _team_stat_sum(0, "kos")
 	var k1 := _team_stat_sum(1, "kos")
 	if absf(k0 - k1) > 0.5:
+		_cap_reason = "enemmän tyrmäyksiä"
 		return 0 if k0 > k1 else 1
+	_cap_reason = "kaikki mittarit tasan"
 	return -1   # aito tasapeli
 
 
@@ -1743,7 +1808,10 @@ func _end_moba(winner: int) -> void:
 		sub = "Voitto!"
 	else:
 		title = "%s JOHTAA!" % Game.team_name(winner)
-		sub = "Aikakatto ratkaisi ottelun"
+		# Aikakaton pitää kertoa MIKSI se ratkesi näin — muuten voitto
+		# näyttää pelaajalle kolikonheitolta.
+		sub = ("Aikakatto: %s" % _cap_reason) if _cap_reason != "" \
+			else "Aikakatto ratkaisi ottelun"
 	hud.show_banner(title, sub, 3.4)
 	if Game.simulating:
 		# Ottelu päättyi kesken fysiikkaruudun (kutsuttu take_damagesta) ->
