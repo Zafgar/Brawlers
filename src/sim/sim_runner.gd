@@ -217,6 +217,13 @@ func _finish() -> void:
 				ladder_matches, match_count, speed],
 			"Kokoonpanot satunnaisia (kiertopakka), puolet otteluista puolin vaihdettuna.",
 			"Tasoparit pelataan divisioonassa III; divisioonaparit ovat saman tason IV vs I.",
+			# Ladderin ratkaiseva mittari on VOITTOEHTO, ei tapporuutu: rankit
+			# erottuvat siitä kuinka hyvin ne muuttavat etunsa rakenteiksi
+			# (piirityskuri, voitetun taistelun muunto, linjalta poistumisen hinta).
+			# Mitattu vika oli täsmälleen päinvastainen — jokaisessa rikkinäisessä
+			# parissa ALEMPI rank kaatoi enemmän rakenteita — joten rakennesarake on
+			# se rivi joka luetaan ensin, ennen KDA:ta ja taloutta.
+			"Ratkaiseva mittari on rakenteet: ylemmän rankin on kaadettava niitä enemmän.",
 		]
 		results.report_text = MatchReport.build_ladder(_results, lintro)
 	elif sweep:
