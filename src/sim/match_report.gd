@@ -53,7 +53,20 @@ const HERO_WR_HIGH := 58.0         # sankarin voitto% yli tämän -> TARKISTA
 const ROLE_WR_DEV := 8.0           # roolin voitto%:n sallittu poikkeama 50:stä (%-yks)
 const PHASE_RATIO := 2.0           # loppu/alku-vahinkosuhde jolla hahmo luokitellaan
 const PHASE_MIN_GAMES := 3         # voimakäyrän pienin otanta
-const TIMECAP_SHARE := 40.0        # % otteluista aikakattoon -> liputus
+# Aikakattoraja kiristettiin 40 -> 25: kolme peräkkäistä ladder-ajoa jäi
+# 51 / 51 / 54 %:iin aikakattoja ja vanha raja liputti sen vain juuri ja
+# juuri. Piirityksen läpivirtauskorjauksen tavoite on alle 20 %, joten
+# raja on nyt siinä missä se oikeasti kertoo ongelmasta.
+const TIMECAP_SHARE := 25.0        # % otteluista aikakattoon -> liputus
+# KESTOJAKAUMA. Pelkkä keskiarvo ei kerro ottelun muodosta mitään: 78
+# ottelun ajossa keskikesto oli 17:26, mutta se syntyi siitä että puolet
+# peleistä oli 20:00 aikakattoja eikä yksikään ylivoima sulkeutunut
+# ajoissa. Jakauma erottaa nämä toisistaan.
+const MATCH_CAP := 1200.0          # aikakatto sekunteina (Arena.MOBA_TIME)
+const LEN_EARLY := 720.0           # 12:00 — selvän ylivoiman pitäisi sulkea tähän mennessä
+const LEN_MID := 1020.0            # 17:00 — tavallisen ratkenneen ottelun yläraja
+const LEN_EARLY_MIN := 12.0        # % alle 12:00 -> alle tämän = ylivoima ei sulje peliä
+const BAR_WIDTH := 28              # tekstipalkin täysi leveys jakaumissa
 const SNOWBALL_MIN_N := 4          # lumipallokauhan pienin otanta liputukseen
 const SNOWBALL_HIGH := 90.0        # iso johto voittaa yli tämän -> lumipallo liian vahva
 const SNOWBALL_LOW := 55.0         # iso johto voittaa alle tämän -> johdolla ei ole väliä
@@ -1050,6 +1063,13 @@ static func _ability_table(lines: Array, agg: Dictionary) -> void:
 static func _flag(flags: Array, kind: String, name: String, text: String) -> String:
 	flags.append({"kind": kind, "name": name, "text": text})
 	return text
+
+
+## Tekstipalkki osuudelle (0-100 %): jakauman muoto näkyy silmäyksellä
+## ilman että lukuja tarvitsee vertailla päässä.
+static func _bar_text(share: float) -> String:
+	var filled: int = int(round(clampf(share, 0.0, 100.0) / 100.0 * float(BAR_WIDTH)))
+	return "#".repeat(filled)
 
 
 ## Osuus prosenttitekstinä; "-" kun otantaa ei ole (nollalla ei jaeta).
@@ -2441,6 +2461,8 @@ static func _section_match_health(lines: Array, results: Array, opts: Dictionary
 		lines.append("  Ei otteluita otannassa.")
 		return
 	var times: Array = []
+	# Kestokauhat: alle 12:00 | 12:00-17:00 | 17:00-aikakatto | aikakatto.
+	var len_buckets: Array = [0, 0, 0, 0]
 	var nexus_n := 0
 	var cap_n := 0
 	var other_n := 0
@@ -2486,6 +2508,16 @@ static func _section_match_health(lines: Array, results: Array, opts: Dictionary
 			cap_n += 1
 		else:
 			other_n += 1
+		# Kestokauhat: aikakatto on oma kauhansa (se ei ole "pitkä ottelu"
+		# vaan ottelu joka ei päättynyt), muut kellon mukaan.
+		if reason.find("aikakatto") >= 0:
+			len_buckets[3] = int(len_buckets[3]) + 1
+		elif elapsed < LEN_EARLY:
+			len_buckets[0] = int(len_buckets[0]) + 1
+		elif elapsed < LEN_MID:
+			len_buckets[1] = int(len_buckets[1]) + 1
+		else:
+			len_buckets[2] = int(len_buckets[2]) + 1
 		var heroes: Array = snap.get("heroes", [])
 		# Kultajohto 10:00: joukkueen summa niistä sankareista jotka ehtivät näytteeseen.
 		var g10: Array = [0.0, 0.0]
@@ -2616,6 +2648,25 @@ static func _section_match_health(lines: Array, results: Array, opts: Dictionary
 	if cap_share > TIMECAP_SHARE:
 		lines.append("  " + _flag(flags, "järjestelmä", "aikakatto",
 			"TARKISTA: yli %d %% otteluista päättyi aikakattoon — piiritys ei etene" % int(TIMECAP_SHARE)))
+	lines.append("")
+	lines.append("  -- kestojakauma (ottelun MUOTO, ei pelkkä keskiarvo) --")
+	lines.append("  kesto             |   n | osuus  |")
+	var len_labels: Array = [
+		"alle %s" % _fmt(LEN_EARLY),
+		"%s-%s" % [_fmt(LEN_EARLY), _fmt(LEN_MID)],
+		"%s-aikakatto" % _fmt(LEN_MID),
+		"aikakatto (%s)" % _fmt(MATCH_CAP),
+	]
+	for i in range(4):
+		var bn: int = int(len_buckets[i])
+		lines.append("  %-17s | %3d | %6s | %s" % [
+			str(len_labels[i]), bn, _pct_text(bn, mcount),
+			_bar_text(100.0 * float(bn) / float(mcount))])
+	var early_share: float = 100.0 * float(len_buckets[0]) / float(mcount)
+	if early_share < LEN_EARLY_MIN:
+		lines.append("  " + _flag(flags, "järjestelmä", "kestojakauma",
+			"TARKISTA: vain %.1f %% otteluista sulkeutui ennen %s — ylivoima ei muutu voitoksi" % [
+				early_share, _fmt(LEN_EARLY)]))
 
 	# --- lumipallo ja comeback ---
 	lines.append("")
@@ -2711,26 +2762,37 @@ static func _section_match_health(lines: Array, results: Array, opts: Dictionary
 
 
 ## Raportin kärkilaatikko: ensimmäinen asia jonka lukija näkee. Kokoaa otannan
-## koon, keskikeston, nexus-loppujen osuuden, eniten liputetut itemit ja
-## sankarit sekä yhden rivin tuomion.
+## koon, keskikeston JA mediaanin, päättymistavan (nexus vs aikakatto), eniten
+## liputetut itemit ja sankarit sekä yhden rivin tuomion. Mediaani ja
+## aikakatto-osuus lisättiin, koska pelkkä keskikesto piilotti sen että noin
+## puolet otteluista ei päättynyt lainkaan vaan osui aikakattoon.
 static func _summary_box(lines: Array, results: Array, opts: Dictionary) -> void:
 	var snapshots: Array = _snapshots(results)
 	var flags: Array = _opt_flags(opts)
 	var total_time := 0.0
 	var nexus := 0
+	# Mediaani ja aikakatto-osuus kuuluvat kärkilaatikkoon: keskikesto yksin
+	# piilotti sen että puolet otteluista ei päättynyt lainkaan.
+	var capped := 0
+	var times: Array = []
 	for snap_v in snapshots:
 		var snap: Dictionary = snap_v
 		total_time += float(snap.get("elapsed", 0.0))
+		times.append(float(snap.get("elapsed", 0.0)))
 		if str(snap.get("reason", "")).find("nexus") >= 0:
 			nexus += 1
+		elif str(snap.get("reason", "")).find("aikakatto") >= 0:
+			capped += 1
 	var n: int = snapshots.size()
 	lines.append("=== YHTEENVETO ===")
 	# Ladder mittaa rankpareja, ei kokoonpanoja: parimäärä kertoo otannan laajuuden.
 	var pairs: int = int(opts.get("pairs", 0))
 	if pairs > 0:
 		lines.append("  Rankpareja %d (tasoparit, ankkurit ja divisioonaparit)" % pairs)
-	lines.append("  Otteluita %d | keskikesto %s | nexus-loppuja %d (%s)" % [
-		n, _fmt(total_time / maxf(float(n), 1.0)), nexus, _pct_text(nexus, n)])
+	lines.append("  Otteluita %d | keskikesto %s | mediaani %s" % [
+		n, _fmt(total_time / maxf(float(n), 1.0)), _median_fmt(times)])
+	lines.append("  Päättyminen: nexus %d (%s) | aikakatto %d (%s)" % [
+		nexus, _pct_text(nexus, n), capped, _pct_text(capped, n)])
 	lines.append("  Eniten liputetut itemit:   %s" % _top_flags(flags, "itemi"))
 	lines.append("  Eniten liputetut sankarit: %s" % _top_flags(flags, "sankari"))
 	lines.append("  Järjestelmähuomioita (talous/objektiivit/roolit): %d" % _count_kind(flags, "järjestelmä"))
