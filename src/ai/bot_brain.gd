@@ -602,9 +602,23 @@ func _ensure_moba_assignment(hero: Hero, arena) -> void:
 	if hero == top_laner:
 		_moba_job = "top"
 		_moba_lane = MapMoba.TOP
-	else:
-		_moba_job = "bottom"
-		_moba_lane = MapMoba.BOTTOM
+		return
+	_moba_job = "bottom"
+	_moba_lane = MapMoba.BOTTOM
+	# BOTTOM-DUON TYÖNJAKO (juurisyykorjaus "botti seisoo koko ottelun"): kaksi
+	# tukiroolin sankaria samassa duossa jäivät MOLEMMAT SUPPORT-tilaan, jossa
+	# ainoa liikemaali on toisen duolaisen selusta (_support_goal). Kummallakaan
+	# ei siis ollut omaa linjamaalia: pari astui 120 px kerrallaan poispäin
+	# uhkakeskiöstä, ajautui kartan länsireunaan ja jäi sinne koko otteluksi
+	# (taso 1, ei itemejä, ei XP:tä, 0/0/0). Nyt duossa on täsmälleen YKSI tuki;
+	# muut pelaavat carryn työnjaolla eli normaalia linjapeliä. Sääntö on
+	# deterministinen (suurin profile.index jää tueksi), joten jokainen botti
+	# päätyy samaan jakoon ilman erillistä sopimista.
+	var duo: Array = bot_laners.filter(func(h): return h != top_laner)
+	var supports: Array = duo.filter(
+		func(h): return str(HeroDef.get_def(h.hero_id).get("role", "")) == "Tuki")
+	if supports.size() >= 2 and hero != supports[supports.size() - 1]:
+		_moba_duty = "carry"
 
 
 func update(hero: Hero, delta: float) -> void:
@@ -2486,6 +2500,11 @@ func _support_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vecto
 			pocket = lane_partner
 	if pocket == null or pocket == hero:
 		pocket = bb.frontline_ally
+	# Ankkuri ei saa olla toinen tuki, jolla ei itsellään ole linjamaalia:
+	# kaksi tukea ankkuroituisi toisiinsa ja pari ajautuisi yhdessä pois pelistä.
+	if pocket != null and pocket != hero and arena.mode == "moba" \
+			and _passive_anchor(pocket):
+		pocket = null
 	if pocket == null or pocket == hero:
 		# MOBA: ei jäädä keskustaan — seuraa linjan työntöä oman aallon takana.
 		if arena.mode == "moba":
@@ -2512,6 +2531,19 @@ func _support_goal(hero: Hero, arena, bb: TeamBlackboard, pos: Vector2) -> Vecto
 	return goal
 
 
+## Onko liittolainen "passiivinen ankkuri" eli botti, jonka AINOA liikemaali on
+## jonkun toisen selusta? Tämä on täsmälleen bottom-duon tukityönjako
+## (_decide_moba -> Mode.SUPPORT). Tuki ei saa koskaan ankkuroitua tällaiseen
+## liittolaiseen: kaksi tukea ankkuroituisi toisiinsa, kummallakaan ei olisi
+## omaa linjamaalia, ja pari kävelisi toisiaan seuraten ulos pelistä.
+func _passive_anchor(ally: Hero) -> bool:
+	var brain := ally.controller as BotBrain
+	if brain == null or brain._moba_job != "bottom":
+		return false
+	return brain._moba_duty == "support" \
+		or (brain._moba_duty == "" and brain._is_support)
+
+
 ## Bottom-tuki valitsee oman laneparinsa, ei globaalin blackboardin jungleria
 ## tai top-laneria. Tämä estää tukibottia seuraamasta sattumalta heikointä
 ## liittolaista junglen läpi usean campin ajaksi.
@@ -2527,7 +2559,7 @@ func _moba_lane_partner(hero: Hero, arena) -> Hero:
 			same_lane = (ally.controller as BotBrain)._moba_lane == _moba_lane
 		elif mm != null:
 			same_lane = mm.nearest_lane(ally.global_position) == _moba_lane
-		if not same_lane:
+		if not same_lane or _passive_anchor(ally):
 			continue
 		var score: float = ally.global_position.distance_to(hero.global_position)
 		if HeroDef.get_def(ally.hero_id).get("role", "") == "Tuki":
@@ -2551,9 +2583,13 @@ func _moba_support_goal(hero: Hero, arena, pos: Vector2) -> Vector2:
 		var back: Vector2 = (pos - aim_pos).normalized()
 		goal = lead.global_position + back * 120.0
 	else:
-		# Yksin jäänyt tuki: älä sukella yksin linjaa pitkin — vetäydy omalle
-		# puolelle (tukikohtaan) turvaan.
-		goal = arena.map.spawn_point(hero.team, 0)
+		# Yksin jäänyt tuki: älä sukella yksin linjaa pitkin MUTTA älä myöskään
+		# jää seisomaan tukikohtaan. Vanha paluu spawn_pointiin oli toinen puoli
+		# "botti seisoo koko ottelun" -viasta: baseen kävellyt tuki ei enää
+		# koskaan saanut syytä lähteä sieltä. Nyt pelataan omaa linjaa oman
+		# aallon mukana (sama asemointi kuin tyhjäkäyntivahdilla).
+		var solo := _activity_goal(hero, arena)
+		goal = solo if is_finite(solo.x) else arena.map.spawn_point(hero.team, 0)
 	return _moba_tower_safe(hero, arena, pos, goal)
 
 
@@ -2565,6 +2601,9 @@ func _moba_frontline_ally(hero: Hero, arena, aim_pos: Vector2) -> Hero:
 		if a == hero:
 			continue
 		if a.controller is BotBrain and (a.controller as BotBrain)._moba_lane != _moba_lane:
+			continue
+		# Toinen tuki ei kelpaa työnnön kärjeksi: sillä ei ole omaa maalia.
+		if _passive_anchor(a):
 			continue
 		var d: float = a.global_position.distance_to(aim_pos)
 		if d < best_d:
@@ -2689,20 +2728,32 @@ func _enemy_tower_frontier(hero: Hero, arena, lane: String) -> float:
 ## VÄLIIN palatessaan junglen kautta ja joutui kävelemään sieltä pois).
 func _safe_lane_entry(hero: Hero, arena, mm: MapMoba) -> Vector2:
 	var frontier := _enemy_tower_frontier(hero, arena, _moba_lane)
-	var best := Vector2.ZERO
+	var best := Vector2.INF
 	var best_sq := INF
+	var nearest := Vector2.INF   # varapaikka: lähin aukko suodattimesta riippumatta
+	var nearest_sq := INF
 	for candidate in mm.lane_entries(_moba_lane):
 		var entry: Vector2 = candidate
+		var d_sq: float = hero.global_position.distance_squared_to(entry)
+		if d_sq < nearest_sq:
+			nearest_sq = d_sq
+			nearest = entry
 		# Syvyys vihollisen suuntaan: sininen työntää +x, oranssi -x. Oman
 		# puolen aukot läpäisevät aina (frontier >= 790 kun torneja pystyssä).
 		var depth: float = entry.x if hero.team == 0 else -entry.x
 		if depth > frontier:
 			continue
-		var d_sq: float = hero.global_position.distance_squared_to(entry)
 		if d_sq < best_sq:
 			best_sq = d_sq
 			best = entry
-	return best
+	# Ilman varapaikkaa paluuarvo oli Vector2.ZERO (joen keskus) jos JOKAINEN
+	# aukko oli vihollistornien takana — botti käveli kartan keskelle luullen
+	# palaavansa linjalle.
+	if is_finite(best.x):
+		return best
+	if is_finite(nearest.x):
+		return nearest
+	return hero.global_position
 
 
 ## Taisteluasemointi: lähesty kohdetta roolin ihannematkalle. Tankki peelaa.
