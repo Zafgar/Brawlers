@@ -23,14 +23,14 @@ const LADDER_DIVISION_WINRATE := 0.65  # divisioonaparin hyväksymisraja
 # Tasoporttien taulukko raporttiin (sama kuin BotBrain._apply_tier_gates).
 # Selittää MIKSI rankit eroavat — pelkät voitto-%:t eivät kerro sitä.
 const TIER_CAPABILITIES := [
-	"ei väistöä, ei kitetystä, ei suojautumista, ei keskitettyä tulta, ei komboja; farmi 30 %, ei perääntymistä, ei kauppareissuja, ei objektiiveja, ei makroa",
-	"AVAA: last hit + perääntyminen + kauppareissut (70 s). Väistö 25 %, ei kitetystä/suojaa, keskitetty tuli 30 %, ei Dragonia/Baronia",
-	"AVAA: väistö + Dragon. Kitetys 35 %, suoja 30 %, keskitetty tuli 60 %, ei Baronia",
-	"AVAA: kitetys + suojautuminen + Baron + linjarotaatiot. Suoja 70 %",
-	"AVAA: täysi keskitetty tuli ja kombot — ei enää leikkauksia, vain käyrät",
-	"vain käyrät: tarkempi tähtäys, nopeammat päätökset, vähemmän keskittymiskatkoja",
-	"vain käyrät + avoin huijausramppi alkaa (vahinko/kesto/jäähdytykset/vauhti)",
-	"käyrien katto: lähes virheetön tähtäys, ei keskittymiskatkoja, täysi huijausramppi",
+	"ei väistöä, ei kitetystä, ei suojautumista, ei keskitettyä tulta, ei komboja; farmi 30 %, ei perääntymistä, ei kauppareissuja, ei objektiiveja, ei makroa; EI VOITTOEHTOA: piirityskuri 0.00, ei muuntoa",
+	"AVAA: last hit + perääntyminen + kauppareissut (70 s) + piirityskuri 0.03. Väistö 25 %, ei kitetystä/suojaa, keskitetty tuli 30 %, ei Dragonia/Baronia",
+	"AVAA: väistö + Dragon + voitetun taistelun muunto rakenteeksi. Piirityskuri 0.10, kitetys 35 %, suoja 30 %, keskitetty tuli 60 %, ei Baronia",
+	"AVAA: kitetys + suojautuminen + Baron + linjarotaatiot + objektiivin voitettavuusarvio. Piirityskuri 0.20, suoja 70 %",
+	"AVAA: täysi keskitetty tuli ja kombot — ei enää leikkauksia, vain käyrät. Piirityskuri 0.32",
+	"vain käyrät: tarkempi tähtäys, nopeammat päätökset, vähemmän keskittymiskatkoja. Piirityskuri 0.47",
+	"vain käyrät + avoin huijausramppi alkaa (vahinko/kesto/jäähdytykset/vauhti). Piirityskuri 0.66",
+	"käyrien katto: lähes virheetön tähtäys, ei keskittymiskatkoja, täysi huijausramppi. Piirityskuri 0.88, muunto lähes aina",
 ]
 
 # --- Balanssiraportin hälytysrajat (itemit, sankarit, järjestelmä) ----------

@@ -1082,8 +1082,12 @@ func _shop_trip_ready(hero: Hero, bb: TeamBlackboard, was_recalling: bool) -> bo
 func _shop_goal(hero: Hero) -> String:
 	if hero.legendary_artifact:
 		var leg := _item_legendary()
-		if leg != "" and not hero.items.has(leg) \
-				and int(hero.profile.wallet()) >= ItemDef.combine_cost(leg, hero.items):
+		# EI lompakkoehtoa: tavoite on legenda heti kun artefakti on kädessä.
+		# Vanha portti vaati koko hinnan valmiiksi lompakossa, jolloin
+		# _shop_goal palautti tavallisen runkotavoitteen säästämisen ajaksi —
+		# botti lähti kauppareissulle jonka Hero._bot_shop sitten torjui,
+		# koska se säästi jo legendaan. Peilaa Hero._bot_shop-porttia.
+		if leg != "" and not hero.items.has(leg):
 			return leg
 	for g in _item_build():
 		if not hero.items.has(str(g)):
