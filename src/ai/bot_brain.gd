@@ -687,6 +687,97 @@ func update(hero: Hero, delta: float) -> void:
 		_use_active = false
 
 
+## Onko vetäytymiselle oikea syy. Pelkkä matala HP EI riitä: ilman uhkaa
+## vetäytyminen on linja-ajan lahjoitus, ja koska retreat_frac KASVAA rankilla,
+## ylempi rank lahjoitti sitä enemmän kuin alempi — yksi mitatun käänteisyyden
+## juurisyistä. Uhkasäde kutistuu tempo_disciplinen mukaan: Wood pakenee varjoja
+## (1700 px = käytännössä aina), Challenger vasta kun uhka on oikeasti päällä.
+func _retreat_has_reason(hero: Hero, arena) -> bool:
+	if hero.since_damage < 2.5:
+		return true
+	var radius: float = lerpf(1700.0, 560.0, tempo_discipline)
+	return _nearest_enemy_hero(hero, arena, radius) != null
+
+
+## Onko käynnissä piiritys jota ei kannata jättää kesken: murrettava rakenne on
+## jo lyöntietäisyydellä ja kaatumassa. Kauppareissu ja paluukanavointi
+## lykkääntyvät tämän takia — ylempi rank vie tornin loppuun, alempi kävelee pois
+## puolikkaalta tornilta ja antaa sen regeneroitua.
+func _siege_worth_finishing(hero: Hero, arena) -> bool:
+	if arena.mode != "moba":
+		return false
+	var st := _pick_push_target(hero, arena) as Structure
+	if st == null or not st.alive:
+		return false
+	if st.hp >= st.max_hp * SIEGE_FINISH_HP:
+		return false
+	var reach: float = maxf(_siege_clamped(_basic_range, st), 320.0) + st.radius
+	return hero.global_position.distance_to(st.global_position) <= reach
+
+
+## Murrettava rakenne jonka piiritystä KANNATTAA jatkaa vaikka vihollissankari on
+## lähellä. Ilman tätä siege_focus oli saavuttamaton: _decide_moba palautti
+## vihollisen nähdessään heti ilman työntökohdetta, jolloin _moba_push_targetin
+## piirityskuriarvonta ei koskaan päässyt ajoon juuri siinä tilanteessa jota
+## varten se kirjoitettiin. Nyt ylempi rank tuo rakenteen mukanaan päätökseen ja
+## voittaa vaihtokaupan; Woodilla push_skill on nolla, joten se kääntyy yhä
+## sankariin ja hukkaa tornin.
+func _siege_hold_target(hero: Hero, arena) -> Structure:
+	if randf() >= _wc_skill(push_skill):
+		return null
+	if hero.hp < hero.max_hp * maxf(retreat_frac, 0.2):
+		return null
+	var st := _pick_push_target(hero, arena) as Structure
+	if st == null or not st.alive or st.kind == Structure.Kind.NEXUS:
+		return null
+	var reach: float = maxf(_siege_clamped(_basic_range, st), 320.0) + st.radius
+	if hero.global_position.distance_to(st.global_position) > reach:
+		return null
+	# Ylivoimainen puolustus katkaisee piirityksen kaikilla tasoilla: piirityskuri
+	# on ajoitusta, ei itsemurhaa.
+	var foes: int = arena.heroes_in_circle(st.global_position, 640.0,
+		1 - hero.team, true, true).size()
+	if foes > _allies_near(hero, st.global_position, 640.0) + 1:
+		return null
+	return st
+
+
+## Onko objektiivin (Baron/Dragon) kiistäminen oikeasti voitettavissa. Kierros
+## maksaa aina linja-aikaa, joten sen saa maksaa vain kun kohde on otettavissa.
+## Ylempi rank laskee paikallaolijat ja jättää häviävän kiistan väliin; alempi
+## maksaa kierroksen turhaan — juuri se teki "objektiivitaidosta" rakennepaineen
+## VÄHENNYKSEN Silverista ylöspäin.
+func _objective_contest_ok(hero: Hero, cr: Critter) -> bool:
+	if randf() >= _wc_skill(tempo_discipline):
+		return true                    # ei taitoa arvioida -> kierretään silti
+	var foes: int = hero.arena.heroes_in_circle(cr.global_position, 700.0,
+		1 - hero.team, true, true).size()
+	if foes == 0:
+		return true
+	return _allies_near(hero, cr.global_position, 700.0) + 1 > foes
+
+
+## Päivittää voitetun taistelun ikkunan. Ajetaan vain päätöstikeissä
+## (_decide_moba), joten kustannus on sama kuin muullakin makropäätöksellä.
+func _scan_fight_window(hero: Hero, arena) -> void:
+	var now: float = float(arena.match_elapsed)
+	var fresh: bool = now - _fight_scan_t <= 2.0
+	_fight_scan_t = now
+	var near: Array = []
+	for e in arena.enemy_heroes(hero.team):
+		if e.global_position.distance_to(hero.global_position) < FIGHT_SCAN \
+				and _moba_can_see(hero, e, arena):
+			near.append(e)
+	if fresh and near.is_empty() and not _fight_foes.is_empty() \
+			and hero.hp > hero.max_hp * 0.3:
+		for f in _fight_foes:
+			var foe := f as Hero
+			if foe == null or not is_instance_valid(foe) or not foe.alive:
+				_convert_t = CONVERT_WINDOW
+				break
+	_fight_foes = near
+
+
 ## Assassiinin malttavuus: neutraalissa taistelussa väijy jos kohde ei ole
 ## tapettavissa (matala hp) tai eristyksissä. Ylemmät tasot odottavat avausta,
 ## alemmat syöksyvät heti (patience skaalaa).
@@ -753,7 +844,7 @@ func _decide(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	var retreat_hp: float = retreat_frac
 	if _is_assassin or _is_support:
 		retreat_hp += 0.08
-	if hero.hp < hero.max_hp * retreat_hp:
+	if hero.hp < hero.max_hp * retreat_hp and _retreat_has_reason(hero, arena):
 		_mode = Mode.RETREAT
 		return
 	# Jatka vetäytymistä vain jos yhä matala JA vihollinen lähellä. Heti kun on
@@ -926,6 +1017,13 @@ func _update_recall_decision(hero: Hero, arena, bb: TeamBlackboard,
 		return
 	if _enemy_within(hero, arena, 460.0):
 		return
+	# LOPETUSKURI: älä kanavoi kotiin kesken piirityksen jossa rakenne on
+	# kaatumassa (viholliset ovat jo tarkistetusti kaukana, joten jääminen on
+	# turvallista). Kriittisen matalalla mennään silti kotiin.
+	if not was_recalling and hero.hp > hero.max_hp * 0.22 \
+			and _siege_worth_finishing(hero, arena) \
+			and randf() < _wc_skill(tempo_discipline):
+		return
 	var threshold := 0.5 if was_recalling else 0.35
 	if hero.hp < hero.max_hp * threshold:
 		_recall = true
@@ -967,6 +1065,14 @@ func _shop_trip_ready(hero: Hero, bb: TeamBlackboard, was_recalling: bool) -> bo
 		return false
 	if not was_recalling and randf() >= 0.25 + 0.75 * BotRank.t(rank):
 		return false
+	# AJOITUS (voittoehtotaito): reissu maksaa linja-aikaa, ja koska reissujen
+	# tiheys kasvaa rankilla, ylempi rank menetti linjapainetta sitä ENEMMÄN mitä
+	# parempi se oli. Nyt ylempi lähtee vasta kun lähtö on ilmainen: kaatuvaa
+	# tornia ei jätetä kesken. Jäähdytys pitää huolen ettei reissu jää väliin —
+	# se vain siirtyy hetkeksi.
+	if not was_recalling and _siege_worth_finishing(hero, hero.arena) \
+			and randf() < _wc_skill(tempo_discipline):
+		return false
 	return true
 
 
@@ -990,6 +1096,7 @@ func _shop_goal(hero: Hero) -> String:
 func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	_jungle_target = null
 	_ensure_moba_assignment(hero, arena)
+	_scan_fight_window(hero, arena)
 	_maybe_use_item_active(hero, arena)
 	# PUOLUSTUS: jos oma rakennus on uhattu ja OLEN nimetty (lähin) puolustaja,
 	# kääerry puolustamaan — taistele viholliset pois rakennuksen luota. Vain yksi
@@ -1098,6 +1205,18 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 		_moba_goal = _moba_lane_route_goal(hero, arena, hero.global_position)
 		_mode = Mode.FIGHT
 		return
+	# VOITETUN TAISTELUN MUUNTO RAKENTEEKSI (voittoehtotaito): kun lähitaistelu on
+	# juuri voitettu eikä vihollisia näy, ylempi rank kääntyy VÄLITTÖMÄSTI lähimpään
+	# murrettavaan rakenteeseen sen sijaan että palaisi farmaamaan aaltoa tai
+	# kiertäisi leireille. Tämä on puuttunut lenkki, jolla tapoista ja talousjohdosta
+	# tulee rakennepainetta — raportin diagnoosi "ylempi dominoi taloutta muttei
+	# sulkenut pelejä" osui tähän. Ennen tuen työnjakoa, jotta myös tuki liittyy.
+	if _convert_t > 0.0 and randf() < _wc_skill(convert_skill):
+		var conv := _pick_push_target(hero, arena)
+		if conv != null:
+			_jungle_target = conv
+			_mode = Mode.FIGHT
+			return
 	# Tuen työnjako: nimenomainen support-positio TAI (ilman positiota) tukiroolin
 	# sankari bottomissa pelaa suojaavaa duo-peliä.
 	if _moba_job == "bottom" and (_moba_duty == "support" \
@@ -1113,6 +1232,11 @@ func _decide_moba(hero: Hero, arena, bb: TeamBlackboard) -> void:
 	var engage_scan: float = clampf(_pref_range + 180.0, 360.0, 700.0)
 	var enemy_hero := _nearest_enemy_hero(hero, arena, engage_scan)
 	if enemy_hero != null:
+		# PIIRITYSKURIN AVAUS: lähellä oleva vihollinen ei enää automaattisesti
+		# nollaa työntökohdetta. Ylempi rank kantaa murrettavan rakenteen mukanaan
+		# päätökseen, jolloin _moba_push_target ratkaisee siege_focusilla kumpi
+		# voittaa; matala rank saa yhä nullin ja kääntyy sankariin.
+		_jungle_target = _siege_hold_target(hero, arena)
 		_mode = Mode.FIGHT
 		return
 	# Viidakko-objektiivi (pomo = iso tiimibuffi, leirit = buffit) jos vaikeustaso
@@ -1236,6 +1360,10 @@ func _pick_moba_objective(hero: Hero, arena) -> Hero:
 		return null
 	if _moba_job != "jungle" and jungle_focus < 0.05:
 		return null
+	# Kesken oleva piiritys voittaa objektiivikierroksen: ylempi rank ei jätä
+	# kaatuvaa tornia Dragonin takia, alempi jättää.
+	if _siege_worth_finishing(hero, arena) and randf() < _wc_skill(tempo_discipline):
+		return null
 	var is_laner := _moba_job != "jungle"
 	# Laner voi kiertää vain oikealle major-objectivelle ja vain kun oma aalto
 	# on työnnetty. Tavalliset campit kuuluvat junglerille; niiden vuoksi ei
@@ -1296,7 +1424,7 @@ func _moba_objective_value(hero: Hero, cr: Critter) -> float:
 			# terveenä ja mieluiten ryhmässä (vain korkein taso uskaltaa yksin).
 			var strong: bool = hero.hp > hero.max_hp * 0.55 and jungle_focus >= 0.4
 			var grouped: bool = _allies_near(hero, cr.global_position, 460.0) >= 1
-			if strong and grouped:
+			if strong and grouped and _objective_contest_ok(hero, cr):
 				return 300.0
 			return 0.0
 		Critter.Kind.DRAGON:
@@ -1308,7 +1436,7 @@ func _moba_objective_value(hero: Hero, cr: Critter) -> float:
 			var solo_ready := _moba_job == "jungle" and jungle_focus >= 0.72 \
 				and hero.has_method("bot_can_solo_major") \
 				and bool(hero.call("bot_can_solo_major", cr))
-			if strong and (grouped or solo_ready):
+			if strong and (grouped or solo_ready) and _objective_contest_ok(hero, cr):
 				return 245.0
 			return 0.0
 		Critter.Kind.DAMAGE_CAMP:
@@ -1608,7 +1736,7 @@ func _moba_push_target(hero: Hero, arena) -> Hero:
 				and siege_st.kind != Structure.Kind.NEXUS \
 				and hero.global_position.distance_to(siege_st.global_position) \
 					< maxf(_siege_clamped(_basic_range, siege_st), 320.0) + siege_st.radius \
-				and randf() < siege_focus:
+				and randf() < _wc_skill(siege_focus):
 			return siege_st
 		return enemy_hero
 	var minion_scan := 420.0 if _moba_job == "jungle" else 950.0
